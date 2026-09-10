@@ -1,0 +1,21 @@
+{
+  "name": "@weave/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Contrats partagés (invariants, catalogue d'offres, types de transport) entre l'API, le web et iOS.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./invariants": "./src/invariants.ts",
+    "./catalog": "./src/catalog.ts",
+    "./domain": "./src/domain.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "echo \"@weave/contracts est consommé en TypeScript source\""
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

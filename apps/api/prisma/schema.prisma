@@ -1,0 +1,484 @@
+// Weave — schéma Prisma (source de vérité : PostgreSQL).
+//
+// Le schéma est volontairement PORTABLE : ni `enum`, ni listes scalaires, ni
+// types natifs spécifiques à un moteur. Seul le bloc `datasource` diffère entre
+// PostgreSQL (production) et SQLite (développement) ; `bun run db:sqlite`
+// dérive automatiquement `schema.sqlite.prisma` à partir de ce fichier.
+//
+// RÈGLE STRUCTURANTE — Aucune table ne contient de copie d'un profil proposé.
+// Les trois fils d'un utilisateur vivent exclusivement dans Redis. La base ne
+// conserve que `ThreadLedger` : des identifiants, un horodatage et une issue,
+// afin de ne jamais reproposer deux fois la même personne.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  moduleFormat = "esm"
+  runtime  = "bun"
+}
+
+// Prisma 7 : l'URL de connexion ne vit plus dans le schéma. Elle est fournie
+// par `prisma.config.ts` (CLI/migrations) et par l'adaptateur de driver côté
+// client (voir `src/lib/prisma.ts`).
+datasource db {
+  provider = "postgresql"
+}
+
+/* ------------------------------------------------------------------ */
+/* Identité et accès                                                   */
+/* ------------------------------------------------------------------ */
+
+/// Compte utilisateur. Aucune donnée sensible en clair hormis l'e-mail.
+model Account {
+  id           String   @id @default(cuid(2))
+  email        String   @unique
+  emailHash    String   @unique /// SHA-256 de l'e-mail normalisé, pour les recherches sans exposition.
+  handle       String   @unique
+  displayName  String
+  birthDate    DateTime
+  /// onboarding | active | paused | suspended | deleting
+  status       String   @default("onboarding")
+  /// Heure locale de tissage choisie (0-23).
+  weavingHour  Int      @default(18)
+  timezone     String   @default("Europe/Paris")
+  locale       String   @default("fr-FR")
+  verified     Boolean  @default(false)
+  lastSeenAt   DateTime?
+  /// Date de demande de suppression ; purge effective après ACCOUNT_PURGE_DAYS.
+  deletionRequestedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile          Profile?
+  preference       Preference?
+  devices          Device[]
+  refreshTokens    RefreshToken[]
+  subscription     Subscription?
+  unitPurchases    UnitPurchase[]
+  credits          CreditBalance[]
+  servedThreads    ThreadLedger[]  @relation("ledgerViewer")
+  servedAsCandidate ThreadLedger[] @relation("ledgerCandidate")
+  threadsInitiated WovenThread[]   @relation("threadInitiator")
+  threadsReceived  WovenThread[]   @relation("threadResponder")
+  messages         Message[]
+  reportsFiled     Report[]        @relation("reportAuthor")
+  reportsAgainst   Report[]        @relation("reportTarget")
+  blocksMade       Block[]         @relation("blockAuthor")
+  blocksReceived   Block[]         @relation("blockTarget")
+  consents         ConsentRecord[]
+  liveActivities   LiveActivitySession[]
+  auditEvents      AuditEvent[]
+
+  @@index([status, weavingHour])
+  @@index([deletionRequestedAt])
+  @@map("accounts")
+}
+
+/// Code à usage unique envoyé par e-mail (pas de mot de passe dans Weave).
+model OtpChallenge {
+  id         String   @id @default(cuid(2))
+  emailHash  String
+  codeHash   String
+  attempts   Int      @default(0)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([emailHash, expiresAt])
+  @@map("otp_challenges")
+}
+
+/// Jeton de rafraîchissement, stocké haché et rotatif.
+model RefreshToken {
+  id         String   @id @default(cuid(2))
+  accountId  String
+  tokenHash  String   @unique
+  deviceId   String?
+  revokedAt  DateTime?
+  /// Identifiant du jeton qui l'a remplacé lors de la rotation.
+  rotatedTo  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+/* ------------------------------------------------------------------ */
+/* Profil                                                              */
+/* ------------------------------------------------------------------ */
+
+/// Profil de l'utilisateur lui-même (ses propres données, qu'il maîtrise).
+/// À ne pas confondre avec les cartes de fils, qui n'existent qu'en cache.
+model Profile {
+  id           String   @id @default(cuid(2))
+  accountId    String   @unique
+  city         String
+  /// Coordonnées volontairement arrondies (~1 km) : Weave n'expose jamais de position précise.
+  latRounded   Float
+  lonRounded   Float
+  /// Genre déclaré, texte libre normalisé côté application.
+  gender       String
+  /// Intention relationnelle déclarée.
+  intent       String   @default("ouverte")
+  bio          String   @default("")
+  /// Clé objet de la photo dans le stockage ; jamais servie sans URL signée.
+  photoKey     String?
+  photoReviewedAt DateTime?
+  completeness Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  account   Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  fragments ProfileFragment[]
+  motifTags MotifTag[]
+
+  @@index([city])
+  @@index([latRounded, lonRounded])
+  @@map("profiles")
+}
+
+/// Réponse d'une personne à une question de la bibliothèque : matière première
+/// des fragments affichés dans un fil.
+model ProfileFragment {
+  id        String   @id @default(cuid(2))
+  profileId String
+  promptId  String
+  /// question | voix
+  kind      String   @default("question")
+  body      String
+  /// Clé objet de l'enregistrement vocal, le cas échéant.
+  audioKey  String?
+  durationSeconds Int?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  prompt  Prompt  @relation(fields: [promptId], references: [id])
+
+  @@unique([profileId, promptId])
+  @@index([profileId, position])
+  @@map("profile_fragments")
+}
+
+/// Un des cinq mots-clés du « motif » d'une personne.
+model MotifTag {
+  id        String @id @default(cuid(2))
+  profileId String
+  tag       String
+  /// Poids dérivé des réponses, 0-100.
+  weight    Int    @default(50)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, tag])
+  @@index([tag])
+  @@map("motif_tags")
+}
+
+/// Bibliothèque de questions. Rotation quotidienne pilotée par `activeFrom`.
+model Prompt {
+  id         String   @id @default(cuid(2))
+  text       String   @unique
+  theme      String
+  locale     String   @default("fr-FR")
+  active     Boolean  @default(true)
+  activeFrom DateTime?
+  createdAt  DateTime @default(now())
+
+  fragments ProfileFragment[]
+
+  @@index([locale, active])
+  @@map("prompts")
+}
+
+/// Critères de composition. La profondeur exploitée dépend du palier.
+model Preference {
+  id             String @id @default(cuid(2))
+  accountId      String @unique
+  minAge         Int    @default(18)
+  maxAge         Int    @default(99)
+  maxDistanceKm  Int    @default(50)
+  /// Liste de genres recherchés, encodée en JSON (portabilité SQLite/PostgreSQL).
+  seekingJson    String @default("[]")
+  /// Intentions acceptées, encodées en JSON.
+  intentsJson    String @default("[]")
+  /// Critères fins réservés aux paliers Chaîne et supérieurs, encodés en JSON.
+  refinedJson    String @default("{}")
+  /// Ville d'Escale temporaire, si une escale est active.
+  escaleCity     String?
+  escaleUntil    DateTime?
+  updatedAt      DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("preferences")
+}
+
+/* ------------------------------------------------------------------ */
+/* Fils : registre minimal (le contenu vit en cache)                   */
+/* ------------------------------------------------------------------ */
+
+/// Trace qu'une personne a été proposée à une autre. NE CONTIENT AUCUNE COPIE
+/// DE PROFIL : ni photo, ni fragment, ni motif. Sert uniquement à garantir
+/// l'unicité des propositions et à mesurer la qualité de la composition.
+model ThreadLedger {
+  id          String   @id @default(cuid(2))
+  viewerId    String
+  candidateId String
+  /// Identifiant du fil tel que présent dans Redis (`weave:thread:v1:<id>`).
+  cacheKey    String   @unique
+  /// propose | engage | tisse | denoue | expire | relache
+  outcome     String   @default("propose")
+  /// Score de composition au moment du tissage, 0-1000.
+  score       Int      @default(0)
+  servedAt    DateTime @default(now())
+  resolvedAt  DateTime?
+  expiresAt   DateTime
+
+  viewer    Account @relation("ledgerViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  candidate Account @relation("ledgerCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([viewerId, candidateId])
+  @@index([viewerId, outcome])
+  @@index([expiresAt])
+  @@map("thread_ledger")
+}
+
+/// Conversation persistée : créée seulement lorsque le fil est effectivement
+/// tissé (une réponse de chaque côté). Avant cela, rien n'est écrit en base.
+model WovenThread {
+  id          String   @id @default(cuid(2))
+  initiatorId String
+  responderId String
+  wovenAt     DateTime @default(now())
+  lastMessageAt DateTime?
+  /// tisse | endormi | clos
+  state       String   @default("tisse")
+  /// Nombre d'échanges aboutis, pilote la révélation progressive de la photo.
+  exchanges   Int      @default(1)
+  revealPercent Int    @default(33)
+  closedAt    DateTime?
+  closedBy    String?
+
+  initiator Account   @relation("threadInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  responder Account   @relation("threadResponder", fields: [responderId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@unique([initiatorId, responderId])
+  @@index([initiatorId, lastMessageAt])
+  @@index([responderId, lastMessageAt])
+  @@map("woven_threads")
+}
+
+model Message {
+  id        String   @id @default(cuid(2))
+  threadId  String
+  authorId  String
+  body      String
+  audioKey  String?
+  durationSeconds Int?
+  sentAt    DateTime @default(now())
+  readAt    DateTime?
+  /// Purge automatique après MESSAGE_RETENTION_DAYS suivant la clôture du fil.
+  purgeAfter DateTime?
+
+  thread WovenThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author Account     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, sentAt])
+  @@index([purgeAfter])
+  @@map("messages")
+}
+
+/* ------------------------------------------------------------------ */
+/* Appareils, Live Activity, Apple Watch                               */
+/* ------------------------------------------------------------------ */
+
+model Device {
+  id            String   @id @default(cuid(2))
+  accountId     String
+  /// ios | watchos | web
+  platform      String
+  /// Identifiant stable fourni par le client (identifierForVendor).
+  vendorId      String
+  model         String?
+  osVersion     String?
+  appVersion    String?
+  /// Jeton APNs classique (notifications distantes).
+  apnsToken     String?
+  /// Jeton « push-to-start » ActivityKit, permettant de démarrer une Live Activity à distance.
+  pushToStartToken String?
+  /// production | sandbox
+  apnsEnvironment String @default("sandbox")
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  account        Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  liveActivities LiveActivitySession[]
+
+  @@unique([accountId, vendorId])
+  @@index([accountId, platform])
+  @@map("devices")
+}
+
+/// Une Live Activity « Métier » en cours sur l'appareil d'un utilisateur.
+model LiveActivitySession {
+  id           String   @id @default(cuid(2))
+  accountId    String
+  deviceId     String
+  /// Jeton de mise à jour propre à cette activité (ActivityKit).
+  updateToken  String   @unique
+  startedAt    DateTime @default(now())
+  /// Dernier état poussé, encodé en JSON (miroir de LiveActivityState).
+  lastStateJson String  @default("{}")
+  lastPushAt   DateTime?
+  endedAt      DateTime?
+  /// Les Live Activities expirent au bout de 8 h (12 h maximum côté système).
+  staleAt      DateTime
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  device  Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, endedAt])
+  @@index([staleAt])
+  @@map("live_activity_sessions")
+}
+
+/* ------------------------------------------------------------------ */
+/* Facturation                                                         */
+/* ------------------------------------------------------------------ */
+
+model Subscription {
+  id              String   @id @default(cuid(2))
+  accountId       String   @unique
+  /// fil | trame | chaine | navette | metier
+  tier            String   @default("fil")
+  /// monthly | yearly | null pour le socle gratuit
+  period          String?
+  storeKitProductId String?
+  /// originalTransactionId App Store, clé de réconciliation des renouvellements.
+  originalTransactionId String? @unique
+  renewsAt        DateTime?
+  expiresAt       DateTime?
+  inGracePeriod   Boolean  @default(false)
+  cancelledAt     DateTime?
+  environment     String   @default("sandbox")
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([tier, expiresAt])
+  @@map("subscriptions")
+}
+
+/// Achat à l'unité (consommable StoreKit).
+model UnitPurchase {
+  id            String   @id @default(cuid(2))
+  accountId     String
+  /// echo | prolonge | relais | motif | escale | atelier
+  sku           String
+  transactionId String   @unique
+  quantity      Int      @default(1)
+  priceCents    Int
+  currency      String   @default("EUR")
+  environment   String   @default("sandbox")
+  consumedAt    DateTime?
+  refundedAt    DateTime?
+  purchasedAt   DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, sku])
+  @@map("unit_purchases")
+}
+
+/// Solde de crédits par SKU : cumule les crédits inclus dans l'abonnement et
+/// ceux achetés à l'unité.
+model CreditBalance {
+  id          String   @id @default(cuid(2))
+  accountId   String
+  sku         String
+  balance     Int      @default(0)
+  /// Date de remise à zéro des crédits inclus dans l'abonnement.
+  resetsAt    DateTime?
+  updatedAt   DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, sku])
+  @@map("credit_balances")
+}
+
+/* ------------------------------------------------------------------ */
+/* Sécurité, modération, conformité                                    */
+/* ------------------------------------------------------------------ */
+
+model Report {
+  id         String   @id @default(cuid(2))
+  authorId   String
+  targetId   String
+  reason     String
+  details    String   @default("")
+  /// ouvert | traite | rejete
+  state      String   @default("ouvert")
+  handledAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  author Account @relation("reportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  target Account @relation("reportTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([state, createdAt])
+  @@map("reports")
+}
+
+model Block {
+  id        String   @id @default(cuid(2))
+  authorId  String
+  targetId  String
+  createdAt DateTime @default(now())
+
+  author Account @relation("blockAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  target Account @relation("blockTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([authorId, targetId])
+  @@index([targetId])
+  @@map("blocks")
+}
+
+/// Registre de consentement RGPD (base légale, version du texte, horodatage).
+model ConsentRecord {
+  id        String   @id @default(cuid(2))
+  accountId String
+  /// cgu | confidentialite | donnees_sensibles | analytique
+  kind      String
+  version   String
+  granted   Boolean
+  grantedAt DateTime @default(now())
+  revokedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, kind])
+  @@map("consent_records")
+}
+
+/// Journal d'audit des actions sensibles (accès données, modération, purge).
+model AuditEvent {
+  id        String   @id @default(cuid(2))
+  accountId String?
+  action    String
+  subject   String?
+  metaJson  String   @default("{}")
+  ip        String?
+  createdAt DateTime @default(now())
+
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@map("audit_events")
+}
