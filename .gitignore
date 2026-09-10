@@ -55,3 +55,6 @@ apps/ios/Secrets.xcconfig
 *.p8
 *.p12
 *.mobileprovision
+
+# Configuration Xcode locale
+apps/ios/Secrets.xcconfig
