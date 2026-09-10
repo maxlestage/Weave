@@ -1,0 +1,74 @@
+import { ACCOUNT_PURGE_DAYS, MESSAGE_RETENTION_DAYS, MIN_AGE } from "@weave/contracts";
+import { Carte, Section } from "../composants.tsx";
+
+const ENGAGEMENTS = [
+  {
+    titre: "Rien à vendre à personne",
+    texte:
+      "Pas de publicité, pas de courtier en données, pas de revente. Le produit est financé par celles et ceux qui s'abonnent ou achètent à l'unité.",
+  },
+  {
+    titre: "Localisation au kilomètre",
+    texte:
+      "Votre position est arrondie avant d'être enregistrée. Nous ne conservons jamais de coordonnées précises, et une distance affichée reste une distance arrondie.",
+  },
+  {
+    titre: "Les profils proposés ne sont pas archivés",
+    texte:
+      "Les fils vivent dans un cache temporaire. Nous ne constituons pas d'historique des profils que vous avez vus, et personne ne peut le consulter.",
+  },
+  {
+    titre: "Blocage immédiat",
+    texte:
+      "Bloquer ou signaler retire le fil des deux côtés, sans notification à l'autre personne. Un signalement entraîne toujours un blocage.",
+  },
+] as const;
+
+export function Confiance() {
+  return (
+    <Section
+      id="confiance"
+      titre="Ce à quoi nous nous engageons"
+      chapeau="Une application de rencontre manipule ce qu'il y a de plus intime. Voici ce que nous nous interdisons."
+      alterne
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        {ENGAGEMENTS.map((engagement) => (
+          <Carte key={engagement.titre}>
+            <h3 className="text-lg font-semibold">{engagement.titre}</h3>
+            <p className="mt-2.5 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
+              {engagement.texte}
+            </p>
+          </Carte>
+        ))}
+      </div>
+
+      <dl className="mt-10 grid gap-6 sm:grid-cols-3">
+        <div>
+          <dt className="text-sm" style={{ color: "var(--texte-doux)" }}>
+            Âge minimum
+          </dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{MIN_AGE} ans</dd>
+        </div>
+        <div>
+          <dt className="text-sm" style={{ color: "var(--texte-doux)" }}>
+            Messages conservés
+          </dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{MESSAGE_RETENTION_DAYS} jours</dd>
+          <p className="mt-1 text-sm" style={{ color: "var(--texte-doux)" }}>
+            après clôture d'une conversation
+          </p>
+        </div>
+        <div>
+          <dt className="text-sm" style={{ color: "var(--texte-doux)" }}>
+            Compte supprimé
+          </dt>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">{ACCOUNT_PURGE_DAYS} jours</dd>
+          <p className="mt-1 text-sm" style={{ color: "var(--texte-doux)" }}>
+            avant purge définitive
+          </p>
+        </div>
+      </dl>
+    </Section>
+  );
+}
