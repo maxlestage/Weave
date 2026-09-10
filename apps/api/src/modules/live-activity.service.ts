@@ -9,7 +9,12 @@
  */
 import type { Loom, LiveActivityState, WatchSummary } from "@weave/contracts";
 import { keys, readLoom } from "../lib/cache.ts";
-import { endLiveActivity, isDeadToken, startLiveActivity, updateLiveActivity } from "../lib/apns.ts";
+import {
+  endLiveActivity,
+  isDeadToken,
+  startLiveActivity,
+  updateLiveActivity,
+} from "../lib/apns.ts";
 import { log } from "../lib/log.ts";
 import { prisma } from "../lib/prisma.ts";
 import { getJson, setJson } from "../lib/redis.ts";

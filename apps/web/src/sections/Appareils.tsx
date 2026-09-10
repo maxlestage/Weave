@@ -16,8 +16,8 @@ export function Appareils() {
           <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
             À votre heure de tissage, une bannière apparaît d'elle-même sur l'écran verrouillé et
             dans l'île dynamique. Elle affiche le nombre de fils, le temps qu'il reste au plus
-            pressé, et rien d'autre : ce qui est visible sur un écran verrouillé doit pouvoir être lu
-            par quelqu'un d'autre.
+            pressé, et rien d'autre : ce qui est visible sur un écran verrouillé doit pouvoir être
+            lu par quelqu'un d'autre.
           </p>
           <ApercuActivite />
         </Carte>
@@ -27,8 +27,8 @@ export function Appareils() {
             Apple Watch
           </h3>
           <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-            Une complication sur le cadran, la liste des fils et leur échéance, et de quoi répondre à
-            la voix ou par dictée. La montre reçoit un résumé compact : ni photo, ni fragment.
+            Une complication sur le cadran, la liste des fils et leur échéance, et de quoi répondre
+            à la voix ou par dictée. La montre reçoit un résumé compact : ni photo, ni fragment.
           </p>
           <ul className="mt-5 space-y-2.5 text-sm" style={{ color: "var(--texte-doux)" }}>
             <li>• Complication : fils en attente et compte à rebours</li>
@@ -57,7 +57,12 @@ function ApercuActivite() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
-            <g stroke="var(--color-cuivre-clair)" strokeWidth="2.4" strokeLinecap="round" fill="none">
+            <g
+              stroke="var(--color-cuivre-clair)"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              fill="none"
+            >
               <path d="M8 6v20" />
               <path d="M16 6v20" />
               <path d="M24 6v20" />
@@ -71,7 +76,10 @@ function ApercuActivite() {
           </div>
         </div>
         <div className="text-right">
-          <p className="text-lg font-semibold tabular-nums" style={{ color: "var(--color-cuivre-clair)" }}>
+          <p
+            className="text-lg font-semibold tabular-nums"
+            style={{ color: "var(--color-cuivre-clair)" }}
+          >
             4 h 12
           </p>
           <p className="text-xs" style={{ color: "#b6aa9c" }}>

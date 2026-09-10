@@ -154,7 +154,11 @@ export async function sendApns(request: ApnsRequest): Promise<ApnsResult> {
     });
 
     if (response.ok) {
-      return { ok: true, status: response.status, apnsId: response.headers.get("apns-id") ?? undefined };
+      return {
+        ok: true,
+        status: response.status,
+        apnsId: response.headers.get("apns-id") ?? undefined,
+      };
     }
 
     const body = (await response.json().catch(() => ({}))) as { reason?: string };

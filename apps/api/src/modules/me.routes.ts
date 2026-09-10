@@ -35,7 +35,9 @@ export const meRoutes = new Elysia({ prefix: "/v1/me", tags: ["Profil"] })
           timezone: true,
           verified: true,
           createdAt: true,
-          profile: { select: { motifTags: { select: { tag: true }, orderBy: { weight: "desc" } } } },
+          profile: {
+            select: { motifTags: { select: { tag: true }, orderBy: { weight: "desc" } } },
+          },
         },
       });
       if (row === null) throw notFound("Compte introuvable.");

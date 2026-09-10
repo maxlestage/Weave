@@ -129,7 +129,10 @@ export function mapRow(row: readonly unknown[], columnTypes: readonly ColumnType
       out[i] = Math.trunc(value);
       continue;
     }
-    if ((typeof value === "number" || typeof value === "bigint") && type === ColumnTypeEnum.DateTime) {
+    if (
+      (typeof value === "number" || typeof value === "bigint") &&
+      type === ColumnTypeEnum.DateTime
+    ) {
       out[i] = new Date(Number(value)).toISOString();
       continue;
     }

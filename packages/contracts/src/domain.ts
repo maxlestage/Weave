@@ -56,7 +56,7 @@ export type ThreadState =
   | "propose" /* tissé, jamais engagé */
   | "engage" /* au moins une réponse envoyée */
   | "tisse" /* réponse mutuelle : la conversation est ouverte */
-  | "denoue" /* expiré ou relâché */;
+  | "denoue"; /* expiré ou relâché */
 
 export interface ThreadCard {
   readonly id: string;

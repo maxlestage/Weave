@@ -57,7 +57,10 @@ export const promptRoutes = new Elysia({ prefix: "/v1/prompts", tags: ["Question
 
       // Tirage déterministe : la même journée donne la même question à tout le
       // monde, sans avoir à planifier quoi que ce soit.
-      const seed = [...`${locale}:${day}`].reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) % 2147483647, 7);
+      const seed = [...`${locale}:${day}`].reduce(
+        (acc, char) => (acc * 31 + char.charCodeAt(0)) % 2147483647,
+        7,
+      );
       const prompt = candidates[seed % candidates.length]!;
 
       await setJson(key, prompt, PROMPT_OF_DAY_TTL_SECONDS);
@@ -67,7 +70,8 @@ export const promptRoutes = new Elysia({ prefix: "/v1/prompts", tags: ["Question
       query: t.Object({ locale: t.Optional(t.String({ maxLength: 10 })) }),
       detail: {
         summary: "Question du jour",
-        description: "Identique pour toutes les personnes d'une même langue, renouvelée chaque jour.",
+        description:
+          "Identique pour toutes les personnes d'une même langue, renouvelée chaque jour.",
       },
     },
   );

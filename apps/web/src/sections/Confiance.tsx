@@ -54,7 +54,9 @@ export function Confiance() {
           <dt className="text-sm" style={{ color: "var(--texte-doux)" }}>
             Messages conservés
           </dt>
-          <dd className="mt-1 text-2xl font-semibold tabular-nums">{MESSAGE_RETENTION_DAYS} jours</dd>
+          <dd className="mt-1 text-2xl font-semibold tabular-nums">
+            {MESSAGE_RETENTION_DAYS} jours
+          </dd>
           <p className="mt-1 text-sm" style={{ color: "var(--texte-doux)" }}>
             après clôture d'une conversation
           </p>

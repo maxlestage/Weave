@@ -98,7 +98,10 @@ describe("adaptateur", () => {
       ],
     });
 
-    const result = await adapter.queryRaw({ sql: "SELECT id, age, ratio FROM accounts", ...noArgs });
+    const result = await adapter.queryRaw({
+      sql: "SELECT id, age, ratio FROM accounts",
+      ...noArgs,
+    });
     expect(result.columnNames).toEqual(["id", "age", "ratio"]);
     expect(result.columnTypes).toEqual([
       ColumnTypeEnum.Text,

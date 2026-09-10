@@ -93,10 +93,7 @@ export const app = new Elysia()
     "/health",
     async ({ set }) => {
       const [dbOk, cacheOk] = await Promise.all([
-        prisma
-          .$queryRaw`SELECT 1`
-          .then(() => true)
-          .catch(() => false),
+        prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
         pingRedis(),
       ]);
 
