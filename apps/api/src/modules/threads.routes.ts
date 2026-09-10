@@ -5,7 +5,12 @@
  * les deux personnes ont répondu. Avant cela, il n'existe qu'en cache.
  */
 import { Elysia, t } from "elysia";
-import { MESSAGE_RETENTION_DAYS, REVEAL_STEPS, RESPONSE_MAX_CHARS, type Message } from "@weave/contracts";
+import {
+  MESSAGE_RETENTION_DAYS,
+  REVEAL_STEPS,
+  RESPONSE_MAX_CHARS,
+  type Message,
+} from "@weave/contracts";
 import { forbidden, notFound } from "../lib/errors.ts";
 import { prisma } from "../lib/prisma.ts";
 import { authPlugin } from "../plugins/auth.ts";

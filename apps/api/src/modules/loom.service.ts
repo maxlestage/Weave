@@ -110,7 +110,14 @@ async function buildCandidatePool(accountId: string): Promise<Candidate[]> {
     select: {
       id: true,
       birthDate: true,
-      profile: { select: { latRounded: true, lonRounded: true, city: true, motifTags: { select: { tag: true } } } },
+      profile: {
+        select: {
+          latRounded: true,
+          lonRounded: true,
+          city: true,
+          motifTags: { select: { tag: true } },
+        },
+      },
       preference: true,
       blocksMade: { select: { targetId: true } },
       blocksReceived: { select: { authorId: true } },
@@ -133,7 +140,11 @@ async function buildCandidatePool(accountId: string): Promise<Candidate[]> {
 
   const now = new Date();
   const maxBirth = new Date(now.getFullYear() - preference.minAge, now.getMonth(), now.getDate());
-  const minBirth = new Date(now.getFullYear() - preference.maxAge - 1, now.getMonth(), now.getDate());
+  const minBirth = new Date(
+    now.getFullYear() - preference.maxAge - 1,
+    now.getMonth(),
+    now.getDate(),
+  );
 
   const excluded = new Set<string>([
     viewer.id,
@@ -308,7 +319,11 @@ function buildCard(candidate: Candidate, expiresAt: Date): ThreadCard {
  * L'écriture en cache est atomique : si deux requêtes concurrentes tentent de
  * garnir la dernière place, une seule aboutit, et le plafond de trois tient.
  */
-async function weaveOne(accountId: string, pool: Candidate[], used: Set<string>): Promise<ThreadCard | null> {
+async function weaveOne(
+  accountId: string,
+  pool: Candidate[],
+  used: Set<string>,
+): Promise<ThreadCard | null> {
   for (const candidate of pool) {
     if (used.has(candidate.accountId)) continue;
 

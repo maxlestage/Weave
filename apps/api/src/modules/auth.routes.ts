@@ -8,7 +8,15 @@ import { Elysia, t } from "elysia";
 import { MIN_AGE, WEAVING_HOURS } from "@weave/contracts";
 import { env } from "../env.ts";
 import { clearLoom } from "../lib/cache.ts";
-import { emailHash, hashSecret, normalizeEmail, opaqueToken, otpCode, sha256Hex, verifySecret } from "../lib/crypto.ts";
+import {
+  emailHash,
+  hashSecret,
+  normalizeEmail,
+  opaqueToken,
+  otpCode,
+  sha256Hex,
+  verifySecret,
+} from "../lib/crypto.ts";
 import { invalid, unauthorized } from "../lib/errors.ts";
 import { log } from "../lib/log.ts";
 import { prisma } from "../lib/prisma.ts";
@@ -31,7 +39,10 @@ async function uniqueHandle(displayName: string): Promise<string> {
 
   for (let attempt = 0; attempt < 20; attempt++) {
     const candidate = attempt === 0 ? base : `${base}${Math.floor(Math.random() * 10_000)}`;
-    const taken = await prisma.account.findUnique({ where: { handle: candidate }, select: { id: true } });
+    const taken = await prisma.account.findUnique({
+      where: { handle: candidate },
+      select: { id: true },
+    });
     if (taken === null) return candidate;
   }
   return `${base}${Date.now().toString(36)}`;
@@ -202,8 +213,10 @@ export const authRoutes = new Elysia({ prefix: "/v1/auth", tags: ["Authentificat
 
       // Rotation : le jeton présenté est immédiatement révoqué et remplacé.
       // Une réutilisation ultérieure du même jeton sera donc rejetée.
-      const session = await issueSession(stored.accountId, stored.deviceId ?? undefined, (payload) =>
-        jwt.sign(payload),
+      const session = await issueSession(
+        stored.accountId,
+        stored.deviceId ?? undefined,
+        (payload) => jwt.sign(payload),
       );
       await prisma.refreshToken.update({
         where: { id: stored.id },

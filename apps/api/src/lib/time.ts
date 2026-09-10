@@ -57,7 +57,11 @@ function offsetMinutes(timezone: string, at: Date): number {
 }
 
 /** Prochaine occurrence de l'heure de tissage, en instant absolu. */
-export function nextWeavingAt(timezone: string, weavingHour: number, from: Date = new Date()): Date {
+export function nextWeavingAt(
+  timezone: string,
+  weavingHour: number,
+  from: Date = new Date(),
+): Date {
   const offset = offsetMinutes(timezone, from);
   const local = new Date(from.getTime() + offset * 60_000);
 
@@ -87,12 +91,7 @@ export function refillAt(delayMinutes: number, from: Date = new Date()): Date {
  * Weave n'expose jamais mieux que le kilomètre : les coordonnées stockées sont
  * elles-mêmes déjà arrondies.
  */
-export function distanceKm(
-  aLat: number,
-  aLon: number,
-  bLat: number,
-  bLon: number,
-): number {
+export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6371;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(bLat - aLat);

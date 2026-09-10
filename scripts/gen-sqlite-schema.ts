@@ -43,11 +43,11 @@ const header = `// FICHIER GÉNÉRÉ — NE PAS MODIFIER À LA MAIN.
 `;
 
 let out = source
+  .replace(/datasource\s+db\s*\{[\s\S]*?\n\}/, `datasource db {\n  provider = "sqlite"\n}`)
   .replace(
-    /datasource\s+db\s*\{[\s\S]*?\n\}/,
-    `datasource db {\n  provider = "sqlite"\n}`,
-  )
-  .replace(/output\s*=\s*"\.\.\/src\/generated\/prisma"/, `output   = "../src/generated/prisma-sqlite"`);
+    /output\s*=\s*"\.\.\/src\/generated\/prisma"/,
+    `output   = "../src/generated/prisma-sqlite"`,
+  );
 
 // Retire l'en-tête de documentation du fichier source (remplacé par le nôtre).
 out = out.replace(/^\/\/[^\n]*\n(\/\/[^\n]*\n|\n)*/, "");

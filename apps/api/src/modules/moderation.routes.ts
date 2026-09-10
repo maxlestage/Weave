@@ -47,7 +47,8 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
     "/blocks",
     async ({ requireAccount, body }) => {
       const account = requireAccount();
-      if (body.accountId === account.id) throw invalid("Vous ne pouvez pas vous bloquer vous-même.");
+      if (body.accountId === account.id)
+        throw invalid("Vous ne pouvez pas vous bloquer vous-même.");
 
       await prisma.block.upsert({
         where: { authorId_targetId: { authorId: account.id, targetId: body.accountId } },
@@ -118,7 +119,8 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
       }),
       detail: {
         summary: "Signaler un compte",
-        description: "Le signalement entraîne un blocage immédiat, sans notification à l'autre partie.",
+        description:
+          "Le signalement entraîne un blocage immédiat, sans notification à l'autre partie.",
       },
     },
   )
@@ -140,7 +142,11 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
       const { invalidateAccountCache } = await import("../plugins/auth.ts");
       await invalidateAccountCache(account.id);
 
-      return { ok: true, status: paused ? "paused" : "active", threads: await readLoom(account.id) };
+      return {
+        ok: true,
+        status: paused ? "paused" : "active",
+        threads: await readLoom(account.id),
+      };
     },
     {
       body: t.Object({ paused: t.Boolean() }),

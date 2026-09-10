@@ -35,12 +35,35 @@ const CITIES: Record<string, { lat: number; lon: number }> = {
 };
 
 const MOTIF_VOCABULARY = [
-  "randonnée", "céramique", "jazz", "cuisine", "libraire", "vélo", "cinéma",
-  "escalade", "jardinage", "photo", "théâtre", "natation", "menuiserie",
-  "botanique", "podcasts", "gravure", "course", "poterie", "voile", "échecs",
+  "randonnée",
+  "céramique",
+  "jazz",
+  "cuisine",
+  "libraire",
+  "vélo",
+  "cinéma",
+  "escalade",
+  "jardinage",
+  "photo",
+  "théâtre",
+  "natation",
+  "menuiserie",
+  "botanique",
+  "podcasts",
+  "gravure",
+  "course",
+  "poterie",
+  "voile",
+  "échecs",
 ];
 
-const PEOPLE: { name: string; gender: string; city: keyof typeof CITIES; year: number; intent: string }[] = [
+const PEOPLE: {
+  name: string;
+  gender: string;
+  city: keyof typeof CITIES;
+  year: number;
+  intent: string;
+}[] = [
   { name: "Camille", gender: "femme", city: "Paris", year: 1994, intent: "relation" },
   { name: "Inès", gender: "femme", city: "Paris", year: 1991, intent: "ouverte" },
   { name: "Léa", gender: "femme", city: "Lyon", year: 1996, intent: "relation" },
@@ -97,7 +120,7 @@ async function seedPeople(promptIds: string[]): Promise<void> {
         emailHash: hash,
         handle: slug(person.name),
         displayName: person.name,
-        birthDate: new Date(Date.UTC(person.year, (index % 12), 1 + (index % 27))),
+        birthDate: new Date(Date.UTC(person.year, index % 12, 1 + (index % 27))),
         status: "active",
         verified: index % 3 === 0,
         weavingHour: [8, 12, 18, 21][index % 4]!,

@@ -40,7 +40,9 @@ function resolveSqliteUrl(raw: string): string {
 }
 
 const mode = (process.env.NODE_ENV ?? "development") as Mode;
-const driver = (process.env.WEAVE_DB ?? (mode === "production" ? "postgres" : "sqlite")).toLowerCase();
+const driver = (
+  process.env.WEAVE_DB ?? (mode === "production" ? "postgres" : "sqlite")
+).toLowerCase();
 
 if (driver !== "postgres" && driver !== "sqlite") {
   throw new Error(`WEAVE_DB doit valoir "postgres" ou "sqlite" (reçu : ${driver})`);
@@ -100,8 +102,8 @@ export const env = {
     get configured(): boolean {
       return Boolean(
         process.env.APPSTORE_ISSUER_ID &&
-          process.env.APPSTORE_KEY_ID &&
-          process.env.APPSTORE_KEY_PATH,
+        process.env.APPSTORE_KEY_ID &&
+        process.env.APPSTORE_KEY_PATH,
       );
     },
   },

@@ -67,7 +67,11 @@ export function Offres() {
             periode === "annuel" && plan.yearlyPriceCents !== null
               ? plan.yearlyPriceCents
               : plan.monthlyPriceCents;
-          const suffixe = gratuit ? "" : periode === "annuel" && plan.yearlyPriceCents !== null ? " / an" : " / mois";
+          const suffixe = gratuit
+            ? ""
+            : periode === "annuel" && plan.yearlyPriceCents !== null
+              ? " / an"
+              : " / mois";
 
           return (
             <Carte key={tier} accentuee={tier === "chaine"}>
@@ -142,7 +146,10 @@ export function Offres() {
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-semibold">{produit.name}</span>
-                <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
+                <span
+                  className="text-sm font-semibold tabular-nums"
+                  style={{ color: "var(--accent)" }}
+                >
                   {formatPrice(produit.priceCents)}
                 </span>
               </div>
