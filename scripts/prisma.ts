@@ -11,8 +11,7 @@
 import { spawn } from "node:child_process";
 
 const driver = (process.env.WEAVE_DB ?? "postgres").toLowerCase();
-const schema =
-  driver === "sqlite" ? "prisma/schema.sqlite.prisma" : "prisma/schema.prisma";
+const schema = driver === "sqlite" ? "prisma/schema.sqlite.prisma" : "prisma/schema.prisma";
 
 const args = process.argv.slice(2);
 if (args.length === 0) {

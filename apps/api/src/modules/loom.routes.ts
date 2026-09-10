@@ -178,7 +178,8 @@ export const loomRoutes = new Elysia({ prefix: "/v1/loom", tags: ["Métier"] })
       params: t.Object({ id: t.String() }),
       detail: {
         summary: "Prolonger un fil (+24 h)",
-        description: "Consomme un crédit « Prolonge ». La durée totale d'un fil ne dépasse jamais 48 h.",
+        description:
+          "Consomme un crédit « Prolonge ». La durée totale d'un fil ne dépasse jamais 48 h.",
       },
     },
   )

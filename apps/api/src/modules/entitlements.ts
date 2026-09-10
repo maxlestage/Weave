@@ -77,15 +77,12 @@ export async function requireCredit(accountId: string, sku: UnitSku): Promise<vo
   if (await spendCredit(accountId, sku)) return;
 
   const product = UNIT_PRODUCTS[sku];
-  throw entitlementRequired(
-    `« ${product.name} » n'est pas disponible sur votre offre actuelle.`,
-    {
-      sku,
-      unitProductId: product.storeKitId,
-      unitPriceCents: product.priceCents,
-      includedIn: includedInPlans(sku),
-    },
-  );
+  throw entitlementRequired(`« ${product.name} » n'est pas disponible sur votre offre actuelle.`, {
+    sku,
+    unitProductId: product.storeKitId,
+    unitPriceCents: product.priceCents,
+    includedIn: includedInPlans(sku),
+  });
 }
 
 /** Paliers qui incluent au moins un exemplaire mensuel de ce SKU. */
@@ -108,7 +105,11 @@ function includedInPlans(sku: UnitSku): PlanTier[] {
  * Les crédits inclus sont remis à leur valeur nominale ; les crédits achetés à
  * l'unité, eux, ne sont jamais remis à zéro.
  */
-export async function refillPlanCredits(accountId: string, tier: PlanTier, resetsAt: Date): Promise<void> {
+export async function refillPlanCredits(
+  accountId: string,
+  tier: PlanTier,
+  resetsAt: Date,
+): Promise<void> {
   const e = PLANS[tier].entitlements;
   const included: Partial<Record<UnitSku, number>> = {
     echo: e.echoesPerMonth,

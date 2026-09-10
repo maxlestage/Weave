@@ -30,7 +30,10 @@ export function Section({
           {titre}
         </h2>
         {chapeau !== undefined && (
-          <p className="mt-4 max-w-2xl text-lg leading-relaxed" style={{ color: "var(--texte-doux)" }}>
+          <p
+            className="mt-4 max-w-2xl text-lg leading-relaxed"
+            style={{ color: "var(--texte-doux)" }}
+          >
             {chapeau}
           </p>
         )}
@@ -53,7 +56,9 @@ export function Carte({
       style={{
         background: "var(--carte)",
         border: `1px solid ${accentuee ? "var(--accent)" : "var(--bordure)"}`,
-        boxShadow: accentuee ? "0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent)" : undefined,
+        boxShadow: accentuee
+          ? "0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent)"
+          : undefined,
       }}
     >
       {children}

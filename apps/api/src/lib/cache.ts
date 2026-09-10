@@ -192,7 +192,10 @@ export async function clearLoom(accountId: string): Promise<void> {
   const loomKey = keys.loom(accountId);
   const ids = (await redis.send("ZRANGE", [loomKey, "0", "-1"])) as string[] | null;
   if (ids && ids.length > 0) {
-    await redis.send("DEL", ids.map((id) => keys.thread(id)));
+    await redis.send(
+      "DEL",
+      ids.map((id) => keys.thread(id)),
+    );
   }
   await redis.del(loomKey);
   await redis.del(keys.watch(accountId));

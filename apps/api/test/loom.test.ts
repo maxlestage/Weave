@@ -131,9 +131,7 @@ describe("le métier", () => {
     await clearLoom(session.accountId);
     await redis.del(keys.refill(session.accountId));
 
-    await Promise.all(
-      Array.from({ length: 6 }, () => call("/v1/loom", auth(session.token))),
-    );
+    await Promise.all(Array.from({ length: 6 }, () => call("/v1/loom", auth(session.token))));
 
     const count = Number(await redis.send("ZCARD", [keys.loom(session.accountId)]));
     expect(count).toBeLessThanOrEqual(MAX_ACTIVE_THREADS);

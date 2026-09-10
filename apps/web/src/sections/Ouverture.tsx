@@ -5,7 +5,10 @@ const HEURES = THREAD_TTL_SECONDS / 3600;
 
 export function Ouverture() {
   return (
-    <section id="haut" className="relative overflow-hidden px-5 pt-14 pb-16 sm:px-8 sm:pt-24 sm:pb-24">
+    <section
+      id="haut"
+      className="relative overflow-hidden px-5 pt-14 pb-16 sm:px-8 sm:pt-24 sm:pb-24"
+    >
       <div className="trame pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" />
 
       <div className="relative mx-auto w-full max-w-5xl">
@@ -20,7 +23,10 @@ export function Ouverture() {
           <span style={{ color: "var(--accent)" }}>Rien de plus.</span>
         </h1>
 
-        <p className="mt-6 max-w-xl text-lg leading-relaxed sm:text-xl" style={{ color: "var(--texte-doux)" }}>
+        <p
+          className="mt-6 max-w-xl text-lg leading-relaxed sm:text-xl"
+          style={{ color: "var(--texte-doux)" }}
+        >
           Weave ne vous donne pas une pile de profils à faire défiler. Il vous en propose{" "}
           {MAX_ACTIVE_THREADS}, à l'heure que vous avez choisie. Ils vivent {HEURES} heures, puis se
           dénouent. Pour en engager un, il faut écrire une réponse — pas faire un geste.
@@ -61,7 +67,12 @@ function Metier() {
   const fils = [
     { nom: "Théo", motif: "gravure · voile · photo", reste: "18 h", etat: "à vous de répondre" },
     { nom: "Sofia", motif: "jazz · céramique · vélo", reste: "9 h", etat: "engagé" },
-    { nom: "Alex", motif: "théâtre · botanique · course", reste: "23 h", etat: "à vous de répondre" },
+    {
+      nom: "Alex",
+      motif: "théâtre · botanique · course",
+      reste: "23 h",
+      etat: "à vous de répondre",
+    },
   ];
 
   return (
@@ -94,7 +105,10 @@ function Metier() {
                 filter: "blur(6px)",
               }}
             />
-            <p className="mt-4 text-xs uppercase tracking-wide" style={{ color: "var(--texte-doux)" }}>
+            <p
+              className="mt-4 text-xs uppercase tracking-wide"
+              style={{ color: "var(--texte-doux)" }}
+            >
               {fil.etat}
             </p>
           </article>

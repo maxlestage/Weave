@@ -88,8 +88,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
         ...UNIT_PRODUCTS[sku],
         price: formatPrice(UNIT_PRODUCTS[sku].priceCents),
       })),
-      note:
-        "Aucun palier n'augmente le nombre de fils : le plafond de trois est le même pour tout le monde.",
+      note: "Aucun palier n'augmente le nombre de fils : le plafond de trois est le même pour tout le monde.",
     }),
     {
       detail: {
@@ -251,7 +250,8 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       body: t.Object({ signedPayload: t.String() }),
       detail: {
         summary: "Notification App Store (serveur à serveur)",
-        description: "Point d'entrée des notifications V2 : renouvellement, expiration, remboursement.",
+        description:
+          "Point d'entrée des notifications V2 : renouvellement, expiration, remboursement.",
       },
     },
   );

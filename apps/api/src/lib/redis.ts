@@ -71,7 +71,13 @@ export async function setJsonIfAbsent(
   value: unknown,
   ttlSeconds: number,
 ): Promise<boolean> {
-  const reply = await redis.send("SET", [key, JSON.stringify(value), "NX", "EX", String(ttlSeconds)]);
+  const reply = await redis.send("SET", [
+    key,
+    JSON.stringify(value),
+    "NX",
+    "EX",
+    String(ttlSeconds),
+  ]);
   return reply === "OK";
 }
 
