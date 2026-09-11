@@ -53,6 +53,42 @@ jobs:
             echo "pret=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Vérifier que l'application est en pile « container »
+        if: steps.verifier.outputs.pret == 'true'
+        # Garde-fou. Si l'application n'est pas en pile « container », Heroku
+        # ignore heroku.yml, croit à une application Node.js et lance
+        # `npm install`, qui échoue sur `workspace:*` — une syntaxe Bun que npm
+        # ne comprend pas. Le message d'erreur qui en sort ne dit rien de la
+        # cause réelle : mieux vaut s'arrêter ici en la nommant.
+        run: |
+          curl -sS "https://api.heroku.com/apps/$APP" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" > /tmp/app.json
+
+          pile=$(python3 -c "import json;print(json.load(open('/tmp/app.json')).get('build_stack',{}).get('name','inconnue'))")
+          echo "Pile de construction : $pile"
+
+          if [ "$pile" != "container" ]; then
+            {
+              echo "## Mauvaise pile de construction"
+              echo ""
+              echo "L'application \`$APP\` construit avec **$pile**, pas avec \`container\`."
+              echo ""
+              echo "Weave tourne sous Bun, qui n'a pas de buildpack Heroku : le déploiement"
+              echo "passe par le \`Dockerfile\` décrit dans \`heroku.yml\`, et celui-ci n'est lu"
+              echo "que sur la pile \`container\`. Sur une autre pile, Heroku croit à une"
+              echo "application Node.js et \`npm install\` échoue sur \`workspace:*\`."
+              echo ""
+              echo "### Correction"
+              echo ""
+              echo "Lancez le workflow **« Heroku — créer l'application »** en indiquant"
+              echo "le nom \`$APP\`. Il détectera que l'application existe déjà et se"
+              echo "contentera de corriger la pile, puis relancez ce déploiement."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Pile « $pile » au lieu de « container ». Voir le récapitulatif."
+            exit 1
+          fi
+
       - name: Récupérer le dépôt
         if: steps.verifier.outputs.pret == 'true'
         uses: actions/checkout@v5
