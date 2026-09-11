@@ -26,8 +26,8 @@
     "@elysiajs/static": "1.4.10",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "@weave/contracts": "workspace:*",
-    "@weave/prisma-bun-sqlite": "workspace:*",
+    "@weave/contracts": "*",
+    "@weave/prisma-bun-sqlite": "*",
     "elysia": "1.4.30"
   },
   "devDependencies": {
