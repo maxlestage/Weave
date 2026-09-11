@@ -5,10 +5,9 @@ struct ReglagesView: View {
     @Environment(ModeleApplication.self) private var modele
     @Environment(\.dismiss) private var dismiss
 
-    /// Créneaux de tissage proposés, alignés sur `WEAVING_HOURS`.
-    private let creneaux = [8, 12, 18, 21]
-
-    @State private var heure = 18
+    @State private var distance = 25
+    @State private var ageMin = 18
+    @State private var ageMax = 32
 
     var body: some View {
         NavigationStack {
@@ -16,23 +15,40 @@ struct ReglagesView: View {
                 if let moi = modele.moi {
                     Section("Vous") {
                         LabeledContent("Prénom", value: moi.displayName)
-                        LabeledContent("Motif", value: moi.motif.joined(separator: " · "))
-                        LabeledContent("Offre", value: moi.plan.displayName)
+                        LabeledContent("Ville", value: moi.city)
+                        LabeledContent("Offre", value: moi.tier.displayName)
                     }
 
                     Section {
-                        Picker("Heure de tissage", selection: $heure) {
-                            ForEach(creneaux, id: \.self) { Text("\($0) h").tag($0) }
-                        }
-                        .onChange(of: heure) { _, nouvelle in
-                            Task { try? await modele.api.updateWeavingHour(nouvelle) }
-                        }
+                        LabeledContent("Aujourd'hui", value: "\(moi.requestsLeftToday)")
                     } header: {
-                        Text("Rendez-vous quotidien")
+                        Text("Demandes restantes")
                     } footer: {
-                        Text("C'est le seul moment où Weave vous sollicite. Vos fils arrivent à cette heure-là.")
+                        Text("Bornées à toutes les offres, socle gratuit compris. Elles reviennent à minuit. C'est ce qui empêche d'arroser — sur Weave, une demande vaut quelque chose.")
                     }
+                }
 
+                Section {
+                    Stepper("Jusqu'à \(distance) km", value: $distance, in: 1...100, step: 5)
+                        .onChange(of: distance) { _, valeur in
+                            Task {
+                                try? await modele.api.updatePreferences(
+                                    PreferencesPatch(maxDistanceKm: valeur)
+                                )
+                                await modele.plans.refresh()
+                            }
+                        }
+                    Stepper("À partir de \(ageMin) ans", value: $ageMin, in: 18...98)
+                    Stepper("Jusqu'à \(ageMax) ans", value: $ageMax, in: 18...99)
+                } header: {
+                    Text("Critères du fil")
+                } footer: {
+                    Text("Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.")
+                }
+                .onChange(of: ageMin) { _, _ in Task { await appliquerAges() } }
+                .onChange(of: ageMax) { _, _ in Task { await appliquerAges() } }
+
+                if let moi = modele.moi {
                     Section("Crédits") {
                         ForEach(UnitSku.allCases, id: \.self) { sku in
                             LabeledContent(sku.displayName, value: "\(moi.credits(for: sku))")
@@ -46,7 +62,7 @@ struct ReglagesView: View {
                         value: modele.activites.isEnabled ? "Autorisée" : "Désactivée"
                     )
                 } footer: {
-                    Text("La bannière affiche le nombre de fils et le temps restant. Jamais de photo, jamais de message.")
+                    Text("La bannière affiche votre prochain plan et ce qui attend une réponse. Jamais de nom, jamais de photo, jamais de message.")
                 }
 
                 Section {
@@ -61,11 +77,20 @@ struct ReglagesView: View {
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Fermer") { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Terminé") { dismiss() }
                 }
             }
-            .onAppear { heure = modele.moi?.weavingHour ?? 18 }
         }
+    }
+
+    private func appliquerAges() async {
+        // L'API refuse un minimum supérieur au maximum : on l'évite ici plutôt
+        // que d'afficher une erreur pour un réglage qu'on peut corriger seul.
+        guard ageMin <= ageMax else { return }
+        try? await modele.api.updatePreferences(
+            PreferencesPatch(minAge: ageMin, maxAge: ageMax)
+        )
+        await modele.plans.refresh()
     }
 }

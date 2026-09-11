@@ -1,128 +1,138 @@
 /**
- * Droits d'usage : ce que le palier d'abonnement autorise, et ce que les
- * crédits achetés à l'unité permettent en plus.
+ * Droits d'usage : ce que le palier autorise, et ce que les crédits achetés à
+ * l'unité permettent en plus.
  *
  * Le catalogue est partagé avec le site et l'application iOS
- * (`@weave/contracts/catalog`) : il n'y a qu'une seule définition des offres.
+ * (`@weave/contracts/catalog`) : il n'existe qu'une seule définition des offres.
  */
 import {
-  PLANS,
+  RENFORT_GRANT,
+  TIERS,
   UNIT_PRODUCTS,
   UNIT_SKUS,
-  type PlanEntitlements,
   type PlanTier,
+  type TierEntitlements,
   type UnitSku,
 } from "@weave/contracts";
+import { renfortsToday } from "../lib/cache.ts";
 import { entitlementRequired } from "../lib/errors.ts";
 import { prisma } from "../lib/prisma.ts";
+import { localDay } from "../lib/time.ts";
 
-export function entitlementsFor(tier: PlanTier): PlanEntitlements {
-  return PLANS[tier].entitlements;
+export function entitlementsFor(tier: PlanTier): TierEntitlements {
+  return TIERS[tier].entitlements;
+}
+
+/**
+ * Quota de demandes pour la journée en cours : celui du palier, augmenté des
+ * « Renforts » déjà appliqués aujourd'hui.
+ *
+ * Toutes les lectures du quota passent par ici. Calculer `requestsPerDay` seul
+ * quelque part afficherait un compteur faux à qui vient d'acheter un renfort.
+ */
+export async function dailyRequestQuota(account: {
+  id: string;
+  tier: PlanTier;
+  timezone: string;
+}): Promise<number> {
+  const droits = entitlementsFor(account.tier);
+  const renforts = await renfortsToday(account.id, localDay(account.timezone));
+  return droits.requestsPerDay + renforts * RENFORT_GRANT;
 }
 
 export type CreditMap = Record<UnitSku, number>;
 
 const EMPTY_CREDITS = Object.fromEntries(UNIT_SKUS.map((sku) => [sku, 0])) as CreditMap;
 
-/** Solde de crédits par SKU, tous SKU présents (0 par défaut). */
 export async function creditsFor(accountId: string): Promise<CreditMap> {
-  const rows = await prisma.creditBalance.findMany({
+  const lignes = await prisma.creditBalance.findMany({
     where: { accountId },
     select: { sku: true, balance: true },
   });
 
   const credits: CreditMap = { ...EMPTY_CREDITS };
-  for (const row of rows) {
-    if ((UNIT_SKUS as readonly string[]).includes(row.sku)) {
-      credits[row.sku as UnitSku] = row.balance;
+  for (const ligne of lignes) {
+    if ((UNIT_SKUS as readonly string[]).includes(ligne.sku)) {
+      credits[ligne.sku as UnitSku] = ligne.balance;
     }
   }
   return credits;
 }
 
-/** Ajoute des crédits (achat à l'unité, ou dotation mensuelle d'un abonnement). */
 export async function grantCredits(
   accountId: string,
   sku: UnitSku,
   amount: number,
   resetsAt?: Date,
 ): Promise<number> {
-  const row = await prisma.creditBalance.upsert({
+  const ligne = await prisma.creditBalance.upsert({
     where: { accountId_sku: { accountId, sku } },
     create: { accountId, sku, balance: amount, resetsAt: resetsAt ?? null },
     update: { balance: { increment: amount }, ...(resetsAt ? { resetsAt } : {}) },
     select: { balance: true },
   });
-  return row.balance;
+  return ligne.balance;
 }
 
 /**
- * Consomme un crédit. La décrémentation est conditionnelle : `updateMany` avec
- * `balance >= 1` dans le filtre, ce qui empêche deux requêtes simultanées de
- * dépenser le même crédit.
+ * Consomme un crédit. La décrémentation est conditionnelle : le filtre exige
+ * `balance >= 1`, ce qui empêche deux requêtes simultanées de dépenser le même
+ * crédit.
  */
 export async function spendCredit(accountId: string, sku: UnitSku): Promise<boolean> {
-  const result = await prisma.creditBalance.updateMany({
+  const resultat = await prisma.creditBalance.updateMany({
     where: { accountId, sku, balance: { gte: 1 } },
     data: { balance: { decrement: 1 } },
   });
-  return result.count === 1;
+  return resultat.count === 1;
 }
 
 /**
- * Exige un crédit pour l'action demandée, en expliquant précisément comment
- * l'obtenir : par un palier d'abonnement, ou à l'unité.
+ * Exige un crédit, en expliquant précisément comment l'obtenir : par un palier
+ * ou à l'unité. Le client n'a rien à deviner ni à coder en dur.
  */
 export async function requireCredit(accountId: string, sku: UnitSku): Promise<void> {
   if (await spendCredit(accountId, sku)) return;
 
-  const product = UNIT_PRODUCTS[sku];
-  throw entitlementRequired(`« ${product.name} » n'est pas disponible sur votre offre actuelle.`, {
+  const produit = UNIT_PRODUCTS[sku];
+  throw entitlementRequired(`« ${produit.name} » n'est pas compris dans votre offre.`, {
     sku,
-    unitProductId: product.storeKitId,
-    unitPriceCents: product.priceCents,
-    includedIn: includedInPlans(sku),
+    unitProductId: produit.storeKitId,
+    unitPriceCents: produit.priceCents,
+    includedIn: includedInTiers(sku),
   });
 }
 
-/** Paliers qui incluent au moins un exemplaire mensuel de ce SKU. */
-function includedInPlans(sku: UnitSku): PlanTier[] {
-  const field: Partial<Record<UnitSku, keyof PlanEntitlements>> = {
-    echo: "echoesPerMonth",
-    prolonge: "extendsPerMonth",
-    escale: "escalesPerMonth",
-  };
-  const key = field[sku];
-  if (key === undefined) return [];
-  return (Object.keys(PLANS) as PlanTier[]).filter((tier) => {
-    const value = PLANS[tier].entitlements[key];
-    return typeof value === "number" && value > 0;
-  });
+/** Paliers qui donnent accès à ce SKU sans achat. */
+function includedInTiers(sku: UnitSku): PlanTier[] {
+  const tiers = Object.keys(TIERS) as PlanTier[];
+  switch (sku) {
+    case "escale":
+      return tiers.filter((t) => TIERS[t].entitlements.escalesPerMonth > 0);
+    case "bilan":
+      return tiers.filter((t) => TIERS[t].entitlements.bilan);
+    case "tablee":
+      return tiers.filter((t) => TIERS[t].entitlements.groupPlans);
+    default:
+      return [];
+  }
 }
 
 /**
- * Dotation mensuelle du palier : appelée au renouvellement d'un abonnement.
- * Les crédits inclus sont remis à leur valeur nominale ; les crédits achetés à
- * l'unité, eux, ne sont jamais remis à zéro.
+ * Dotation mensuelle du palier, appelée au renouvellement. Les crédits achetés
+ * à l'unité ne sont jamais remis à zéro.
  */
-export async function refillPlanCredits(
+export async function refillTierCredits(
   accountId: string,
   tier: PlanTier,
   resetsAt: Date,
 ): Promise<void> {
-  const e = PLANS[tier].entitlements;
-  const included: Partial<Record<UnitSku, number>> = {
-    echo: e.echoesPerMonth,
-    prolonge: e.extendsPerMonth,
-    escale: e.escalesPerMonth,
-  };
+  const droits = TIERS[tier].entitlements;
+  if (droits.escalesPerMonth <= 0) return;
 
-  for (const [sku, amount] of Object.entries(included) as [UnitSku, number][]) {
-    if (amount <= 0) continue;
-    await prisma.creditBalance.upsert({
-      where: { accountId_sku: { accountId, sku } },
-      create: { accountId, sku, balance: amount, resetsAt },
-      update: { balance: { increment: amount }, resetsAt },
-    });
-  }
+  await prisma.creditBalance.upsert({
+    where: { accountId_sku: { accountId, sku: "escale" } },
+    create: { accountId, sku: "escale", balance: droits.escalesPerMonth, resetsAt },
+    update: { balance: { increment: droits.escalesPerMonth }, resetsAt },
+  });
 }

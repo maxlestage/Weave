@@ -16,9 +16,9 @@ struct WeaveApp: App {
                 .tint(.weaveCuivre)
                 .task { await modele.demarrer() }
                 .onChange(of: scenePhase) { _, phase in
-                    // Au retour au premier plan, les fils ont pu se dénouer
-                    // pendant l'absence : on revérifie plutôt que d'afficher
-                    // un décompte figé.
+                    // Au retour au premier plan, des plans ont pu passer et des
+                    // demandes arriver : on revérifie plutôt que d'afficher un
+                    // fil figé.
                     if phase == .active {
                         Task { await modele.reprendre() }
                     }
@@ -27,13 +27,13 @@ struct WeaveApp: App {
     }
 }
 
-/// État global : session, métier, Live Activity.
+/// État global : session, plans, Live Activity.
 @MainActor
 @Observable
 final class ModeleApplication {
     let sessionStore: SessionStore
     let api: WeaveAPI
-    let loom: LoomStore
+    let plans: PlansStore
     let activites: ActivityController
 
     private(set) var moi: Me?
@@ -45,7 +45,7 @@ final class ModeleApplication {
         let api = WeaveAPI(baseURL: WeaveEnvironment.apiBaseURL, store: store)
         self.sessionStore = store
         self.api = api
-        self.loom = LoomStore(api: api)
+        self.plans = PlansStore(api: api)
         self.activites = ActivityController(api: api, vendorID: Self.vendorID)
     }
 
@@ -56,14 +56,15 @@ final class ModeleApplication {
 
         activites.start()
         await chargerCompte()
-        await loom.refresh()
+        await plans.refresh()
         await synchroniserActivite()
     }
 
     func reprendre() async {
         guard connecte else { return }
-        loom.dropExpired()
-        await loom.refresh()
+        plans.dropPast()
+        await plans.refresh()
+        await chargerCompte()
         await synchroniserActivite()
     }
 
@@ -71,7 +72,7 @@ final class ModeleApplication {
         connecte = true
         activites.start()
         await chargerCompte()
-        await loom.refresh()
+        await plans.refresh()
         await synchroniserActivite()
     }
 
@@ -86,16 +87,14 @@ final class ModeleApplication {
         moi = try? await api.me()
     }
 
-    /// Aligne la Live Activity sur l'état réel du métier.
+    /// Aligne la Live Activity sur l'état réel.
+    ///
+    /// Le serveur reste la source : on lui demande l'état plutôt que de le
+    /// recomposer ici, sinon la bannière affichée localement et celle poussée
+    /// par APNs finiraient par diverger.
     private func synchroniserActivite() async {
         guard let moi else { return }
-        let etat = WeaveActivityAttributes.ContentState(
-            activeThreads: loom.loom.threads.count,
-            awaitingYou: loom.loom.awaitingYou.count,
-            soonestExpiryAt: loom.loom.soonest?.expiresAt,
-            soonestName: loom.loom.soonest?.displayName,
-            nextRefillAt: loom.loom.nextRefillAt
-        )
+        guard let etat = try? await api.liveActivityState() else { return }
         await activites.startLocally(handle: moi.handle, state: etat)
     }
 
@@ -110,7 +109,9 @@ final class ModeleApplication {
 }
 
 extension Color {
-    static let weaveCuivre = Color(red: 0.706, green: 0.396, blue: 0.165)
-    static let weaveLin = Color(red: 0.980, green: 0.969, blue: 0.949)
-    static let weaveEncre = Color(red: 0.106, green: 0.090, blue: 0.078)
+    /// La couleur d'accent, reprise du site (`--fil-6`, iris).
+    static let weaveCuivre = Color(red: 0.384, green: 0.192, blue: 0.780)
+    /// Le fond, très légèrement chaud : lisible dehors, reposant dedans.
+    static let weaveLin = Color(red: 1.0, green: 0.992, blue: 0.976)
+    static let weaveEncre = Color(red: 0.086, green: 0.071, blue: 0.122)
 }

@@ -1,199 +1,171 @@
 /**
  * Catalogue commercial de Weave.
  *
- * Modèle freemium : un socle gratuit (« Fil ») + QUATRE abonnements, dont
- * chaque avantage est également achetable À L'UNITÉ pour les personnes qui ne
- * veulent pas s'abonner.
+ * Freemium : un socle gratuit et QUATRE abonnements, dont chaque avantage est
+ * également achetable à l'unité — parce qu'à vingt ans, on ne s'abonne pas à
+ * tout, et qu'un produit qui l'exige se prive de la moitié de son public.
  *
- * Règle de conception : aucun palier ne modifie l'invariant des trois fils
- * (voir `invariants.ts`). Ce qui se vend, c'est la finesse du tissage et la
- * vitesse de remplacement d'un fil dénoué — jamais le volume de profils.
+ * RÈGLE DE CONCEPTION : aucun palier n'achète de visibilité. Payer ne fait
+ * jamais remonter un plan devant celui de quelqu'un d'autre. Ce qui se vend,
+ * c'est la finesse des critères, l'horizon de publication et les plans de
+ * groupe — jamais une place dans la file.
  */
 
-import { MAX_ACTIVE_THREADS, type MaxActiveThreads } from "./invariants.ts";
+import { REQUESTS_PER_DAY_FLOOR } from "./invariants.ts";
 
-export const PLAN_TIERS = ["fil", "trame", "chaine", "navette", "metier"] as const;
+export const PLAN_TIERS = ["depart", "viree", "escapade", "expedition", "grandtour"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
-export type CriteriaDepth = "base" | "etendue" | "precise";
+export type FilterDepth = "base" | "etendus" | "precis";
 
-export interface PlanEntitlements {
-  /**
-   * Plafond de fils actifs. Constant sur tous les paliers, par conception.
-   * Le type est celui de l'invariant : un palier ne peut pas annoncer un autre
-   * nombre, même par inadvertance.
-   */
-  readonly activeThreads: MaxActiveThreads;
-  /** Délai avant qu'un fil dénoué soit remplacé, en minutes. */
-  readonly refillDelayMinutes: number;
-  /** Profondeur des critères de composition. */
-  readonly criteria: CriteriaDepth;
-  /** Autorise l'envoi de fragments vocaux. */
-  readonly voiceFragments: boolean;
-  /** Nombre d'« Écho » (rappel d'un fil dénoué) inclus par mois. */
-  readonly echoesPerMonth: number;
-  /** Nombre de « Prolonge » (+24 h sur un fil) inclus par mois. */
-  readonly extendsPerMonth: number;
-  /** Changements d'heure de tissage inclus par mois. */
-  readonly weavingHourChangesPerMonth: number;
-  /** Indique si l'auteur voit que son fragment a été lu. */
-  readonly fragmentReadState: boolean;
-  /** Nombre d'« Escale » (ville temporaire, 7 jours) incluses par mois. */
+export interface TierEntitlements {
+  /** Demandes envoyables par jour. Bornée à tous les paliers, par conception. */
+  readonly requestsPerDay: number;
+  /** Jusqu'à combien de jours à l'avance un plan peut être publié. */
+  readonly daysAhead: number;
+  /** Finesse des critères du fil. */
+  readonly filters: FilterDepth;
+  /** Autorise les plans de groupe (jusqu'à quatre personnes). */
+  readonly groupPlans: boolean;
+  /** Nombre d'« Escale » incluses par mois. */
   readonly escalesPerMonth: number;
-  /** Rapport « Atelier » : résonance de ses propres fragments. */
-  readonly atelierReport: boolean;
-  /** Assistance prioritaire et vérification de profil accélérée. */
+  /** Rapport « Bilan » sur ses propres plans. */
+  readonly bilan: boolean;
+  /** Vérification de profil accélérée et assistance prioritaire. */
   readonly prioritySupport: boolean;
 }
 
-export interface Plan {
+export interface Tier {
   readonly tier: PlanTier;
   readonly name: string;
   readonly tagline: string;
-  /** Prix mensuel en centimes d'euro (0 pour le socle gratuit). */
   readonly monthlyPriceCents: number;
-  /** Prix annuel en centimes d'euro (null si non proposé). */
   readonly yearlyPriceCents: number | null;
-  /** Identifiants produits StoreKit (App Store Connect). */
-  readonly storeKit: {
-    readonly monthly: string | null;
-    readonly yearly: string | null;
-  };
-  readonly entitlements: PlanEntitlements;
+  readonly storeKit: { readonly monthly: string | null; readonly yearly: string | null };
+  readonly entitlements: TierEntitlements;
   readonly highlights: readonly string[];
 }
 
 const BUNDLE = "com.weave.app";
 
-export const PLANS: Readonly<Record<PlanTier, Plan>> = {
-  fil: {
-    tier: "fil",
-    name: "Fil",
-    tagline: "Trois fils par jour. Rien de plus, rien de moins.",
+export const TIERS: Readonly<Record<PlanTier, Tier>> = {
+  depart: {
+    tier: "depart",
+    name: "Départ",
+    tagline: "De quoi publier ses plans et demander à venir.",
     monthlyPriceCents: 0,
     yearlyPriceCents: null,
     storeKit: { monthly: null, yearly: null },
     entitlements: {
-      activeThreads: MAX_ACTIVE_THREADS,
-      refillDelayMinutes: 24 * 60,
-      criteria: "base",
-      voiceFragments: false,
-      echoesPerMonth: 0,
-      extendsPerMonth: 0,
-      weavingHourChangesPerMonth: 1,
-      fragmentReadState: false,
+      requestsPerDay: REQUESTS_PER_DAY_FLOOR,
+      daysAhead: 7,
+      filters: "base",
+      groupPlans: false,
       escalesPerMonth: 0,
-      atelierReport: false,
+      bilan: false,
       prioritySupport: false,
     },
     highlights: [
-      "3 fils actifs, renouvelés à votre heure de tissage",
-      "Conversations complètes, sans limite de messages",
-      "Live Activity et application Apple Watch incluses",
+      "3 plans ouverts à la fois",
+      "5 demandes par jour",
+      "Conversations sans limite, une fois la demande acceptée",
     ],
   },
-  trame: {
-    tier: "trame",
-    name: "Trame",
-    tagline: "Le tissage reprend plus vite.",
-    monthlyPriceCents: 699,
-    yearlyPriceCents: 5990,
-    storeKit: { monthly: `${BUNDLE}.sub.trame.monthly`, yearly: `${BUNDLE}.sub.trame.yearly` },
+  viree: {
+    tier: "viree",
+    name: "Virée",
+    tagline: "Pour ceux qui sortent souvent.",
+    monthlyPriceCents: 499,
+    yearlyPriceCents: 4490,
+    storeKit: { monthly: `${BUNDLE}.sub.viree.monthly`, yearly: `${BUNDLE}.sub.viree.yearly` },
     entitlements: {
-      activeThreads: MAX_ACTIVE_THREADS,
-      refillDelayMinutes: 6 * 60,
-      criteria: "etendue",
-      voiceFragments: true,
-      echoesPerMonth: 1,
-      extendsPerMonth: 2,
-      weavingHourChangesPerMonth: 4,
-      fragmentReadState: false,
+      requestsPerDay: 12,
+      daysAhead: 14,
+      filters: "etendus",
+      groupPlans: true,
       escalesPerMonth: 0,
-      atelierReport: false,
+      bilan: false,
       prioritySupport: false,
     },
     highlights: [
-      "Un fil dénoué est remplacé sous 6 h",
-      "Fragments vocaux de 8 secondes",
-      "1 Écho et 2 Prolonge inclus chaque mois",
+      "12 demandes par jour",
+      "Plans de groupe, jusqu'à quatre",
+      "Publication jusqu'à deux semaines à l'avance",
     ],
   },
-  chaine: {
-    tier: "chaine",
-    name: "Chaîne",
-    tagline: "Des critères qui tiennent la trame.",
-    monthlyPriceCents: 1299,
-    yearlyPriceCents: 10990,
-    storeKit: { monthly: `${BUNDLE}.sub.chaine.monthly`, yearly: `${BUNDLE}.sub.chaine.yearly` },
+  escapade: {
+    tier: "escapade",
+    name: "Escapade",
+    tagline: "Des critères qui trient vraiment.",
+    monthlyPriceCents: 899,
+    yearlyPriceCents: 7990,
+    storeKit: {
+      monthly: `${BUNDLE}.sub.escapade.monthly`,
+      yearly: `${BUNDLE}.sub.escapade.yearly`,
+    },
     entitlements: {
-      activeThreads: MAX_ACTIVE_THREADS,
-      refillDelayMinutes: 3 * 60,
-      criteria: "precise",
-      voiceFragments: true,
-      echoesPerMonth: 3,
-      extendsPerMonth: 5,
-      weavingHourChangesPerMonth: 12,
-      fragmentReadState: true,
+      requestsPerDay: 25,
+      daysAhead: 30,
+      filters: "precis",
+      groupPlans: true,
       escalesPerMonth: 1,
-      atelierReport: false,
+      bilan: false,
       prioritySupport: false,
     },
     highlights: [
-      "Remplacement sous 3 h",
-      "Critères précis : intentions, rythme de vie, distance fine",
-      "1 Escale par mois et accusé de lecture des fragments",
+      "Critères précis : catégorie, jour, distance fine",
+      "Publication jusqu'à un mois à l'avance",
+      "1 Escale par mois, pour préparer un départ",
     ],
   },
-  navette: {
-    tier: "navette",
-    name: "Navette",
-    tagline: "Le fil ne reste jamais vide.",
-    monthlyPriceCents: 1999,
-    yearlyPriceCents: 16990,
-    storeKit: { monthly: `${BUNDLE}.sub.navette.monthly`, yearly: `${BUNDLE}.sub.navette.yearly` },
+  expedition: {
+    tier: "expedition",
+    name: "Expédition",
+    tagline: "Organiser loin, et savoir ce qui marche.",
+    monthlyPriceCents: 1499,
+    yearlyPriceCents: 12990,
+    storeKit: {
+      monthly: `${BUNDLE}.sub.expedition.monthly`,
+      yearly: `${BUNDLE}.sub.expedition.yearly`,
+    },
     entitlements: {
-      activeThreads: MAX_ACTIVE_THREADS,
-      refillDelayMinutes: 60,
-      criteria: "precise",
-      voiceFragments: true,
-      echoesPerMonth: 6,
-      extendsPerMonth: 10,
-      weavingHourChangesPerMonth: 31,
-      fragmentReadState: true,
+      requestsPerDay: 40,
+      daysAhead: 60,
+      filters: "precis",
+      groupPlans: true,
       escalesPerMonth: 2,
-      atelierReport: true,
+      bilan: true,
       prioritySupport: false,
     },
     highlights: [
-      "Remplacement sous 1 h",
-      "Rapport Atelier mensuel sur la résonance de vos fragments",
+      "Publication jusqu'à deux mois à l'avance",
+      "Bilan mensuel : quels plans attirent, et pourquoi",
       "2 Escales par mois",
     ],
   },
-  metier: {
-    tier: "metier",
-    name: "Métier",
-    tagline: "L'atelier complet.",
-    monthlyPriceCents: 3499,
-    yearlyPriceCents: 29990,
-    storeKit: { monthly: `${BUNDLE}.sub.metier.monthly`, yearly: `${BUNDLE}.sub.metier.yearly` },
+  grandtour: {
+    tier: "grandtour",
+    name: "Grand Tour",
+    tagline: "Tout, sans y penser.",
+    monthlyPriceCents: 2499,
+    yearlyPriceCents: 20990,
+    storeKit: {
+      monthly: `${BUNDLE}.sub.grandtour.monthly`,
+      yearly: `${BUNDLE}.sub.grandtour.yearly`,
+    },
     entitlements: {
-      activeThreads: MAX_ACTIVE_THREADS,
-      refillDelayMinutes: 15,
-      criteria: "precise",
-      voiceFragments: true,
-      echoesPerMonth: 15,
-      extendsPerMonth: 30,
-      weavingHourChangesPerMonth: 31,
-      fragmentReadState: true,
+      requestsPerDay: 60,
+      daysAhead: 90,
+      filters: "precis",
+      groupPlans: true,
       escalesPerMonth: 4,
-      atelierReport: true,
+      bilan: true,
       prioritySupport: true,
     },
     highlights: [
-      "Remplacement sous 15 min",
+      "Publication jusqu'à trois mois à l'avance",
+      "4 Escales par mois",
       "Vérification de profil accélérée et assistance prioritaire",
-      "4 Escales par mois, Écho et Prolonge en abondance",
     ],
   },
 };
@@ -202,7 +174,7 @@ export const PLANS: Readonly<Record<PlanTier, Plan>> = {
 /* Achats à l'unité (consommables StoreKit)                            */
 /* ------------------------------------------------------------------ */
 
-export const UNIT_SKUS = ["echo", "prolonge", "relais", "motif", "escale", "atelier"] as const;
+export const UNIT_SKUS = ["renfort", "horizon", "tablee", "escale", "bilan"] as const;
 export type UnitSku = (typeof UNIT_SKUS)[number];
 
 export interface UnitProduct {
@@ -211,71 +183,60 @@ export interface UnitProduct {
   readonly description: string;
   readonly priceCents: number;
   readonly storeKitId: string;
-  /** Nombre d'exemplaires accordés par achat. */
   readonly grants: number;
 }
 
 export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
-  echo: {
-    sku: "echo",
-    name: "Écho",
-    description: "Rappeler une seule fois un fil que vous avez laissé se dénouer.",
-    priceCents: 249,
-    storeKitId: `${BUNDLE}.unit.echo`,
-    grants: 1,
-  },
-  prolonge: {
-    sku: "prolonge",
-    name: "Prolonge",
-    description: "Ajouter 24 h de vie à un fil en cours, une seule fois par fil.",
+  renfort: {
+    sku: "renfort",
+    name: "Renfort",
+    description: "Cinq demandes de plus aujourd'hui.",
     priceCents: 149,
-    storeKitId: `${BUNDLE}.unit.prolonge`,
+    storeKitId: `${BUNDLE}.unit.renfort`,
     grants: 1,
   },
-  relais: {
-    sku: "relais",
-    name: "Relais",
-    description: "Remplacer immédiatement un fil dénoué, sans attendre le délai de votre palier.",
-    priceCents: 199,
-    storeKitId: `${BUNDLE}.unit.relais`,
-    grants: 1,
-  },
-  motif: {
-    sku: "motif",
-    name: "Motif",
-    description: "Retisser les cinq mots-clés qui vous décrivent à partir de nouvelles réponses.",
+  horizon: {
+    sku: "horizon",
+    name: "Horizon",
+    description: "Publier un plan jusqu'à soixante jours à l'avance, une fois.",
     priceCents: 99,
-    storeKitId: `${BUNDLE}.unit.motif`,
+    storeKitId: `${BUNDLE}.unit.horizon`,
+    grants: 1,
+  },
+  tablee: {
+    sku: "tablee",
+    name: "Tablée",
+    description: "Un plan de groupe, jusqu'à quatre personnes, une fois.",
+    priceCents: 149,
+    storeKitId: `${BUNDLE}.unit.tablee`,
     grants: 1,
   },
   escale: {
     sku: "escale",
     name: "Escale",
-    description: "Tisser depuis une autre ville pendant sept jours.",
-    priceCents: 499,
+    description: "Publier depuis une autre ville pendant sept jours.",
+    priceCents: 399,
     storeKitId: `${BUNDLE}.unit.escale`,
     grants: 1,
   },
-  atelier: {
-    sku: "atelier",
-    name: "Atelier",
-    description: "Un rapport ponctuel sur la résonance de vos fragments.",
-    priceCents: 349,
-    storeKitId: `${BUNDLE}.unit.atelier`,
+  bilan: {
+    sku: "bilan",
+    name: "Bilan",
+    description: "Un retour ponctuel sur vos plans : ce qui attire, ce qui tombe à plat.",
+    priceCents: 299,
+    storeKitId: `${BUNDLE}.unit.bilan`,
     grants: 1,
   },
 };
 
-/** Retourne le palier correspondant à un identifiant StoreKit d'abonnement. */
-export function planFromStoreKitId(productId: string): Plan | null {
+export function tierFromStoreKitId(productId: string): Tier | null {
   for (const tier of PLAN_TIERS) {
-    const plan = PLANS[tier];
-    if (plan.storeKit.monthly === productId || plan.storeKit.yearly === productId) return plan;
+    const offre = TIERS[tier];
+    if (offre.storeKit.monthly === productId || offre.storeKit.yearly === productId) return offre;
   }
   return null;
 }
 
-/** Retourne le produit à l'unité correspondant à un identifiant StoreKit. */
 export function unitFromStoreKitId(productId: string): UnitProduct | null {
   for (const sku of UNIT_SKUS) {
     if (UNIT_PRODUCTS[sku].storeKitId === productId) return UNIT_PRODUCTS[sku];
@@ -283,7 +244,6 @@ export function unitFromStoreKitId(productId: string): UnitProduct | null {
   return null;
 }
 
-/** Formate un prix en centimes vers une chaîne lisible (fr-FR). */
 export function formatPrice(cents: number, locale = "fr-FR", currency = "EUR"): string {
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(cents / 100);
 }

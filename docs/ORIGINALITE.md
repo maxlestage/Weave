@@ -10,10 +10,12 @@
 ## Le principe retenu
 
 Plutôt que de reprendre une mécanique connue en la renommant — ce qui protège
-peu, puisqu'un brevet porte sur une fonction et non sur un nom — Weave part
-d'une **contrainte différente** : un nombre fixe et fini de profils simultanés, en cache, engagés
-par une réponse écrite. Les mécaniques usuelles n'y ont pas leur place, non par
-prudence, mais parce qu'elles n'ont plus de sens dans ce cadre.
+peu, puisqu'un brevet porte sur une fonction et non sur un nom — Weave part d'un
+**objet différent** : on ne publie pas un profil, on publie un plan daté auquel
+d'autres demandent à se joindre, par écrit, dans la limite d'un quota
+journalier. Les mécaniques usuelles n'y ont pas leur place, non par prudence,
+mais parce qu'elles n'ont plus de sens dans ce cadre : il n'y a rien à balayer,
+et un plan ne se « superlike » pas.
 
 C'est la position la plus solide : une fonction qu'on n'a pas ne peut pas
 contrefaire.
@@ -22,29 +24,31 @@ contrefaire.
 
 | Mécanique répandue | Pourquoi elle est écartée | Ce que fait Weave |
 | --- | --- | --- |
-| Balayage gauche/droite sur une pile de cartes pour exprimer un intérêt | Fonction revendiquée par des brevets détenus par Match Group, notamment US 9 733 811 ; c'est le point le plus exposé du secteur | Aucune pile, aucun geste d'appréciation. On répond à un fragment, par écrit |
-| Double consentement silencieux, puis écran d'annonce de correspondance | Mécanique et présentation fortement associées à un acteur identifié | Il n'y a pas d'instant « correspondance ». Le fil se tisse quand chacun a répondu, et la conversation était déjà commencée |
-| Délai de 24 h imposé à un genre pour écrire en premier | Mécanique associée à Bumble, et discutable en soi | Le compte à rebours de 24 h porte sur **le fil**, identiquement pour les deux personnes, sans distinction de genre |
-| File des « personnes qui vous ont aimé », débloquée par abonnement | Le levier commercial le plus copié — et celui qui produit la dynamique que Weave refuse | N'existe pas. Il n'y a pas de like, donc pas de file |
-| Mise en avant payante dans le vivier | Vend de la visibilité, pas de la rencontre | N'existe pas. Aucun terme du score de composition n'est achetable |
-| Marques verbales et signes du secteur (flamme, cœur, « super » quelque chose, « rembobiner », « passeport ») | Risque de marque et de présentation trompeuse | Lexique textile intégralement distinct : fil, trame, motif, métier, écho, prolonge, relais, escale |
+| Balayage gauche/droite sur une pile de cartes pour exprimer un intérêt | Fonction revendiquée par des brevets détenus par Match Group, notamment US 9 733 811 ; c'est le point le plus exposé du secteur | Aucune pile, aucun geste d'appréciation. On écrit une demande, ou l'on ne fait rien |
+| Double consentement silencieux, puis écran d'annonce de correspondance | Mécanique et présentation fortement associées à un acteur identifié | Il n'y a pas d'instant « correspondance ». Une personne accepte une demande qu'elle a lue ; la conversation commence sur ce qui était déjà écrit |
+| Délai imposé à un genre pour écrire en premier | Mécanique associée à Bumble, et discutable en soi | Le seul compte à rebours est celui du rendez-vous lui-même, identique pour tout le monde, sans distinction de genre |
+| File des « personnes qui vous ont aimé », débloquée par abonnement | Le levier commercial le plus copié — et celui qui produit la dynamique que Weave refuse | N'existe pas. Il n'y a pas de like, donc pas de file. Les demandes reçues sont lisibles gratuitement par l'auteur du plan |
+| Mise en avant payante dans le fil | Vend de la visibilité, pas de la rencontre | N'existe pas. `PAID_VISIBILITY` vaut littéralement `false`, et le tri n'a que deux termes : imminence, proximité |
+| Marques verbales et signes du secteur (flamme, cœur, « super » quelque chose, « rembobiner », « passeport ») | Risque de marque et de présentation trompeuse | Lexique du départ et du trajet, distinct du secteur : plan, fil, demande, Départ, Virée, Escapade, Expédition, Grand Tour, Renfort, Horizon, Tablée, Escale, Bilan |
 
 ## Ce qui appartient en propre à Weave
 
 Ces éléments constituent l'identité du produit et sont ceux à protéger :
 
-1. **Le plafond fixe de fils simultanés** (douze), identique pour tous les paliers, y
-   compris payants.
-2. **La proposition en cache uniquement**, sans archivage des profils vus.
-3. **L'engagement par réponse écrite à un fragment**, à l'exclusion de tout
-   geste binaire.
-4. **La révélation progressive de la photo** indexée sur le nombre d'échanges
-   aboutis (0 / 33 / 66 / 100 %).
-5. **L'heure de tissage** : un rendez-vous quotidien choisi, seul moment de
-   sollicitation.
-6. **Le motif** : cinq mots comme première présentation d'une personne, avant
-   son visage.
-7. **Le lexique textile**, cohérent du code jusqu'à l'interface.
+1. **L'objet publié est un plan daté**, pas un profil : un rendez-vous à venir,
+   avec un nombre de places, qui disparaît une fois passé.
+2. **Le quota de demandes journalier**, borné à tous les paliers — y compris au
+   plus cher et y compris après achat d'un « Renfort », dont le nombre est
+   lui-même plafonné par jour.
+3. **La demande écrite obligatoire**, avec un plancher de caractères, à
+   l'exclusion de tout geste binaire.
+4. **Le tri du fil à deux termes seulement** — imminence puis proximité — et
+   l'engagement explicite qu'aucun troisième terme ne sera achetable.
+5. **La conversation à deux même sur un plan de groupe**, ouverte par une
+   acceptation et par rien d'autre.
+6. **La Live Activity « prochain plan »**, qui n'expose ni nom, ni photo, ni
+   message sur un écran verrouillé.
+7. **Le lexique du départ**, cohérent du code jusqu'à l'interface.
 
 ## Points à faire valider avant le lancement
 
@@ -52,9 +56,11 @@ Ces éléments constituent l'identité du produit et sont ceux à protéger :
       45, dans les territoires visés — le mot est courant en anglais, ce qui
       affaiblit son caractère distinctif : envisager un signe combiné
       (logotype des trois fils) plutôt que le mot seul.
-- [ ] Revue de brevets (freedom to operate) sur la composition de fils, la
-      révélation progressive d'image et le démarrage de Live Activity à
-      distance.
+- [ ] Revue de brevets (freedom to operate) sur la publication d'événements
+      géolocalisés avec demande de participation, et sur le démarrage de Live
+      Activity à distance. Le domaine des « plans entre inconnus » est plus
+      proche des applications d'événements que de la rencontre classique :
+      élargir la recherche à ce secteur.
 - [ ] Vérification que le vocabulaire retenu ne heurte aucune marque déposée du
       secteur dans les territoires visés.
 - [ ] Conditions générales et politique de confidentialité rédigées par un

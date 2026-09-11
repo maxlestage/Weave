@@ -1,21 +1,22 @@
 # Weave
 
-> Douze fils par jour. Pas un de plus.
+> Des plans, pas des profils.
 
-Weave est une application de rencontre construite sur une contrainte : **au plus
-douze profils à la fois, pour tout le monde**, en cache uniquement, pendant
-vingt-quatre heures. On n'engage pas un fil par un geste, on y répond par écrit.
+Weave est une application de rencontre où l'on ne publie pas un profil : on
+publie **un plan pour les jours qui viennent** — un mur d'escalade jeudi à 19 h,
+un concert vendredi — et les autres demandent à venir, en écrivant pourquoi.
 
 Ce dépôt contient l'API, l'application iOS et watchOS, et le site de présentation.
 
 ## Ce qu'il faut savoir en trois points
 
-1. **Le plafond de douze est un invariant, pas un réglage.** Il est appliqué de
-   façon atomique côté serveur par un script Lua dans Redis, et réappliqué à la
-   réception côté client. Aucun palier d'abonnement ne le relève.
-2. **Les profils proposés n'existent qu'en cache.** La base ne contient aucune
-   copie d'un profil proposé — seulement un registre d'identifiants, pour ne
-   jamais reproposer la même personne.
+1. **On ne peut pas arroser.** Le nombre de demandes envoyables par jour est
+   borné à tous les paliers, socle gratuit compris. Le compteur vit dans Redis,
+   expire à minuit dans le fuseau de la personne, et se décrémente par un script
+   Lua atomique.
+2. **On ne peut pas acheter de visibilité.** `PAID_VISIBILITY` vaut littéralement
+   `false` : le fil est trié par imminence puis par proximité, et par rien
+   d'autre. Aucun produit du catalogue ne vend de remontée.
 3. **Bun remplace Node.js de bout en bout**, y compris là où il a fallu écrire
    l'outillage manquant (voir `packages/prisma-bun-sqlite`).
 
@@ -66,14 +67,14 @@ convention, c'est une erreur au démarrage.
 ## Tests
 
 ```sh
-bun test                      # API + adaptateur Prisma (36 tests)
+bun test                      # API + adaptateur Prisma
 cd apps/ios/WeaveKit && swift test
 ```
 
 Les tests d'intégration de l'API passent par les vraies routes HTTP, le vrai
-cache Redis et la vraie base de développement. Ils vérifient notamment que le
-plafond de douze fils tient sous appels concurrents, et qu'aucun contenu de
-profil proposé ne se retrouve en base.
+cache Redis et la vraie base de développement. Ils couvrent les deux invariants :
+le quota journalier s'épuise et se rembourse correctement, le plafond de plans
+ouverts tient, et un « Renfort » acheté reste lui-même borné par jour.
 
 ## Structure
 
@@ -94,10 +95,10 @@ weave/
 
 | Document | Contenu |
 | --- | --- |
-| [PRODUIT.md](docs/PRODUIT.md) | Le concept, le vocabulaire, les cinq règles |
+| [PRODUIT.md](docs/PRODUIT.md) | Le concept, le vocabulaire, les deux invariants |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Les choix techniques et leurs raisons |
-| [CACHE.md](docs/CACHE.md) | « Les profils du jour, en cache uniquement », en détail |
-| [MONETISATION.md](docs/MONETISATION.md) | Quatre abonnements, et tout à l'unité |
+| [CACHE.md](docs/CACHE.md) | Ce que Redis porte, et pourquoi le quota y vit seul |
+| [MONETISATION.md](docs/MONETISATION.md) | Quatre abonnements, tout à l'unité, et rien qui vende de la visibilité |
 | [ORIGINALITE.md](docs/ORIGINALITE.md) | Ce qui éloigne Weave des mécaniques existantes |
 | [CONFORMITE.md](docs/CONFORMITE.md) | RGPD, DSA, sécurité des personnes |
 | [DEPLOIEMENT.md](docs/DEPLOIEMENT.md) | Mettre en ligne depuis un téléphone, sans ordinateur |
@@ -141,10 +142,11 @@ Le socle est fonctionnel et testé ; ces points demandent des décisions ou des
 comptes tiers, pas du code d'architecture :
 
 - [ ] Envoi réel des codes de connexion (fournisseur d'e-mail transactionnel)
-- [ ] Stockage objet des médias et application effective du flou côté stockage
+- [ ] Stockage objet des médias, avec modération des photos avant publication
 - [ ] Vérification cryptographique complète des transactions StoreKit
       (clé App Store Connect)
-- [ ] Tâche planifiée : heure de tissage, purges RGPD, expiration des Live Activities
+- [ ] Tâche planifiée : clôture des plans passés, purges RGPD, expiration des
+      Live Activities
 - [ ] Export des données personnelles au format lisible par machine
 - [ ] Revue de marque et de brevets (voir [ORIGINALITE.md](docs/ORIGINALITE.md))
 - [ ] Première exécution de la chaîne iOS, qui n'a pas pu être testée ici

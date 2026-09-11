@@ -9,41 +9,46 @@ public enum AccountStatus: String, Codable, Sendable {
 }
 
 /// Palier d'abonnement. Miroir de `PlanTier` côté contrats partagés.
+///
+/// Aucun palier n'achète de visibilité : payer ne fait jamais remonter un plan.
+/// Ce qui se paie, c'est l'horizon de publication, la finesse des critères et
+/// les plans de groupe.
 public enum PlanTier: String, Codable, CaseIterable, Sendable {
-    case fil
-    case trame
-    case chaine
-    case navette
-    case metier
+    case depart
+    case viree
+    case escapade
+    case expedition
+    case grandtour
 
     public var displayName: String {
         switch self {
-        case .fil: "Fil"
-        case .trame: "Trame"
-        case .chaine: "Chaîne"
-        case .navette: "Navette"
-        case .metier: "Métier"
+        case .depart: "Départ"
+        case .viree: "Virée"
+        case .escapade: "Escapade"
+        case .expedition: "Expédition"
+        case .grandtour: "Grand Tour"
         }
     }
 }
 
 /// Produit achetable à l'unité. Miroir de `UnitSku`.
+///
+/// Il n'existe volontairement aucun produit de « remontée » : ce serait vendre
+/// de la visibilité, ce que Weave s'interdit.
 public enum UnitSku: String, Codable, CaseIterable, Sendable {
-    case echo
-    case prolonge
-    case relais
-    case motif
+    case renfort
+    case horizon
+    case tablee
     case escale
-    case atelier
+    case bilan
 
     public var displayName: String {
         switch self {
-        case .echo: "Écho"
-        case .prolonge: "Prolonge"
-        case .relais: "Relais"
-        case .motif: "Motif"
+        case .renfort: "Renfort"
+        case .horizon: "Horizon"
+        case .tablee: "Tablée"
         case .escale: "Escale"
-        case .atelier: "Atelier"
+        case .bilan: "Bilan"
         }
     }
 
@@ -73,14 +78,23 @@ public struct Me: Codable, Sendable {
     public let id: String
     public let handle: String
     public let displayName: String
+    public let age: Int
     public let status: AccountStatus
-    public let plan: PlanTier
-    public let weavingHour: Int
-    public let timezone: String
+    public let tier: PlanTier
+    public let city: String
+    public let bio: String
+    public let photoURL: URL?
     public let verified: Bool
-    public let motif: [String]
+    /// Demandes restantes aujourd'hui.
+    public let requestsLeftToday: Int
     public let credits: [String: Int]
     public let createdAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id, handle, displayName, age, status, tier, city, bio
+        case photoURL = "photoUrl"
+        case verified, requestsLeftToday, credits, createdAt
+    }
 
     public func credits(for sku: UnitSku) -> Int {
         credits[sku.rawValue] ?? 0
@@ -88,8 +102,9 @@ public struct Me: Codable, Sendable {
 }
 
 public struct Entitlement: Codable, Sendable {
-    public let plan: PlanTier
+    public let tier: PlanTier
     public let renewsAt: Date?
     public let credits: [String: Int]
+    public let requestsLeftToday: Int
     public let inGracePeriod: Bool
 }

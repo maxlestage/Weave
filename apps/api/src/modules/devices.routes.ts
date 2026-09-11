@@ -7,16 +7,12 @@
  */
 import { Elysia, t } from "elysia";
 import type { WatchSummary } from "@weave/contracts";
-import { keys, readLoom } from "../lib/cache.ts";
+import { keys } from "../lib/cache.ts";
 import { notFound } from "../lib/errors.ts";
 import { prisma } from "../lib/prisma.ts";
 import { getJson } from "../lib/redis.ts";
 import { authPlugin } from "../plugins/auth.ts";
-import {
-  publishLiveActivityState,
-  startLiveActivitiesFor,
-  watchSummaryFromLoom,
-} from "./live-activity.service.ts";
+import { publishLiveActivityState, startLiveActivitiesFor } from "./live-activity.service.ts";
 
 /** Une Live Activity vit au plus huit heures ; au-delà le système la fige. */
 const ACTIVITY_MAX_HOURS = 8;
@@ -73,7 +69,7 @@ export const deviceRoutes = new Elysia({ prefix: "/v1", tags: ["Appareils"] })
       detail: {
         summary: "Enregistrer un appareil",
         description:
-          "Le `pushToStartToken` autorise le serveur à démarrer la Live Activity à l'heure de tissage, application fermée.",
+          "Le `pushToStartToken` autorise le serveur à démarrer la Live Activity quand quelqu'un demande à venir, application fermée.",
       },
     },
   )
@@ -158,7 +154,7 @@ export const deviceRoutes = new Elysia({ prefix: "/v1", tags: ["Appareils"] })
       detail: {
         summary: "Démarrer la Live Activity à distance",
         description:
-          "Déclenche un envoi « push-to-start ». Normalement appelé par la tâche d'heure de tissage.",
+          "Déclenche un envoi « push-to-start ». Normalement déclenché par l'arrivée d'une demande.",
       },
     },
   )
@@ -173,13 +169,15 @@ export const deviceRoutes = new Elysia({ prefix: "/v1", tags: ["Appareils"] })
       const cached = await getJson<WatchSummary>(keys.watch(account.id));
       if (cached !== null) return cached;
 
-      return watchSummaryFromLoom({ threads: await readLoom(account.id) });
+      // Absent du cache : le recalcul repeuple aussi la clé au passage.
+      await publishLiveActivityState(account.id);
+      return (await getJson<WatchSummary>(keys.watch(account.id)))!;
     },
     {
       detail: {
         summary: "Résumé pour Apple Watch",
         description:
-          "Charge utile compacte : compteurs, prénoms et échéances. Aucune photo, aucun fragment.",
+          "Charge utile compacte : le prochain plan et deux compteurs. Aucun nom, aucune photo, aucun message.",
       },
     },
   );

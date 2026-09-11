@@ -1,9 +1,9 @@
 /**
  * Types de transport partagés entre l'API Elysia, le site React et le client
- * Swift (dont les structures `Codable` sont le miroir exact — voir
- * `apps/ios/WeaveKit/Sources/WeaveKit/Models`).
+ * Swift, dont les structures `Codable` sont le miroir exact.
  */
 
+import type { PlanCategory } from "./invariants.ts";
 import type { PlanTier, UnitSku } from "./catalog.ts";
 
 /* ------------------------------------------------------------------ */
@@ -15,7 +15,6 @@ export type AccountStatus = "onboarding" | "active" | "paused" | "suspended" | "
 export interface Session {
   readonly accessToken: string;
   readonly refreshToken: string;
-  /** Expiration de l'access token, ISO 8601. */
   readonly expiresAt: string;
 }
 
@@ -23,93 +22,115 @@ export interface Me {
   readonly id: string;
   readonly handle: string;
   readonly displayName: string;
+  readonly age: number;
   readonly status: AccountStatus;
-  readonly plan: PlanTier;
-  /** Heure de tissage locale choisie (0-23). */
-  readonly weavingHour: number;
-  readonly timezone: string;
+  readonly tier: PlanTier;
+  readonly city: string;
+  readonly bio: string;
+  readonly photoUrl: string | null;
   readonly verified: boolean;
-  /** Motif : cinq mots-clés dérivés des réponses de la personne. */
-  readonly motif: readonly string[];
+  /** Demandes restantes aujourd'hui. */
+  readonly requestsLeftToday: number;
   readonly credits: Readonly<Record<UnitSku, number>>;
   readonly createdAt: string;
 }
 
-/* ------------------------------------------------------------------ */
-/* Fils (uniquement en cache)                                          */
-/* ------------------------------------------------------------------ */
-
-export type FragmentKind = "question" | "voix" | "motif";
-
-export interface Fragment {
+/** Auteur d'un plan, tel qu'affiché dans le fil. Volontairement maigre. */
+export interface Author {
   readonly id: string;
-  readonly kind: FragmentKind;
-  /** Intitulé affiché (la question posée, ou le libellé du motif). */
-  readonly prompt: string;
-  /** Réponse de la personne proposée. Texte, ou URL signée pour la voix. */
-  readonly body: string;
-  /** Durée en secondes pour un fragment vocal. */
-  readonly durationSeconds?: number;
-}
-
-export type ThreadState =
-  | "propose" /* tissé, jamais engagé */
-  | "engage" /* au moins une réponse envoyée */
-  | "tisse" /* réponse mutuelle : la conversation est ouverte */
-  | "denoue"; /* expiré ou relâché */
-
-export interface ThreadCard {
-  readonly id: string;
-  readonly state: ThreadState;
-  /** Prénom d'affichage de la personne proposée. */
   readonly displayName: string;
   readonly age: number;
-  /** Distance arrondie en kilomètres (jamais de coordonnées exactes). */
-  readonly distanceKm: number;
-  readonly city: string;
-  readonly motif: readonly string[];
-  readonly fragments: readonly Fragment[];
-  /** Netteté de la photo, en pourcentage : 0, 33, 66 ou 100. */
-  readonly revealPercent: number;
-  /** URL signée de la photo, floutée côté serveur selon `revealPercent`. */
   readonly photoUrl: string | null;
-  /** Expiration du fil, ISO 8601. */
-  readonly expiresAt: string;
-  /** Nombre d'échanges aboutis (une réponse de chaque côté). */
-  readonly exchanges: number;
-  /** Vrai si c'est à vous de répondre. */
-  readonly awaitingYou: boolean;
+  readonly verified: boolean;
 }
 
-export interface Loom {
-  /** Au plus trois. Garanti par `MAX_ACTIVE_THREADS`. */
-  readonly threads: readonly ThreadCard[];
-  /** Prochaine heure de tissage, ISO 8601. */
-  readonly nextWeavingAt: string;
-  /** Places libres sur le métier (3 - fils actifs). */
-  readonly freeSlots: number;
-  /** Date à laquelle la prochaine place libre sera regarnie, ISO 8601. */
-  readonly nextRefillAt: string | null;
-  /** Vrai si le contenu provient du cache chaud (toujours vrai en régime normal). */
+/* ------------------------------------------------------------------ */
+/* Plans                                                               */
+/* ------------------------------------------------------------------ */
+
+export type PlanState =
+  | "ouvert" /* publié, des places restent */
+  | "complet" /* toutes les places sont prises */
+  | "passe" /* l'heure du rendez-vous est dépassée */
+  | "annule";
+
+export interface Plan {
+  readonly id: string;
+  readonly author: Author;
+  readonly title: string;
+  readonly note: string;
+  readonly category: PlanCategory;
+  /** Date et heure du rendez-vous, ISO 8601. */
+  readonly startsAt: string;
+  readonly city: string;
+  /** Distance arrondie en kilomètres. Weave n'expose jamais de position précise. */
+  readonly distanceKm: number;
+  /** Nombre de personnes attendues en plus de l'auteur. */
+  readonly capacity: number;
+  readonly seatsLeft: number;
+  readonly state: PlanState;
+  /** Vrai si la personne qui consulte a déjà demandé à venir. */
+  readonly requested: boolean;
+  /** Renseigné pour ses propres plans : nombre de demandes reçues non traitées. */
+  readonly pendingRequests?: number;
+  readonly createdAt: string;
+}
+
+/** Le fil : les plans à venir, autour de soi. */
+export interface Feed {
+  readonly plans: readonly Plan[];
+  /** Demandes restantes aujourd'hui, pour l'afficher sans second appel. */
+  readonly requestsLeftToday: number;
+  /** Vrai si le fil vient du cache chaud. */
   readonly fromCache: boolean;
+  readonly generatedAt: string;
 }
 
 /* ------------------------------------------------------------------ */
-/* Conversation                                                        */
+/* Demandes                                                            */
 /* ------------------------------------------------------------------ */
 
-export type MessageAuthor = "moi" | "elle" | "systeme";
+export type RequestState = "envoyee" | "acceptee" | "refusee" | "expiree" | "retiree";
+
+export interface JoinRequest {
+  readonly id: string;
+  readonly planId: string;
+  readonly planTitle: string;
+  readonly planStartsAt: string;
+  readonly author: Author;
+  readonly message: string;
+  readonly state: RequestState;
+  readonly sentAt: string;
+  readonly decidedAt: string | null;
+  /** Identifiant de conversation, une fois la demande acceptée. */
+  readonly conversationId: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Conversations                                                       */
+/* ------------------------------------------------------------------ */
+
+export type MessageAuthor = "moi" | "autre" | "systeme";
 
 export interface Message {
   readonly id: string;
-  readonly threadId: string;
+  readonly conversationId: string;
   readonly author: MessageAuthor;
   readonly body: string;
   readonly sentAt: string;
   readonly readAt: string | null;
-  /** Renseigné pour un message vocal. */
-  readonly audioUrl?: string;
-  readonly durationSeconds?: number;
+}
+
+export interface Conversation {
+  readonly id: string;
+  readonly planId: string;
+  readonly planTitle: string;
+  readonly planStartsAt: string;
+  readonly other: Author;
+  readonly lastMessage: string | null;
+  readonly lastMessageAt: string | null;
+  readonly unread: number;
+  readonly closed: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,31 +138,33 @@ export interface Message {
 /* ------------------------------------------------------------------ */
 
 /**
- * État dynamique d'une Live Activity « Métier ». Miroir exact de
+ * État dynamique de la Live Activity. Miroir exact de
  * `WeaveActivityAttributes.ContentState` côté Swift.
+ *
+ * Rien de ce qui s'affiche ici ne doit trahir avec qui l'on parle : un titre de
+ * plan, des compteurs, une échéance. Un écran verrouillé se lit par-dessus
+ * l'épaule.
  */
 export interface LiveActivityState {
-  readonly activeThreads: number;
-  readonly awaitingYou: number;
-  /** Expiration du fil le plus proche de se dénouer, ISO 8601. */
-  readonly soonestExpiryAt: string | null;
-  /** Prénom du fil le plus urgent, pour l'affichage compact. */
-  readonly soonestName: string | null;
-  readonly nextRefillAt: string | null;
+  /** Plan le plus proche, publié ou rejoint. */
+  readonly planTitle: string | null;
+  readonly planStartsAt: string | null;
+  /** Demandes reçues et non traitées sur ses propres plans. */
+  readonly pendingRequests: number;
+  /** Demandes envoyées et encore sans réponse. */
+  readonly awaitingReply: number;
   readonly updatedAt: string;
 }
 
-/** Charge utile compacte destinée à watchOS (budget < 4 Ko). */
+/** Charge utile compacte destinée à watchOS. */
 export interface WatchSummary {
-  readonly activeThreads: number;
-  readonly awaitingYou: number;
-  readonly soonestExpiryAt: string | null;
-  readonly entries: readonly {
-    readonly id: string;
-    readonly name: string;
-    readonly expiresAt: string;
-    readonly awaitingYou: boolean;
-  }[];
+  readonly pendingRequests: number;
+  readonly awaitingReply: number;
+  readonly nextPlan: {
+    readonly title: string;
+    readonly startsAt: string;
+    readonly city: string;
+  } | null;
   readonly generatedAt: string;
 }
 
@@ -150,10 +173,9 @@ export interface WatchSummary {
 /* ------------------------------------------------------------------ */
 
 export interface Entitlement {
-  readonly plan: PlanTier;
-  /** Fin de période courante, ISO 8601, null pour le socle gratuit. */
+  readonly tier: PlanTier;
   readonly renewsAt: string | null;
   readonly credits: Readonly<Record<UnitSku, number>>;
-  /** Vrai si l'abonnement est en période de grâce de facturation. */
+  readonly requestsLeftToday: number;
   readonly inGracePeriod: boolean;
 }

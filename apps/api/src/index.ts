@@ -9,7 +9,7 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { serverTiming } from "@elysiajs/server-timing";
 import { staticPlugin } from "@elysiajs/static";
-import { MAX_ACTIVE_THREADS } from "@weave/contracts";
+import { MAX_OPEN_PLANS, REQUESTS_PER_DAY_FLOOR } from "@weave/contracts";
 import { env } from "./env.ts";
 import { AppError } from "./lib/errors.ts";
 import { log } from "./lib/log.ts";
@@ -17,13 +17,13 @@ import { disconnectPrisma, prisma } from "./lib/prisma.ts";
 import { disconnectRedis, pingRedis } from "./lib/redis.ts";
 import { authRoutes } from "./modules/auth.routes.ts";
 import { billingRoutes } from "./modules/billing.routes.ts";
+import { conversationRoutes } from "./modules/conversations.routes.ts";
 import { deviceRoutes } from "./modules/devices.routes.ts";
-import { loomRoutes } from "./modules/loom.routes.ts";
 import { mediaRoutes } from "./modules/media.routes.ts";
 import { meRoutes } from "./modules/me.routes.ts";
 import { moderationRoutes } from "./modules/moderation.routes.ts";
-import { promptRoutes } from "./modules/prompts.routes.ts";
-import { threadRoutes } from "./modules/threads.routes.ts";
+import { planRoutes } from "./modules/plans.routes.ts";
+import { requestRoutes } from "./modules/requests.routes.ts";
 
 /**
  * Site vitrine compilé, servi par le même processus que l'API.
@@ -76,24 +76,28 @@ export const app = new Elysia()
           title: "API Weave",
           version: "0.1.0",
           description: [
-            "API de Weave, application de rencontre fondée sur un principe simple :",
-            `au plus ${MAX_ACTIVE_THREADS} fils à la fois, en cache uniquement, renouvelés à l'heure`,
-            "que vous avez choisie.",
+            "API de Weave : on ne publie pas un profil, on publie un plan pour les",
+            "jours qui viennent, et les autres demandent à venir — en écrivant pourquoi.",
             "",
-            "Il n'existe volontairement aucune route pour balayer des cartes, consulter",
-            "la liste des personnes qui vous ont aimé, ou acheter de la visibilité.",
+            `Deux invariants tiennent le produit. On ne peut pas arroser : au plus ${MAX_OPEN_PLANS} plans`,
+            `ouverts, et un nombre borné de demandes par jour (au minimum ${REQUESTS_PER_DAY_FLOOR}) à TOUS les`,
+            "paliers, socle gratuit compris. Et on ne peut pas acheter de visibilité : le",
+            "fil est trié par imminence puis par proximité, et par rien d'autre.",
+            "",
+            "Il n'existe volontairement aucune route pour balayer des cartes, « aimer »",
+            "quelqu'un, consulter qui vous a remarqué, ou faire remonter un plan.",
           ].join("\n"),
         },
         tags: [
           { name: "Authentification", description: "Connexion par code à usage unique." },
-          { name: "Profil", description: "Sa fiche, ses fragments, son motif, ses critères." },
-          { name: "Métier", description: "Les fils du jour : lecture, réponse, dénouage." },
-          { name: "Conversations", description: "Fils tissés et messages." },
+          { name: "Profil", description: "Sa fiche — une ville, un genre, une phrase." },
+          { name: "Plans", description: "Publier un plan, lire le fil, annuler." },
+          { name: "Demandes", description: "Demander à venir, accepter, refuser." },
+          { name: "Conversations", description: "Ce qui s'ouvre après un oui." },
           { name: "Appareils", description: "APNs, Live Activity, Apple Watch." },
-          { name: "Offres", description: "Quatre abonnements, et le même à l'unité." },
+          { name: "Offres", description: "Quatre abonnements, et les mêmes à l'unité." },
           { name: "Sécurité", description: "Blocage, signalement, mise en pause." },
-          { name: "Questions", description: "Bibliothèque de questions." },
-          { name: "Médias", description: "Photos et voix, sous URL signée." },
+          { name: "Médias", description: "Photos, sous URL signée." },
         ],
       },
     }),
@@ -138,7 +142,8 @@ export const app = new Elysia()
       return {
         status: healthy ? "ok" : "degraded",
         database: { driver: env.db.driver, ok: dbOk },
-        // Le cache n'est pas un confort dans Weave : sans lui, il n'y a pas de fils.
+        // Le cache n'est pas un confort dans Weave : le quota de demandes n'y
+        // vit qu'ici, et sans lui l'invariant central ne tient plus.
         cache: { ok: cacheOk, required: true },
         version: "0.1.0",
       };
@@ -148,12 +153,12 @@ export const app = new Elysia()
 
   .use(authRoutes)
   .use(meRoutes)
-  .use(loomRoutes)
-  .use(threadRoutes)
+  .use(planRoutes)
+  .use(requestRoutes)
+  .use(conversationRoutes)
   .use(deviceRoutes)
   .use(billingRoutes)
   .use(moderationRoutes)
-  .use(promptRoutes)
   .use(mediaRoutes)
   .use(vitrine);
 
@@ -170,7 +175,7 @@ if (import.meta.main) {
     port: env.port,
     mode: env.mode,
     database: env.db.driver,
-    maxActiveThreads: MAX_ACTIVE_THREADS,
+    maxOpenPlans: MAX_OPEN_PLANS,
     openapi: `http://localhost:${env.port}/openapi`,
   });
 

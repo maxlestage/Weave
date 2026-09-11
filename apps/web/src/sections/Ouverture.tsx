@@ -1,7 +1,5 @@
-import { MAX_ACTIVE_THREADS, MIN_AGE, THREAD_TTL_SECONDS } from "@weave/contracts";
+import { MAX_OPEN_PLANS, MIN_AGE, PLAN_CATEGORY_LABELS } from "@weave/contracts";
 import { Etiquette, filVar, type Fil } from "../composants.tsx";
-
-const HEURES = THREAD_TTL_SECONDS / 3600;
 
 export function Ouverture() {
   return (
@@ -22,19 +20,17 @@ export function Ouverture() {
           className="mt-6 text-[2.3rem] leading-[1.05] font-bold tracking-tight sm:text-6xl lg:text-7xl"
           style={{ fontFamily: "var(--font-titre)" }}
         >
-          <span style={{ color: filVar(1) }}>{MAX_ACTIVE_THREADS}</span>{" "}
-          <span style={{ color: filVar(2) }}>fils</span>{" "}
-          <span style={{ color: filVar(4) }}>par</span>{" "}
-          <span style={{ color: filVar(5) }}>jour.</span>
-          <br />
-          Pas un de plus.
+          <span style={{ color: filVar(1) }}>Des</span>{" "}
+          <span style={{ color: filVar(2) }}>plans,</span>{" "}
+          <span style={{ color: filVar(4) }}>pas</span>{" "}
+          <span style={{ color: filVar(5) }}>des</span>{" "}
+          <span style={{ color: filVar(6) }}>profils.</span>
         </h1>
 
         <p className="mt-6 max-w-xl text-lg leading-relaxed sm:text-xl">
-          Weave ne vous donne pas une pile sans fin à faire défiler. Il vous en propose{" "}
-          {MAX_ACTIVE_THREADS}, à l'heure que vous avez choisie, et s'arrête là. Ils vivent {HEURES}{" "}
-          heures, puis se dénouent. Pour en engager un, il faut écrire une réponse — pas faire un
-          geste.
+          Sur Weave, on ne se décrit pas : on écrit ce qu'on compte faire jeudi soir. Les autres
+          demandent à venir — en disant pourquoi. Pas de cartes à balayer, pas de « il/elle vous a
+          remarqué », pas de file d'attente.
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -58,85 +54,97 @@ export function Ouverture() {
           Gratuit pour commencer · Sans publicité · Réservé aux {MIN_AGE} ans et plus
         </p>
 
-        <Metier />
+        <Fil />
       </div>
     </section>
   );
 }
 
 /**
- * Représentation du métier : trois fils parmi ceux du jour, dont un déjà engagé.
+ * Représentation du fil : trois plans à venir, tels qu'on les verrait.
  * C'est une illustration, pas une capture — aucune donnée réelle n'y figure.
  */
-function Metier() {
-  const fils: { nom: string; motif: string; reste: string; etat: string; fil: Fil }[] = [
+function Fil() {
+  const plans: {
+    titre: string;
+    note: string;
+    auteur: string;
+    quand: string;
+    ou: string;
+    places: string;
+    categorie: keyof typeof PLAN_CATEGORY_LABELS;
+    fil: Fil;
+  }[] = [
     {
-      nom: "Théo",
-      motif: "escalade · vinyles · ciné-club",
-      reste: "18 h",
-      etat: "à vous de répondre",
+      titre: "Bloc au mur de 19 h, niveau débutant",
+      note: "Je grimpe depuis six mois, très mal.",
+      auteur: "Théo, 23 ans",
+      quand: "Jeudi 19 h",
+      ou: "à 2 km",
+      places: "1 place",
+      categorie: "sport",
       fil: 1,
     },
     {
-      nom: "Sofia",
-      motif: "jazz · céramique · vélo",
-      reste: "9 h",
-      etat: "engagé",
+      titre: "Concert d'un groupe que personne ne connaît",
+      note: "Petite salle, 8 € à l'entrée.",
+      auteur: "Sofia, 21 ans",
+      quand: "Vendredi 20 h 30",
+      ou: "à 4 km",
+      places: "2 places",
+      categorie: "musique",
       fil: 4,
     },
     {
-      nom: "Alex",
-      motif: "impro · rando · jeux de société",
-      reste: "23 h",
-      etat: "à vous de répondre",
+      titre: "Marché puis brunch, sans se presser",
+      note: "Venez si vous aimez goûter dix choses avant d'acheter.",
+      auteur: "Alex, 24 ans",
+      quand: "Samedi 10 h",
+      ou: "à 1 km",
+      places: "2 places",
+      categorie: "repas",
       fil: 5,
     },
   ];
 
   return (
-    <div
-      className="mt-14"
-      aria-label={`Illustration du métier : trois fils parmi les ${MAX_ACTIVE_THREADS} du jour`}
-      role="img"
-    >
+    <div className="mt-14" aria-label="Illustration du fil : trois plans à venir" role="img">
       <div className="grid gap-4 sm:grid-cols-3">
-        {fils.map((fil) => (
+        {plans.map((plan) => (
           <article
-            key={fil.nom}
-            className="overflow-hidden rounded-3xl"
-            style={{ background: "var(--carte)", border: `2px solid ${filVar(fil.fil)}` }}
+            key={plan.titre}
+            className="flex flex-col overflow-hidden rounded-3xl"
+            style={{ background: "var(--carte)", border: `2px solid ${filVar(plan.fil)}` }}
           >
-            <div className="h-2" style={{ background: filVar(fil.fil) }} aria-hidden="true" />
+            <div className="h-2" style={{ background: filVar(plan.fil) }} aria-hidden="true" />
 
-            <div className="p-5">
+            <div className="flex flex-1 flex-col p-5">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="text-lg font-bold">{fil.nom}</span>
+                <span
+                  className="text-xs font-bold tracking-wide uppercase"
+                  style={{ color: filVar(plan.fil) }}
+                >
+                  {PLAN_CATEGORY_LABELS[plan.categorie]}
+                </span>
                 <span
                   className="shrink-0 text-sm font-bold tabular-nums"
-                  style={{ color: filVar(fil.fil) }}
+                  style={{ color: "var(--texte-doux)" }}
                 >
-                  {fil.reste}
+                  {plan.ou}
                 </span>
               </div>
 
-              <p className="mt-2 text-sm" style={{ color: "var(--texte-doux)" }}>
-                {fil.motif}
+              <h3 className="mt-2 text-base leading-snug font-bold">{plan.titre}</h3>
+
+              <p className="mt-2 flex-1 text-sm" style={{ color: "var(--texte-doux)" }}>
+                {plan.note}
               </p>
 
-              <div
-                className="mt-4 h-16 rounded-xl"
-                aria-hidden="true"
-                style={{
-                  background: `linear-gradient(120deg, color-mix(in oklab, ${filVar(fil.fil)} 55%, transparent), color-mix(in oklab, ${filVar((((fil.fil + 2) % 6) + 1) as Fil)} 45%, transparent))`,
-                  filter: "blur(7px)",
-                }}
-              />
-
-              <p
-                className="mt-4 text-xs font-bold tracking-wide uppercase"
-                style={{ color: "var(--texte-doux)" }}
-              >
-                {fil.etat}
+              <p className="mt-4 text-sm font-bold" style={{ color: filVar(plan.fil) }}>
+                {plan.quand} · {plan.places}
+              </p>
+              <p className="mt-1 text-sm" style={{ color: "var(--texte-doux)" }}>
+                {plan.auteur}
               </p>
             </div>
           </article>
@@ -144,8 +152,9 @@ function Metier() {
       </div>
 
       <p className="mt-4 text-sm" style={{ color: "var(--texte-doux)" }}>
-        Trois de vos {MAX_ACTIVE_THREADS} fils du jour. La photo reste floue au premier contact ;
-        elle se dévoile au fil des échanges.
+        Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près. Rien
+        d'autre : aucun abonnement ne fait remonter un plan. Et vous publiez au plus{" "}
+        {MAX_OPEN_PLANS} plans à la fois.
       </p>
     </div>
   );

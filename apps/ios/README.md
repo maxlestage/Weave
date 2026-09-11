@@ -1,16 +1,16 @@
 # Weave — iOS et watchOS
 
-Application native Swift : iPhone, Live Activity « Métier », application Apple
-Watch et complication de cadran. Tout le code partagé vit dans le paquet
+Application native Swift : iPhone, Live Activity « Prochain plan », application
+Apple Watch et complication de cadran. Tout le code partagé vit dans le paquet
 `WeaveKit`, consommé par les quatre cibles.
 
 ## Cibles
 
 | Cible | Type | Rôle |
 | --- | --- | --- |
-| `Weave` | Application iOS | L'application : le métier, les fils, les réponses |
+| `Weave` | Application iOS | L'application : le fil, les plans, les demandes |
 | `WeaveActivity` | Extension WidgetKit | Live Activity sur l'écran verrouillé et l'île dynamique |
-| `WeaveWatch` | Application watchOS | Liste des fils et échéances au poignet |
+| `WeaveWatch` | Application watchOS | Le prochain plan et ce qui attend une réponse |
 | `WeaveWatchWidgets` | Extension WidgetKit | Complication de cadran |
 | `WeaveKit` | Paquet Swift | Modèles, client d'API, magasins d'état |
 
@@ -48,8 +48,9 @@ C'est le point le plus subtil de l'intégration, et le plus facile à confondre.
 
 - **Jeton « push-to-start »** — propre à l'appareil, obtenu par
   `Activity.pushToStartTokenUpdates`. Il permet au serveur de **démarrer** une
-  Live Activity à distance : c'est lui qui fait apparaître la bannière à l'heure
-  de tissage, application fermée. Il est transmis à `PUT /v1/devices`.
+  Live Activity à distance : c'est lui qui fait apparaître la bannière quand
+  quelqu'un demande à venir, application fermée. Il est transmis à
+  `PUT /v1/devices`.
 - **Jeton de mise à jour** — propre à **une** activité en cours, obtenu par
   `activity.pushTokenUpdates`. Il permet d'en modifier le contenu. Il est
   transmis à `POST /v1/live-activity/sessions`.
@@ -69,8 +70,10 @@ le champ `attributes-type` de la charge utile. **Le renommer casse le démarrage
 ## Ce que l'on ne met jamais dans une Live Activity
 
 Une bannière d'écran verrouillé est lisible par quiconque regarde le téléphone
-posé sur une table. L'état poussé ne contient donc que des compteurs, un prénom
-et des échéances. Jamais de photo, jamais un message, jamais un nom complet.
+posé sur une table. L'état poussé ne contient donc qu'un titre de plan, une
+heure et deux compteurs. Jamais de nom, jamais de photo, jamais un message —
+et un titre de plan est justement ce qu'on peut lire par-dessus l'épaule sans
+rien apprendre de qui vous voyez.
 
 Les décomptes utilisent `Text(timerInterval:)` : le système les anime lui-même,
 sans réveiller l'application ni consommer d'envoi APNs.
@@ -82,8 +85,9 @@ cd apps/ios/WeaveKit
 swift test
 ```
 
-Les tests couvrent le plafond de fils, le décodage des charges utiles de
-l'API, les états de la Live Activity et la logique de renouvellement de session.
+Les tests couvrent l'ordre du fil (jamais retrié localement), le décodage des
+charges utiles de l'API, les états de la Live Activity, la logique de
+renouvellement de session et l'absence de tout produit vendant de la visibilité.
 Ils utilisent `swift-testing`, pas XCTest.
 
 ## Trousseau et groupe d'application

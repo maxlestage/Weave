@@ -1,38 +1,38 @@
 import {
-  MAX_ACTIVE_THREADS,
-  PLANS,
   PLAN_TIERS,
+  REQUESTS_PER_DAY_FLOOR,
+  TIERS,
   UNIT_PRODUCTS,
   UNIT_SKUS,
   formatPrice,
-  type CriteriaDepth,
+  type FilterDepth,
 } from "@weave/contracts";
 import { useState } from "react";
 import { Carte, Etiquette, filVar, Section, type Fil } from "../composants.tsx";
 
 type Periode = "mensuel" | "annuel";
 
-/** Chaque palier porte sa couleur : cinq fils du métier. */
+/** Chaque palier porte sa couleur. */
 const COULEURS: Record<string, Fil> = {
-  fil: 4,
-  trame: 3,
-  chaine: 6,
-  navette: 5,
-  metier: 1,
+  depart: 4,
+  viree: 3,
+  escapade: 6,
+  expedition: 5,
+  grandtour: 1,
 };
 
-/** Libellés affichables des profondeurs de critères (les valeurs sont en ASCII). */
-const CRITERES: Record<CriteriaDepth, string> = {
+/** Libellés affichables de la finesse des critères (les valeurs sont en ASCII). */
+const CRITERES: Record<FilterDepth, string> = {
   base: "De base",
-  etendue: "Étendus",
-  precise: "Précis",
+  etendus: "Étendus",
+  precis: "Précis",
 };
 
-/** Délai de regarnissage, rendu en langage courant. */
-function delai(minutes: number): string {
-  if (minutes >= 24 * 60) return "à la prochaine heure de tissage";
-  if (minutes >= 60) return `sous ${minutes / 60} h`;
-  return `sous ${minutes} min`;
+/** Horizon de publication, rendu en langage courant. */
+function horizon(jours: number): string {
+  if (jours >= 30) return "un mois à l'avance";
+  if (jours >= 7) return `${jours / 7} semaine${jours >= 14 ? "s" : ""} à l'avance`;
+  return `${jours} jours à l'avance`;
 }
 
 export function Offres() {
@@ -43,7 +43,7 @@ export function Offres() {
       id="offres"
       fil={6}
       titre="Quatre abonnements, et tout à l'unité"
-      chapeau={`Aucun palier n'augmente le nombre de fils : ${MAX_ACTIVE_THREADS} pour tout le monde. Ce qui se paie, c'est la finesse des critères et la vitesse à laquelle une place libérée est regarnie.`}
+      chapeau={`Aucune offre n'achète de visibilité : payer ne fait jamais remonter un plan. Ce qui se paie, c'est l'horizon de publication, la finesse des critères et les plans de groupe. Le nombre de demandes reste borné partout — au minimum ${REQUESTS_PER_DAY_FLOOR} par jour.`}
     >
       <div
         className="inline-flex rounded-full p-1"
@@ -71,34 +71,34 @@ export function Offres() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {PLAN_TIERS.map((tier) => {
-          const plan = PLANS[tier];
-          const gratuit = plan.monthlyPriceCents === 0;
+          const offre = TIERS[tier];
+          const gratuit = offre.monthlyPriceCents === 0;
           const cents =
-            periode === "annuel" && plan.yearlyPriceCents !== null
-              ? plan.yearlyPriceCents
-              : plan.monthlyPriceCents;
+            periode === "annuel" && offre.yearlyPriceCents !== null
+              ? offre.yearlyPriceCents
+              : offre.monthlyPriceCents;
           const suffixe = gratuit
             ? ""
-            : periode === "annuel" && plan.yearlyPriceCents !== null
+            : periode === "annuel" && offre.yearlyPriceCents !== null
               ? " / an"
               : " / mois";
 
           const couleur = COULEURS[tier] ?? 6;
 
           return (
-            <Carte key={tier} fil={couleur} accentuee={tier === "chaine"}>
+            <Carte key={tier} fil={couleur} accentuee={tier === "escapade"}>
               <div className="flex items-baseline justify-between gap-3">
                 <h3
                   className="text-2xl font-bold"
                   style={{ fontFamily: "var(--font-titre)", color: filVar(couleur) }}
                 >
-                  {plan.name}
+                  {offre.name}
                 </h3>
-                {tier === "chaine" && <Etiquette fil={couleur}>Le plus choisi</Etiquette>}
+                {tier === "escapade" && <Etiquette fil={couleur}>Le plus choisi</Etiquette>}
               </div>
 
               <p className="mt-2 text-sm" style={{ color: "var(--texte-doux)" }}>
-                {plan.tagline}
+                {offre.tagline}
               </p>
 
               <p className="mt-5">
@@ -112,23 +112,31 @@ export function Offres() {
 
               <dl className="mt-5 space-y-1.5 text-sm">
                 <div className="flex justify-between gap-3">
-                  <dt style={{ color: "var(--texte-doux)" }}>Fils actifs</dt>
-                  <dd className="font-semibold tabular-nums">{plan.entitlements.activeThreads}</dd>
+                  <dt style={{ color: "var(--texte-doux)" }}>Demandes par jour</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {offre.entitlements.requestsPerDay}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt style={{ color: "var(--texte-doux)" }}>Regarnissage</dt>
+                  <dt style={{ color: "var(--texte-doux)" }}>Publier</dt>
                   <dd className="text-right font-semibold">
-                    {delai(plan.entitlements.refillDelayMinutes)}
+                    {horizon(offre.entitlements.daysAhead)}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt style={{ color: "var(--texte-doux)" }}>Critères</dt>
-                  <dd className="font-semibold">{CRITERES[plan.entitlements.criteria]}</dd>
+                  <dd className="font-semibold">{CRITERES[offre.entitlements.filters]}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt style={{ color: "var(--texte-doux)" }}>Plans de groupe</dt>
+                  <dd className="font-semibold">
+                    {offre.entitlements.groupPlans ? "Oui" : "À l'unité"}
+                  </dd>
                 </div>
               </dl>
 
               <ul className="mt-5 space-y-2 text-sm">
-                {plan.highlights.map((point) => (
+                {offre.highlights.map((point) => (
                   <li key={point} className="flex gap-2.5">
                     <span aria-hidden="true" style={{ color: filVar(couleur) }}>
                       —
@@ -146,8 +154,8 @@ export function Offres() {
         Sans abonnement, à l'unité
       </h3>
       <p className="mt-3 max-w-2xl leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-        Chaque avantage d'un abonnement s'achète aussi séparément. On peut utiliser Weave des mois
-        durant sans jamais s'abonner.
+        Chaque avantage d'un abonnement s'achète aussi séparément — parce qu'à vingt ans, on ne
+        s'abonne pas à tout. On peut utiliser Weave des mois durant sans jamais s'abonner.
       </p>
 
       <ul className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,4 +1,4 @@
-import { MAX_ACTIVE_THREADS, MIN_AGE } from "@weave/contracts";
+import { MIN_AGE } from "@weave/contracts";
 
 export function PiedDePage() {
   return (
@@ -10,8 +10,8 @@ export function PiedDePage() {
           Weave
         </p>
         <p className="mt-2 max-w-md leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-          {MAX_ACTIVE_THREADS} fils par jour. Une application de rencontre qui préfère la
-          conversation à la collection.
+          Des plans, pas des profils. On publie ce qu'on compte faire, les autres demandent à venir
+          — en écrivant pourquoi.
         </p>
 
         <nav aria-label="Liens de pied de page" className="mt-8">

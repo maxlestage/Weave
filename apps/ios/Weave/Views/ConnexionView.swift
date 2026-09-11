@@ -12,7 +12,7 @@ struct ConnexionView: View {
     @State private var email = ""
     @State private var code = ""
     @State private var prenom = ""
-    @State private var naissance = Calendar.current.date(byAdding: .year, value: -30, to: .now) ?? .now
+    @State private var naissance = Calendar.current.date(byAdding: .year, value: -22, to: .now) ?? .now
     @State private var enCours = false
     @State private var message: String?
 
@@ -22,8 +22,8 @@ struct ConnexionView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Weave")
-                    .font(.system(size: 44, weight: .semibold, design: .serif))
-                Text("\(Loom.maxActiveThreads) fils par jour. Pas un de plus.")
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                Text("Des plans, pas des profils.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }
