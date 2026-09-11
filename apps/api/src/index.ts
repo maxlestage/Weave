@@ -14,7 +14,7 @@ import { env } from "./env.ts";
 import { AppError } from "./lib/errors.ts";
 import { log } from "./lib/log.ts";
 import { disconnectPrisma, prisma } from "./lib/prisma.ts";
-import { disconnectRedis, pingRedis } from "./lib/redis.ts";
+import { disconnectRedis, pingRedis, withTimeout, PROBE_TIMEOUT_MS } from "./lib/redis.ts";
 import { authRoutes } from "./modules/auth.routes.ts";
 import { billingRoutes } from "./modules/billing.routes.ts";
 import { conversationRoutes } from "./modules/conversations.routes.ts";
@@ -131,8 +131,13 @@ export const app = new Elysia()
   .get(
     "/health",
     async ({ set }) => {
+      // Les deux sondes sont bornées : une dépendance qui ne répond pas doit
+      // être rapportée comme telle, jamais faire attendre la réponse.
       const [dbOk, cacheOk] = await Promise.all([
-        prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+        withTimeout(
+          prisma.$queryRaw`SELECT 1`.then(() => true),
+          PROBE_TIMEOUT_MS,
+        ),
         pingRedis(),
       ]);
 

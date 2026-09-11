@@ -32,13 +32,50 @@ export function redisReady(): boolean {
   return ready;
 }
 
-/** Vérifie la disponibilité du cache, pour la sonde de santé. */
+/**
+ * Vérifie la disponibilité du cache, pour la sonde de santé.
+ *
+ * L'appel est borné dans le temps, et c'est le point essentiel : avec
+ * `autoReconnect`, un `PING` adressé à un serveur injoignable n'échoue pas —
+ * il est mis en file et attend indéfiniment. La sonde restait alors sans
+ * réponse, ce qui est le seul comportement qu'elle ne peut pas se permettre :
+ * vu de l'extérieur, un service qui ne répond pas est indiscernable d'un
+ * service mort, et l'hébergeur finit par le tuer pour dépassement de délai.
+ *
+ * Un cache qui ne répond pas en deux secondes est indisponible, quelle que
+ * soit la raison.
+ */
 export async function pingRedis(): Promise<boolean> {
+  return withTimeout(
+    (async () => {
+      const reply = await redis.send("PING", []);
+      return reply === "PONG" || reply === "OK";
+    })(),
+    PROBE_TIMEOUT_MS,
+  );
+}
+
+/** Délai au-delà duquel une dépendance est déclarée indisponible. */
+export const PROBE_TIMEOUT_MS = 2_000;
+
+/**
+ * Renvoie `false` si la promesse n'aboutit pas à temps, ou échoue.
+ *
+ * La promesse perdante n'est pas annulée — on ne peut pas annuler un envoi
+ * déjà parti — mais son résultat est ignoré. Le rejet éventuel est absorbé,
+ * sans quoi il remonterait plus tard en rejet non traité.
+ */
+export async function withTimeout(promesse: Promise<boolean>, ms: number): Promise<boolean> {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+
+  const echeance = new Promise<boolean>((resolve) => {
+    minuteur = setTimeout(() => resolve(false), ms);
+  });
+
   try {
-    const reply = await redis.send("PING", []);
-    return reply === "PONG" || reply === "OK";
-  } catch {
-    return false;
+    return await Promise.race([promesse.catch(() => false), echeance]);
+  } finally {
+    if (minuteur !== undefined) clearTimeout(minuteur);
   }
 }
 
