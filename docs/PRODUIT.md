@@ -1,6 +1,6 @@
 # Weave — le produit
 
-> Trois fils par jour. Rien de plus.
+> Douze fils par jour. Pas un de plus.
 
 ## Le problème que Weave prend au sérieux
 
@@ -9,7 +9,7 @@ produisent donc du volume : des piles de profils, des files d'attente qui
 grossissent, des compteurs à vider. Le résultat est connu — on parcourt
 beaucoup, on lit peu, on écrit encore moins.
 
-Weave prend le contre-pied par une contrainte : **trois profils à la fois,
+Weave prend le contre-pied par une contrainte : **douze profils à la fois,
 jamais plus, pour personne.** Tout le reste du produit découle de là.
 
 ## Le vocabulaire
@@ -20,7 +20,7 @@ dans l'API et dans l'interface.
 
 | Terme | Ce que c'est |
 | --- | --- |
-| **Métier** | L'écran principal, qui porte au plus trois fils |
+| **Métier** | L'écran principal, qui porte au plus douze fils |
 | **Fil** | Une personne proposée, pendant 24 h |
 | **Trame** | Les trois fragments + le motif qui présentent un fil |
 | **Fragment** | Une question et la réponse d'une personne |
@@ -33,7 +33,7 @@ dans l'API et dans l'interface.
 
 ## Les cinq règles
 
-### 1. Trois fils, jamais plus
+### 1. Douze fils, jamais plus
 
 Le plafond est un invariant technique (`MAX_ACTIVE_THREADS`), appliqué de façon
 atomique côté serveur par un script Lua dans Redis, et réappliqué à la réception

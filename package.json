@@ -2,7 +2,7 @@
   "name": "weave",
   "private": true,
   "type": "module",
-  "description": "Weave — application de rencontre : 3 fils par jour, en cache uniquement.",
+  "description": "Weave — application de rencontre : 12 fils par jour, en cache uniquement.",
   "license": "UNLICENSED",
   "packageManager": "bun@1.3.11",
   "engines": {

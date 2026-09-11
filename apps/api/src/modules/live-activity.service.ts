@@ -1,5 +1,5 @@
 /**
- * Live Activity « Métier » : les trois fils sur l'écran verrouillé et dans
+ * Live Activity « Métier » : les fils du jour sur l'écran verrouillé et dans
  * l'île dynamique, avec le compte à rebours du fil le plus proche de se dénouer.
  *
  * L'état poussé est délibérément minuscule — des compteurs et des dates. Aucun

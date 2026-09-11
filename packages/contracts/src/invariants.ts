@@ -8,19 +8,28 @@
  */
 
 /**
- * INVARIANT CENTRAL — « 3 profils en cache uniquement ».
+ * INVARIANT CENTRAL — le métier porte un nombre fixe de fils, en cache seul.
  *
- * Un utilisateur ne détient jamais plus de trois fils actifs, et le contenu de
- * ces fils (photos, fragments, motifs) n'existe QUE dans Redis, avec un TTL.
- * Aucune table de la base relationnelle ne contient de copie d'un profil
- * proposé : la base ne garde qu'un registre minimal (identifiants + horodatage
- * + issue) permettant de ne pas re-proposer deux fois la même personne.
+ * Un utilisateur ne détient jamais plus de `MAX_ACTIVE_THREADS` fils actifs, et
+ * le contenu de ces fils (photos, fragments, motifs) n'existe QUE dans Redis,
+ * avec un TTL. Aucune table de la base relationnelle ne contient de copie d'un
+ * profil proposé : la base ne garde qu'un registre minimal (identifiants +
+ * horodatage + issue) permettant de ne pas re-proposer deux fois la même
+ * personne.
  *
  * Aucun palier d'abonnement ne relève ce plafond. Les offres payantes agissent
  * sur la VITESSE de remplacement d'un fil dénoué, jamais sur le nombre de fils
  * détenus simultanément.
+ *
+ * Le plafond est appliqué de façon atomique côté serveur (script Lua, voir
+ * `apps/api/src/lib/cache.ts`) et réappliqué à la réception côté client. Le
+ * changer ici le change partout : le site, l'application et la documentation
+ * lisent cette constante plutôt que d'écrire le nombre en dur.
  */
-export const MAX_ACTIVE_THREADS = 3 as const;
+export const MAX_ACTIVE_THREADS = 12 as const;
+
+/** Type du plafond, pour que le catalogue d'offres ne puisse pas en diverger. */
+export type MaxActiveThreads = typeof MAX_ACTIVE_THREADS;
 
 /** Durée de vie d'un fil non engagé, en secondes (24 h). */
 export const THREAD_TTL_SECONDS = 24 * 60 * 60;

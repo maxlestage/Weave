@@ -8,7 +8,7 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
     case notFound
     case validation(String)
     case rateLimited(String)
-    /// Le métier porte déjà trois fils.
+    /// Le métier a déjà atteint son plafond de fils.
     case loomFull
     /// Le fil n'existe plus : il s'est dénoué.
     case threadGone
@@ -24,7 +24,7 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
         case .notFound: "Introuvable."
         case .validation(let message): message
         case .rateLimited(let message): message
-        case .loomFull: "Votre métier porte déjà trois fils."
+        case .loomFull: "Votre métier est complet. Dénouez un fil pour faire de la place."
         case .threadGone: "Ce fil s'est dénoué."
         case .entitlementRequired: "Cette action demande un crédit."
         case .server(_, let message): message

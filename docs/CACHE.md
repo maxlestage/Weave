@@ -1,15 +1,15 @@
-# « Trois profils en cache uniquement »
+# « Les profils du jour, en cache uniquement »
 
 C'est l'exigence structurante de Weave. Ce document explique comment elle est
 tenue, et où sont les limites.
 
 ## Ce que la règle veut dire, précisément
 
-1. Un utilisateur détient **au plus trois fils actifs**, à tout instant.
+1. Un utilisateur détient **au plus douze fils actifs** (`MAX_ACTIVE_THREADS`), à tout instant.
 2. Le **contenu** de ces fils — prénom, âge, ville, motif, fragments, photo —
    n'existe que dans Redis, avec une durée de vie.
 3. La base relationnelle ne contient **aucune copie** de ce contenu.
-4. Aucun palier d'abonnement ne relève le plafond de trois.
+4. Aucun palier d'abonnement ne relève ce plafond.
 
 ## Les clés
 
@@ -47,7 +47,7 @@ return redis.call('ZCARD', KEYS[1])
 ```
 
 Un test d'intégration lance six lectures concurrentes du métier sur un compte
-vide et vérifie que `ZCARD` ne dépasse jamais trois.
+vide et vérifie que `ZCARD` ne dépasse jamais le plafond.
 
 ## Ce qui est écrit en base, et pourquoi
 
@@ -90,6 +90,23 @@ répondu. À ce moment seulement, une ligne `woven_threads` et les messages sont
 registre.
 
 C'est la frontière du produit : ce qui est resté sans réponse ne s'archive pas.
+
+## Dimensionner le cache
+
+Le plafond de fils se paie directement en mémoire Redis. Mesure relevée sur le
+jeu de données de développement, cartes réelles en cache :
+
+| | |
+| --- | --- |
+| Taille d'une carte de fil | ~1,4 Ko |
+| Un utilisateur au métier complet (12 fils) | ~16 Ko |
+| Plan Heroku « mini » (25 Mo) | ~1 500 utilisateurs au métier complet |
+
+Ce sont des utilisateurs **simultanément actifs**, pas des inscrits : une carte
+expire au bout de 24 h. Mais le seuil arrive vite, et il arrive quatre fois
+plus vite qu'avec un plafond de trois fils. Surveillez `used_memory` dès les
+premières centaines d'utilisateurs, et prévoyez de quitter le plan « mini »
+bien avant de l'atteindre — une éviction fait disparaître des fils en cours.
 
 ## Points de vigilance en exploitation
 
