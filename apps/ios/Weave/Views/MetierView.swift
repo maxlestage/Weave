@@ -27,10 +27,13 @@ struct MetierView: View {
                             .accessibilityHint("Ouvrir le fil de \(fil.displayName)")
                     }
 
-                    // `Array(0..<n)` plutôt qu'une plage : SwiftUI n'accepte une
-                    // plage littérale que si elle est constante.
-                    ForEach(Array(0..<max(0, modele.loom.loom.freeSlots)), id: \.self) { _ in
-                        PlaceLibre(prochainRegarnissage: modele.loom.loom.nextRefillAt)
+                    // Une carte par place libre ne tient plus à douze : on en
+                    // affiche une seule, qui porte le compte.
+                    if modele.loom.loom.freeSlots > 0 {
+                        PlacesLibres(
+                            nombre: modele.loom.loom.freeSlots,
+                            prochainRegarnissage: modele.loom.loom.nextRefillAt
+                        )
                     }
 
                     if modele.loom.isEmpty, modele.loom.phase == .ready {
@@ -221,7 +224,8 @@ private struct Decompte: View {
     }
 }
 
-private struct PlaceLibre: View {
+private struct PlacesLibres: View {
+    let nombre: Int
     let prochainRegarnissage: Date?
 
     var body: some View {
@@ -229,11 +233,11 @@ private struct PlaceLibre: View {
             Image(systemName: "circle.dashed")
                 .font(.title2)
                 .foregroundStyle(.tertiary)
-            Text("Place libre")
+            Text(nombre == 1 ? "1 place libre" : "\(nombre) places libres")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
             if let prochainRegarnissage {
-                Text("garnie \(prochainRegarnissage, style: .relative)")
+                Text("prochaine garnie \(prochainRegarnissage, style: .relative)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -245,6 +249,7 @@ private struct PlaceLibre: View {
                 .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                 .foregroundStyle(.quaternary)
         )
+        .accessibilityElement(children: .combine)
     }
 }
 

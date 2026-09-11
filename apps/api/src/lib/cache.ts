@@ -1,8 +1,8 @@
 /**
- * Le métier : les trois fils d'un utilisateur, en cache et rien qu'en cache.
+ * Le métier : les fils d'un utilisateur, en cache et rien qu'en cache.
  *
  * C'est le module le plus important du service. Il matérialise l'invariant
- * produit de Weave : un utilisateur détient au plus TROIS fils actifs, et le
+ * produit de Weave : un utilisateur détient au plus MAX_ACTIVE_THREADS fils actifs, et le
  * contenu de ces fils (prénom, motif, fragments, photo) n'existe QUE dans
  * Redis, avec une durée de vie. Rien de tout cela n'est écrit dans la base
  * relationnelle — celle-ci ne conserve qu'un registre d'identifiants

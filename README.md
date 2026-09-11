@@ -1,16 +1,16 @@
 # Weave
 
-> Trois fils par jour. Rien de plus.
+> Douze fils par jour. Pas un de plus.
 
 Weave est une application de rencontre construite sur une contrainte : **au plus
-trois profils à la fois, pour tout le monde**, en cache uniquement, pendant
+douze profils à la fois, pour tout le monde**, en cache uniquement, pendant
 vingt-quatre heures. On n'engage pas un fil par un geste, on y répond par écrit.
 
 Ce dépôt contient l'API, l'application iOS et watchOS, et le site de présentation.
 
 ## Ce qu'il faut savoir en trois points
 
-1. **Le plafond de trois est un invariant, pas un réglage.** Il est appliqué de
+1. **Le plafond de douze est un invariant, pas un réglage.** Il est appliqué de
    façon atomique côté serveur par un script Lua dans Redis, et réappliqué à la
    réception côté client. Aucun palier d'abonnement ne le relève.
 2. **Les profils proposés n'existent qu'en cache.** La base ne contient aucune
@@ -72,7 +72,7 @@ cd apps/ios/WeaveKit && swift test
 
 Les tests d'intégration de l'API passent par les vraies routes HTTP, le vrai
 cache Redis et la vraie base de développement. Ils vérifient notamment que le
-plafond de trois fils tient sous appels concurrents, et qu'aucun contenu de
+plafond de douze fils tient sous appels concurrents, et qu'aucun contenu de
 profil proposé ne se retrouve en base.
 
 ## Structure
@@ -96,7 +96,7 @@ weave/
 | --- | --- |
 | [PRODUIT.md](docs/PRODUIT.md) | Le concept, le vocabulaire, les cinq règles |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Les choix techniques et leurs raisons |
-| [CACHE.md](docs/CACHE.md) | « Trois profils en cache uniquement », en détail |
+| [CACHE.md](docs/CACHE.md) | « Les profils du jour, en cache uniquement », en détail |
 | [MONETISATION.md](docs/MONETISATION.md) | Quatre abonnements, et tout à l'unité |
 | [ORIGINALITE.md](docs/ORIGINALITE.md) | Ce qui éloigne Weave des mécaniques existantes |
 | [CONFORMITE.md](docs/CONFORMITE.md) | RGPD, DSA, sécurité des personnes |

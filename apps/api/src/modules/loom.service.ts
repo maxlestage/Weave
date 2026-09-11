@@ -8,7 +8,7 @@
  *  • il n'écrit jamais le contenu d'un profil proposé dans la base.
  *
  * Ce qu'il fait : à l'heure de tissage choisie par la personne, il compose au
- * plus trois fils, les dépose en cache avec une durée de vie, et n'enregistre
+ * plus MAX_ACTIVE_THREADS fils, les dépose en cache avec une durée de vie, et n'enregistre
  * en base qu'une ligne de registre par proposition.
  */
 import {
@@ -98,7 +98,7 @@ function scoreCandidate(
 
 /**
  * Construit le vivier de candidats d'une personne. Le résultat est mis en cache
- * une demi-heure : recomposer trois fils ne doit pas coûter une requête lourde
+ * une demi-heure : recomposer un métier entier ne doit pas coûter une requête lourde
  * à chaque ouverture de l'application.
  */
 async function buildCandidatePool(accountId: string): Promise<Candidate[]> {
