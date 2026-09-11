@@ -5,7 +5,8 @@
  * peut pas acheter de visibilité — en passant par les vraies routes HTTP, le
  * vrai cache Redis et la vraie base SQLite de développement.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { after, before, describe, test } from "node:test";
+import { expect } from "./expect.ts";
 import {
   MAX_OPEN_PLANS,
   MAX_RENFORTS_PER_DAY,
@@ -18,8 +19,8 @@ import {
 import { app } from "../src/index.ts";
 import { keys } from "../src/lib/cache.ts";
 import { emailHash } from "../src/lib/crypto.ts";
-import { prisma } from "../src/lib/prisma.ts";
-import { redis } from "../src/lib/redis.ts";
+import { disconnectPrisma, prisma } from "../src/lib/prisma.ts";
+import { disconnectRedis, redis } from "../src/lib/redis.ts";
 import { localDay } from "../src/lib/time.ts";
 
 const BASE = "http://weave.test";
@@ -118,9 +119,9 @@ const MESSAGE = "Je viens de m'installer dans le quartier et ce plan me tente be
 let hote: Session;
 let invite: Session;
 
-beforeAll(async () => {
+before(async () => {
   if ((await prisma.account.count()) === 0) {
-    throw new Error("Lancez `bun run db:seed` avant les tests d'intégration.");
+    throw new Error("Lancez `npm run db:seed` avant les tests d'intégration.");
   }
   hote = await login("ines1");
   invite = await login("theo11");
@@ -128,9 +129,13 @@ beforeAll(async () => {
   await reset(invite);
 });
 
-afterAll(async () => {
+after(async () => {
   await reset(hote);
   await reset(invite);
+  // Sans cela, le lanceur de tests de Node attend indéfiniment : une connexion
+  // Redis ou PostgreSQL ouverte est une tâche en cours à ses yeux.
+  await disconnectRedis();
+  await disconnectPrisma();
 });
 
 /**

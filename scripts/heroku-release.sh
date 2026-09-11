@@ -17,21 +17,9 @@ fi
 echo "  • application des migrations"
 cd apps/api
 
-# Le binaire local est préféré à `bunx`, qui peut tenter d'aller chercher le
-# paquet sur le réseau — au moment précis où l'on veut le moins en dépendre.
-#
-# Il est lancé PAR BUN, jamais directement : le script d'entrée de Prisma porte
-# un en-tête `#!/usr/bin/env node`, que le noyau résout en cherchant un binaire
-# `node`. Or il n'y en a pas dans le slug, et c'est voulu — Bun remplace
-# Node.js de bout en bout. Bun, lui, sait exécuter un tel fichier.
-if [ -x ./node_modules/.bin/prisma ]; then
-  prisma_bin="bun ./node_modules/.bin/prisma"
-elif [ -x ../../node_modules/.bin/prisma ]; then
-  prisma_bin="bun ../../node_modules/.bin/prisma"
-else
-  prisma_bin="bunx prisma"
-fi
-
-WEAVE_DB=postgres $prisma_bin migrate deploy
+# Le CLI Prisma est une dépendance de PRODUCTION : la phase de publication
+# s'exécute après l'élagage des dépendances de développement, et il aurait
+# disparu au moment précis où l'on en a besoin.
+WEAVE_DB=postgres npx --no-install prisma migrate deploy
 
 echo "  • terminé"

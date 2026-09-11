@@ -76,38 +76,18 @@ publier.
 ### Variante : déployer depuis le tableau de bord Heroku
 
 Si vous préférez le tableau de bord et ses déploiements automatiques depuis
-GitHub, c'est possible — mais pas avec le buildpack Node.js, qui appelle `npm`
-et bute aussitôt :
+GitHub, il n'y a **rien à configurer**. Weave tourne sous Node.js, pour lequel
+Heroku fournit un buildpack officiel : il est détecté à partir de
+`package.json`, installe les dépendances, exécute `heroku-postbuild` — schéma
+SQLite, clients Prisma, site vitrine — puis élague les dépendances de
+développement.
 
-```
------> Using buildpack: heroku/nodejs
-       npm error Unsupported URL Type "workspace:": workspace:*
-```
+Le `Procfile` fait le reste : `release` applique les migrations avant que la
+nouvelle version ne reçoive du trafic, `web` démarre l'API.
 
-Heroku ne fournit aucun buildpack Bun. Weave embarque donc **le sien**, dans
-`bin/detect`, `bin/compile` et `bin/release`, exécuté par le buildpack officiel
-`heroku-community/inline` — dont le rôle est précisément de lancer un buildpack
-contenu dans le dépôt de l'application. Aucun code tiers n'intervient.
-
-**Une seule action :** tableau de bord → **Settings → Buildpacks** → **Add
-buildpack** → `heroku-community/inline`.
-
-Retirer `heroku/nodejs` est préférable — il ne sert à rien ici — mais le laisser
-ne casse plus rien. Il installera des paquets pour rien, puis le buildpack
-inline fera le vrai travail :
-
-- les dépendances internes sont déclarées avec une syntaxe que npm comprend, et
-  `heroku-postbuild` neutralise son étape de construction ;
-- le Node.js qu'il dépose dans le slug — **208 Mo** — est retiré par
-  `bin/compile` avant la mesure finale. Sans cela, le slug passait de 422 à
-  622 Mo et Heroku rejetait la publication. Rien dans Weave n'utilise Node :
-  le serveur, les migrations et la construction passent tous par Bun.
-
-Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
-
-Le buildpack installe Bun à la version indiquée par `packageManager`, construit
-les clients Prisma et le site, puis élague les dépendances de développement. Le
-`Procfile` applique les migrations en phase de publication, puis démarre l'API.
+Un point mérite d'être connu : le CLI Prisma est une dépendance de
+**production**. La phase de publication s'exécute après l'élagage, et il aurait
+disparu au moment précis où l'on en a besoin.
 
 #### Poser la configuration
 
@@ -157,15 +137,8 @@ variable.
 #### Ce que cette variante coûte
 
 Le slug Heroku est plafonné à **500 Mo**, et cette voie en consomme **environ
-422 Mo** — dont 95 Mo pour Bun lui-même et 323 Mo de dépendances après élagage.
-La marge est donc d'environ 80 Mo. `bin/compile` mesure le slug à chaque
-construction, prévient au-delà de 450 Mo et **interrompt la construction
-au-delà de 500 Mo**, plutôt que de laisser Heroku la rejeter avec un message
-obscur.
-
-L'élagage a été établi par essais, pas par supposition : `@prisma/studio-core`
-et `effect` semblent superflus mais sont requis par le CLI Prisma, même pour
-`migrate deploy`. Les retirer casse la phase de publication.
+391 Mo**, presque entièrement du fait de Prisma — ses moteurs de requête et son
+CLI. La marge est d'environ 110 Mo, sans aucun élagage manuel.
 
 La voie conteneur (section A2) n'a pas cette contrainte. Si les dépendances
 grossissent, c'est vers elle qu'il faudra revenir.
@@ -191,35 +164,20 @@ joints par le réseau privé de l'hébergeur — **ce ne le serait pas** pour
 atteindre une base à travers l'internet public. Si vous changez d'hébergeur,
 repassez ces deux valeurs à vide.
 
-### Pourquoi la pile de construction est décisive
+### Deux voies, et pourquoi celle par défaut suffit
 
-Weave tourne sous **Bun**, pour lequel il n'existe aucun buildpack Heroku. Le
-déploiement passe donc par le `Dockerfile` décrit dans `heroku.yml` — et Heroku
-ne lit `heroku.yml` **que si l'application est sur la pile `container`**.
+Weave tourne sous **Node.js**, pour lequel Heroku fournit un buildpack officiel.
+La voie ordinaire est donc la plus simple : pile `heroku-24`, buildpack
+`heroku/nodejs` détecté à partir de `package.json`, rien à configurer.
 
-Une application créée depuis le tableau de bord est sur la pile `heroku-24` par
-défaut. Dans ce cas, Heroku ignore le `Dockerfile`, croit à une application
-Node.js, et le build échoue ainsi :
+La voie conteneur — `Dockerfile` décrit par `heroku.yml`, sur la pile
+`container` — reste fournie pour qui veut maîtriser exactement l'image
+exécutée. Elle demande alors une application sur la pile `container` : Heroku ne
+lit `heroku.yml` que là.
 
-```
------> Node.js app detected                  (buildpack déduit)
------> Using buildpack: heroku/nodejs        (buildpack imposé)
-       npm error code EUNSUPPORTEDPROTOCOL
-       npm error Unsupported URL Type "workspace:": workspace:*
-```
-
-Les deux premières lignes se valent : dans un cas Heroku a deviné un buildpack,
-dans l'autre il en a un de configuré. Le résultat est le même, et la cause
-aussi — l'application n'est pas sur la pile `container`.
-
-Ce message ne parle pas de la vraie cause. `workspace:*` désigne les paquets
-internes du dépôt ; c'est une syntaxe que Bun comprend et que npm ne
-comprendra jamais. Le problème n'est pas cette ligne : c'est que npm n'aurait
-jamais dû être appelé.
-
-**Correction** : lancez le workflow **« Heroku — mettre en ligne »** (étape A2)
-avec le nom de votre application. Il bascule la pile en `container`, retire les
-buildpacks, affiche un avant/après, et déploie dans la foulée.
+Le workflow **« Heroku — mettre en ligne »** pose la pile `heroku-24` et le
+buildpack `heroku/nodejs`, y compris sur une application passée en pile
+conteneur lors d'une tentative précédente.
 
 ## B. L'application iOS, sans posséder de Mac
 
