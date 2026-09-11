@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Trousseau partagé : la session est lisible par l'app, l'extension et la montre. -->
+  <key>keychain-access-groups</key>
+  <array>
+    <string>$(AppIdentifierPrefix)com.weave.app.shared</string>
+  </array>
+  <!-- Notifications distantes : Live Activity démarrée à distance à l'heure de tissage. -->
+  <key>aps-environment</key>
+  <string>development</string>
+  <!-- Groupe d'application : résumé de la montre pour la complication. -->
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>group.com.weave.app</string>
+  </array>
+</dict>
+</plist>

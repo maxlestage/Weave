@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>Weave</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key>
+  <string>$(CURRENT_PROJECT_VERSION)</string>
+
+  <!-- Adresse de l'API, injectée par la configuration de build. -->
+  <key>WEAVE_API_URL</key>
+  <string>$(WEAVE_API_URL)</string>
+  <key>WEAVE_KEYCHAIN_GROUP</key>
+  <string>$(AppIdentifierPrefix)com.weave.app.shared</string>
+
+  <!-- Live Activities : requis pour ActivityKit. -->
+  <key>NSSupportsLiveActivities</key>
+  <true/>
+  <!-- Autorise les mises à jour fréquentes du décompte d'un fil. -->
+  <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+  <true/>
+
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+  </dict>
+
+  <key>UILaunchScreen</key>
+  <dict/>
+
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
+
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.weave.app</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>weave</string></array>
+    </dict>
+  </array>
+
+  <!--
+    Weave ne demande la localisation qu'au moment de composer les fils, et
+    n'en conserve qu'une valeur arrondie au kilomètre.
+  -->
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Weave utilise votre position pour ne vous proposer que des personnes proches. Elle est arrondie au kilomètre avant d'être enregistrée, et jamais partagée.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Pour enregistrer un fragment vocal de huit secondes, si vous le souhaitez.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Pour choisir la photo de votre profil.</string>
+
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+</dict>
+</plist>

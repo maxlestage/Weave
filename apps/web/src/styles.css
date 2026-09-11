@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/*
+ * Weave — jeu de couleurs.
+ *
+ * Palette textile : lin, encre, cuivre. Le site est pensé pour être lu sur un
+ * téléphone tenu à une main, en extérieur : contrastes élevés, corps de texte
+ * généreux, pas de gris clair sur fond clair.
+ */
+@theme {
+  --color-lin: #faf7f2;
+  --color-lin-ombre: #f0eae0;
+  --color-encre: #1b1714;
+  --color-encre-douce: #2a2420;
+  --color-cuivre: #b4652a;
+  --color-cuivre-clair: #e6a15c;
+  --color-fil: #6b5f54;
+
+  --font-titre: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-corps:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  color-scheme: light dark;
+  --fond: var(--color-lin);
+  --fond-alterne: var(--color-lin-ombre);
+  --texte: var(--color-encre);
+  --texte-doux: var(--color-fil);
+  --accent: var(--color-cuivre);
+  --bordure: color-mix(in oklab, var(--color-encre) 12%, transparent);
+  --carte: #fffdfa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: var(--color-encre);
+    --fond-alterne: var(--color-encre-douce);
+    --texte: #f4efe7;
+    --texte-doux: #b6aa9c;
+    --accent: var(--color-cuivre-clair);
+    --bordure: color-mix(in oklab, #f4efe7 14%, transparent);
+    --carte: #221d19;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--font-corps);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Encoches et barres système des iPhone. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+/* Cible de toucher confortable partout, y compris sur les liens en ligne. */
+a,
+button {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/*
+ * Motif de trame, dessiné en CSS : deux jeux de lignes croisées, très discrets.
+ * Aucune image à télécharger.
+ */
+.trame {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--texte) 7%, transparent) 0 1px,
+      transparent 1px 14px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in oklab, var(--texte) 4%, transparent) 0 1px,
+      transparent 1px 14px
+    );
+}
