@@ -127,6 +127,31 @@ apres="$(du -sm node_modules | cut -f1)"
 detail "node_modules : ${avant} Mo → ${apres} Mo"
 
 # ------------------------------------------------------------------
+# Node.js déposé par un autre buildpack
+#
+# Si `heroku/nodejs` est configuré avant celui-ci, il installe un Node.js
+# complet dans `.heroku/node` — 208 Mo — et le laisse dans le slug. Weave ne
+# s'en sert jamais : le serveur, les migrations et la construction passent tous
+# par Bun. C'est donc 208 Mo de plafond dépensés pour un exécutable mort, et
+# c'est ce qui a fait passer le slug de 422 à 622 Mo.
+#
+# On le retire plutôt que de demander à qui déploie de configurer les
+# buildpacks dans le bon ordre : une consigne qu'on peut manquer n'est pas une
+# garantie, et celle-ci a déjà été manquée.
+#
+# Condition pour que ce soit sans danger : plus rien ne doit invoquer un
+# `#!/usr/bin/env node`. `scripts/heroku-release.sh` lance donc le CLI Prisma
+# par `bun`, qui sait exécuter ces fichiers sans Node.
+if [ -d "$BUILD_DIR/.heroku/node" ]; then
+  titre "Node.js inutilisé"
+  poids="$(du -sm "$BUILD_DIR/.heroku/node" | cut -f1)"
+  rm -rf "$BUILD_DIR/.heroku/node"
+  # Ce script ajoute au PATH un dossier qui n'existe plus.
+  rm -f "$BUILD_DIR/.profile.d/nodejs.sh"
+  detail "déposé par un autre buildpack, jamais utilisé : ${poids} Mo rendus"
+fi
+
+# ------------------------------------------------------------------
 # Environnement d'exécution
 # ------------------------------------------------------------------
 titre "Environnement d'exécution"
