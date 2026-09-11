@@ -1,11 +1,11 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Passe-plat vers la CLI Prisma qui choisit automatiquement le bon schéma.
  *
  *   WEAVE_DB=sqlite   → apps/api/prisma/schema.sqlite.prisma  (développement)
  *   WEAVE_DB=postgres → apps/api/prisma/schema.prisma         (défaut, production)
  *
- * Usage : bun run scripts/prisma.ts <sous-commande prisma...>
+ * Usage : node scripts/prisma.ts <sous-commande prisma...>
  */
 
 import { spawn } from "node:child_process";
@@ -15,7 +15,7 @@ const schema = driver === "sqlite" ? "prisma/schema.sqlite.prisma" : "prisma/sch
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
-  console.error("Usage : bun run scripts/prisma.ts <sous-commande prisma...>");
+  console.error("Usage : node scripts/prisma.ts <sous-commande prisma...>");
   process.exit(1);
 }
 

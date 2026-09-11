@@ -12,7 +12,7 @@
                   │  HTTPS + JWT          ▲
                   ▼                       │ APNs (liveactivity)
         ┌───────────────────────────────────────────┐
-        │        API Weave — Bun + Elysia           │
+        │      API Weave — Node.js + Elysia          │
         │  composition du fil · droits · APNs       │
         └───────┬───────────────────────┬───────────┘
                 │                       │
@@ -30,35 +30,37 @@
 
 ## Choix techniques, et pourquoi
 
-### Bun partout, pas de Node.js
+### Node.js, sans étape de compilation
 
-Bun 1.3 sert de gestionnaire de paquets, d'exécuteur, de lanceur de tests et de
-bundler. Il apporte aussi, en natif, deux briques qui auraient sinon exigé des
-dépendances : **un client Redis** (`Bun.RedisClient`) et **un moteur SQLite**
-(`bun:sqlite`). Moins de dépendances, c'est moins de surface d'attaque et moins
-de mises à jour à suivre.
+Node 22.18 et suivants retirent les types TypeScript à la volée. Le service est
+donc exécuté **depuis ses sources** : `node apps/api/src/index.ts`, en
+développement comme en production. Pas de bundler, pas de dossier `dist`, pas de
+source map à recoller quand une trace d'erreur remonte — la ligne indiquée est
+la ligne écrite.
 
-Une conséquence a demandé du travail : l'adaptateur Prisma officiel pour SQLite
-repose sur `better-sqlite3`, un module natif Node.js qui ne se charge pas sous
-Bun (`ERR_DLOPEN_FAILED`). Weave embarque donc son propre adaptateur,
-[`@weave/prisma-bun-sqlite`](../packages/prisma-bun-sqlite), bâti sur
-`bun:sqlite`. Il implémente l'interface publique `SqlMigrationAwareDriverAdapterFactory`
-de Prisma et reproduit sa sémantique de conversion (types de colonnes, dates ISO
-8601, entiers 64 bits, transactions sérialisées). Vingt tests le couvrent.
+C'est aussi ce qui rend le déploiement ordinaire : Heroku fournit un buildpack
+officiel pour Node.js, détecté à partir de `package.json`. Il n'y a ni buildpack
+maison, ni image à construire, ni contournement.
 
-En production, rien de tout cela n'intervient : PostgreSQL via `@prisma/adapter-pg`.
+Le prix est une poignée de dépendances que Bun fournissait en natif : `ioredis`
+pour le cache, `better-sqlite3` pour le SQLite de développement. Toutes deux
+sont des bibliothèques établies, et l'adaptateur Prisma correspondant est
+officiel — là où la voie Bun imposait d'en écrire un.
 
 ### Elysia
 
 Le typage de bout en bout est la raison principale : les schémas de validation
 sont aussi les types TypeScript, et la documentation OpenAPI en est dérivée
-plutôt que maintenue à côté. Sur Bun, c'est aussi le routeur le plus rapide de
-l'écosystème.
+plutôt que maintenue à côté.
+
+Elysia est écrit pour l'API web standard (`Request`/`Response`) ; l'adaptateur
+`@elysiajs/node` fait le pont avec le serveur HTTP de Node. C'est la seule ligne
+du service qui connaisse la plateforme d'exécution.
 
 ### Un schéma Prisma portable, deux moteurs
 
 Le schéma est écrit sans `enum`, sans liste scalaire, sans type natif propre à
-un moteur. Seul le bloc `datasource` diffère. `bun run db:sqlite` dérive le
+un moteur. Seul le bloc `datasource` diffère. `npm run db:sqlite` dérive le
 schéma SQLite du schéma PostgreSQL et **refuse la dérivation** si une
 construction non portable a été introduite entre-temps.
 
@@ -90,8 +92,7 @@ weave/
 │   ├── web/     React 19 · Vite 8 · Tailwind 4 — vitrine
 │   └── ios/     Swift 6.2 · SwiftUI · ActivityKit · watchOS
 ├── packages/
-│   ├── contracts/           invariants, catalogue, types partagés
-│   └── prisma-bun-sqlite/   adaptateur Prisma pour bun:sqlite
+│   └── contracts/           invariants, catalogue, types partagés
 ├── scripts/                 dérivation du schéma, passe-plat Prisma
 └── docs/
 ```
@@ -143,7 +144,9 @@ un compteur faux.
 ## Sécurité
 
 - **Sans mot de passe** : code à six chiffres, dix minutes, cinq tentatives,
-  haché en Argon2id (intégré à Bun).
+  haché par scrypt (`node:crypto`). Argon2id demanderait un module natif à
+  compiler ; pour un code à six chiffres qui vit dix minutes et n'autorise que
+  cinq tentatives, la différence ne protège rien de plus.
 - **Jetons de rafraîchissement rotatifs**, stockés hachés en SHA-256. Une
   réutilisation est rejetée.
 - **Médias sous URL signée**, à durée de vie courte.
