@@ -1,17 +1,21 @@
 import { MAX_ACTIVE_THREADS } from "@weave/contracts";
-import { Carte, Section } from "../composants.tsx";
+import { Carte, filVar, Section } from "../composants.tsx";
 
 export function Appareils() {
   return (
     <Section
       id="montre"
+      fil={5}
       titre="Sur l'iPhone, et au poignet"
       chapeau="L'application est écrite en Swift, nativement. La Live Activity et l'application Apple Watch ne sont pas des extras : elles servent précisément à ne pas ouvrir l'application."
       alterne
     >
       <div className="grid gap-4 lg:grid-cols-2">
-        <Carte>
-          <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-titre)" }}>
+        <Carte fil={5}>
+          <h3
+            className="text-xl font-bold"
+            style={{ fontFamily: "var(--font-titre)", color: filVar(5) }}
+          >
             Live Activity
           </h3>
           <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
@@ -23,8 +27,11 @@ export function Appareils() {
           <ApercuActivite />
         </Carte>
 
-        <Carte>
-          <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-titre)" }}>
+        <Carte fil={4}>
+          <h3
+            className="text-xl font-bold"
+            style={{ fontFamily: "var(--font-titre)", color: filVar(4) }}
+          >
             Apple Watch
           </h3>
           <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>

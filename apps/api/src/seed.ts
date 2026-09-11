@@ -11,18 +11,28 @@ import { log } from "./lib/log.ts";
 import { prisma } from "./lib/prisma.ts";
 
 const PROMPTS: { text: string; theme: string }[] = [
+  // Écrites pour des jeunes adultes : ce qu'on vit entre 18 et 30 ans — les
+  // études, le premier travail, le premier appartement, les amitiés qui se
+  // déplacent. Elles demandent une vraie réponse, jamais un mot-clé.
   { text: "Qu'est-ce qui vous a fait changer d'avis récemment ?", theme: "esprit" },
   { text: "Décrivez un dimanche réussi, heure par heure.", theme: "rythme" },
-  { text: "Quelle conversation aimeriez-vous avoir plus souvent ?", theme: "lien" },
-  { text: "Qu'avez-vous appris à faire de vos mains ?", theme: "faire" },
-  { text: "Un endroit où vous retournez toujours, et pourquoi.", theme: "lieux" },
-  { text: "Ce que vous défendez même quand ça vous coûte.", theme: "valeurs" },
-  { text: "La dernière fois que vous avez été surpris par quelqu'un.", theme: "lien" },
+  { text: "Ce que vous faites quand un plan tombe à l'eau à 21 h.", theme: "rythme" },
+  { text: "La dernière fois que vous vous êtes senti·e vraiment à votre place.", theme: "lien" },
+  { text: "Un morceau que vous mettez toujours en premier dans une voiture.", theme: "goûts" },
+  { text: "Ce que vous avez appris à faire cette année, même mal.", theme: "faire" },
+  { text: "Une amitié qui a tenu malgré la distance, et pourquoi.", theme: "lien" },
+  { text: "Ce que vous feriez d'un samedi entier sans téléphone.", theme: "rythme" },
+  { text: "Le conseil qu'on vous répète et que vous n'écoutez pas.", theme: "esprit" },
   { text: "Ce qui vous occupe quand personne ne regarde.", theme: "rythme" },
-  { text: "Un texte, un film ou un morceau que vous relisez, revoyez, réécoutez.", theme: "goûts" },
-  { text: "Ce que vous cherchez, dit sans détour.", theme: "intentions" },
-  { text: "Une habitude que vous aimeriez perdre, et une que vous protégez.", theme: "rythme" },
-  { text: "Racontez une chose que vous avez ratée et refaite.", theme: "faire" },
+  { text: "Un endroit de votre ville que vous montreriez en premier.", theme: "lieux" },
+  { text: "Ce que vous défendez même quand ça vous coûte.", theme: "valeurs" },
+  { text: "Ce que vous cherchez ici, dit sans détour.", theme: "intentions" },
+  { text: "Une chose que vous avez ratée et refaite.", theme: "faire" },
+  { text: "Ce qui vous fait rire alors que ça ne devrait pas.", theme: "goûts" },
+  {
+    text: "Où vous imaginez vivre dans cinq ans — ou pourquoi vous n'en savez rien.",
+    theme: "intentions",
+  },
 ];
 
 const CITIES: Record<string, { lat: number; lon: number }> = {
@@ -35,36 +45,32 @@ const CITIES: Record<string, { lat: number; lon: number }> = {
 };
 
 const MOTIF_VOCABULARY = [
-  "randonnée",
-  "céramique",
-  "jazz",
-  "cuisine",
-  "libraire",
-  "vélo",
-  "cinéma",
   "escalade",
-  "jardinage",
+  "vinyles",
+  "ciné-club",
+  "cuisine",
+  "colocation",
+  "vélo",
+  "impro",
+  "concerts",
+  "jeux de société",
+  "rando",
   "photo",
   "théâtre",
   "natation",
-  "menuiserie",
-  "botanique",
+  "skate",
   "podcasts",
-  "gravure",
+  "sérigraphie",
   "course",
-  "poterie",
-  "voile",
-  "échecs",
+  "céramique",
+  "bénévolat",
+  "jazz",
+  "karaoké",
+  "brocantes",
+  "bouldering",
+  "cuisine coréenne",
 ];
 
-/**
- * Population de démonstration.
- *
- * Elle doit être assez fournie pour que le moteur puisse composer un métier
- * complet : il faut au moins `MAX_ACTIVE_THREADS` candidats proposables dans
- * le rayon de recherche de chaque personne. Les profils sont donc concentrés
- * par ville, les critères du jeu de données portant sur 60 km.
- */
 const PEOPLE: {
   name: string;
   gender: string;
@@ -73,57 +79,57 @@ const PEOPLE: {
   intent: string;
 }[] = [
   // Paris — assez nombreux pour garnir un métier entier.
-  { name: "Camille", gender: "femme", city: "Paris", year: 1994, intent: "relation" },
-  { name: "Inès", gender: "femme", city: "Paris", year: 1991, intent: "ouverte" },
-  { name: "Sofia", gender: "femme", city: "Paris", year: 1993, intent: "amitié_dabord" },
-  { name: "Louise", gender: "femme", city: "Paris", year: 1995, intent: "relation" },
-  { name: "Anouk", gender: "femme", city: "Paris", year: 1990, intent: "ouverte" },
-  { name: "Salomé", gender: "femme", city: "Paris", year: 1997, intent: "relation" },
-  { name: "Nour", gender: "femme", city: "Paris", year: 1992, intent: "ouverte" },
-  { name: "Agathe", gender: "femme", city: "Paris", year: 1989, intent: "relation" },
-  { name: "Elsa", gender: "femme", city: "Paris", year: 1996, intent: "amitié_dabord" },
-  { name: "Margaux", gender: "femme", city: "Paris", year: 1993, intent: "relation" },
-  { name: "Jonas", gender: "homme", city: "Paris", year: 1992, intent: "relation" },
-  { name: "Théo", gender: "homme", city: "Paris", year: 1995, intent: "relation" },
-  { name: "Aurélien", gender: "homme", city: "Paris", year: 1990, intent: "ouverte" },
-  { name: "Noé", gender: "homme", city: "Paris", year: 1994, intent: "relation" },
-  { name: "Hugo", gender: "homme", city: "Paris", year: 1991, intent: "ouverte" },
-  { name: "Ismaël", gender: "homme", city: "Paris", year: 1988, intent: "relation" },
-  { name: "Victor", gender: "homme", city: "Paris", year: 1996, intent: "amitié_dabord" },
-  { name: "Antoine", gender: "homme", city: "Paris", year: 1993, intent: "relation" },
-  { name: "Gaspard", gender: "homme", city: "Paris", year: 1989, intent: "ouverte" },
-  { name: "Simon", gender: "homme", city: "Paris", year: 1997, intent: "relation" },
-  { name: "Alex", gender: "non_binaire", city: "Paris", year: 1994, intent: "ouverte" },
-  { name: "Charlie", gender: "non_binaire", city: "Paris", year: 1992, intent: "relation" },
-  { name: "Camille B", gender: "non_binaire", city: "Paris", year: 1995, intent: "ouverte" },
+  { name: "Camille", gender: "femme", city: "Paris", year: 1996, intent: "relation" },
+  { name: "Inès", gender: "femme", city: "Paris", year: 1997, intent: "ouverte" },
+  { name: "Sofia", gender: "femme", city: "Paris", year: 1998, intent: "amitié_dabord" },
+  { name: "Louise", gender: "femme", city: "Paris", year: 1999, intent: "relation" },
+  { name: "Anouk", gender: "femme", city: "Paris", year: 2000, intent: "ouverte" },
+  { name: "Salomé", gender: "femme", city: "Paris", year: 2001, intent: "relation" },
+  { name: "Nour", gender: "femme", city: "Paris", year: 2002, intent: "ouverte" },
+  { name: "Agathe", gender: "femme", city: "Paris", year: 2003, intent: "relation" },
+  { name: "Elsa", gender: "femme", city: "Paris", year: 2004, intent: "amitié_dabord" },
+  { name: "Margaux", gender: "femme", city: "Paris", year: 2005, intent: "relation" },
+  { name: "Jonas", gender: "homme", city: "Paris", year: 2006, intent: "relation" },
+  { name: "Théo", gender: "homme", city: "Paris", year: 1996, intent: "relation" },
+  { name: "Aurélien", gender: "homme", city: "Paris", year: 1997, intent: "ouverte" },
+  { name: "Noé", gender: "homme", city: "Paris", year: 1998, intent: "relation" },
+  { name: "Hugo", gender: "homme", city: "Paris", year: 1999, intent: "ouverte" },
+  { name: "Ismaël", gender: "homme", city: "Paris", year: 2000, intent: "relation" },
+  { name: "Victor", gender: "homme", city: "Paris", year: 2001, intent: "amitié_dabord" },
+  { name: "Antoine", gender: "homme", city: "Paris", year: 2002, intent: "relation" },
+  { name: "Gaspard", gender: "homme", city: "Paris", year: 2003, intent: "ouverte" },
+  { name: "Simon", gender: "homme", city: "Paris", year: 2004, intent: "relation" },
+  { name: "Alex", gender: "non_binaire", city: "Paris", year: 2005, intent: "ouverte" },
+  { name: "Charlie", gender: "non_binaire", city: "Paris", year: 2006, intent: "relation" },
+  { name: "Camille B", gender: "non_binaire", city: "Paris", year: 1996, intent: "ouverte" },
 
   // Lyon
-  { name: "Léa", gender: "femme", city: "Lyon", year: 1996, intent: "relation" },
-  { name: "Manon", gender: "femme", city: "Lyon", year: 1992, intent: "ouverte" },
-  { name: "Clara", gender: "femme", city: "Lyon", year: 1994, intent: "relation" },
-  { name: "Ravi", gender: "homme", city: "Lyon", year: 1989, intent: "ouverte" },
-  { name: "Paul", gender: "homme", city: "Lyon", year: 1993, intent: "relation" },
-  { name: "Youssef", gender: "homme", city: "Lyon", year: 1991, intent: "ouverte" },
-  { name: "Sacha", gender: "non_binaire", city: "Lyon", year: 1997, intent: "amitié_dabord" },
+  { name: "Léa", gender: "femme", city: "Lyon", year: 1997, intent: "relation" },
+  { name: "Manon", gender: "femme", city: "Lyon", year: 1998, intent: "ouverte" },
+  { name: "Clara", gender: "femme", city: "Lyon", year: 1999, intent: "relation" },
+  { name: "Ravi", gender: "homme", city: "Lyon", year: 2000, intent: "ouverte" },
+  { name: "Paul", gender: "homme", city: "Lyon", year: 2001, intent: "relation" },
+  { name: "Youssef", gender: "homme", city: "Lyon", year: 2002, intent: "ouverte" },
+  { name: "Sacha", gender: "non_binaire", city: "Lyon", year: 2003, intent: "amitié_dabord" },
 
   // Marseille
-  { name: "Malik", gender: "homme", city: "Marseille", year: 1993, intent: "ouverte" },
-  { name: "Lucas", gender: "homme", city: "Marseille", year: 1990, intent: "relation" },
-  { name: "Nina", gender: "femme", city: "Marseille", year: 1995, intent: "relation" },
-  { name: "Jade", gender: "femme", city: "Marseille", year: 1992, intent: "ouverte" },
+  { name: "Malik", gender: "homme", city: "Marseille", year: 2004, intent: "ouverte" },
+  { name: "Lucas", gender: "homme", city: "Marseille", year: 2005, intent: "relation" },
+  { name: "Nina", gender: "femme", city: "Marseille", year: 2006, intent: "relation" },
+  { name: "Jade", gender: "femme", city: "Marseille", year: 1996, intent: "ouverte" },
 
   // Bordeaux
-  { name: "Mathilde", gender: "femme", city: "Bordeaux", year: 1990, intent: "relation" },
-  { name: "Romain", gender: "homme", city: "Bordeaux", year: 1994, intent: "ouverte" },
-  { name: "Chloé", gender: "femme", city: "Bordeaux", year: 1996, intent: "relation" },
+  { name: "Mathilde", gender: "femme", city: "Bordeaux", year: 1997, intent: "relation" },
+  { name: "Romain", gender: "homme", city: "Bordeaux", year: 1998, intent: "ouverte" },
+  { name: "Chloé", gender: "femme", city: "Bordeaux", year: 1999, intent: "relation" },
 
   // Nantes
-  { name: "Basile", gender: "homme", city: "Nantes", year: 1988, intent: "relation" },
-  { name: "Maëlle", gender: "femme", city: "Nantes", year: 1993, intent: "ouverte" },
+  { name: "Basile", gender: "homme", city: "Nantes", year: 2000, intent: "relation" },
+  { name: "Maëlle", gender: "femme", city: "Nantes", year: 2001, intent: "ouverte" },
 
   // Lille
-  { name: "Adrien", gender: "homme", city: "Lille", year: 1991, intent: "relation" },
-  { name: "Zoé", gender: "femme", city: "Lille", year: 1995, intent: "ouverte" },
+  { name: "Adrien", gender: "homme", city: "Lille", year: 2002, intent: "relation" },
+  { name: "Zoé", gender: "femme", city: "Lille", year: 2003, intent: "ouverte" },
 ];
 
 function slug(value: string): string {
@@ -174,8 +180,8 @@ async function seedPeople(promptIds: string[]): Promise<void> {
         lastSeenAt: new Date(Date.now() - index * 60 * 60 * 1000),
         preference: {
           create: {
-            minAge: 24,
-            maxAge: 42,
+            minAge: 18,
+            maxAge: 32,
             maxDistanceKm: 60,
             seekingJson: JSON.stringify(["femme", "homme", "non_binaire"]),
             intentsJson: JSON.stringify(["relation", "ouverte", "amitié_dabord"]),
