@@ -53,7 +53,7 @@ export const rateLimited = (message = "Trop de requêtes. Réessayez dans un ins
 export const loomFull = () =>
   new AppError(
     ERROR_CODES.LOOM_FULL,
-    "Votre métier porte déjà trois fils. Dénouez-en un pour faire de la place.",
+    "Votre métier est complet. Dénouez un fil pour faire de la place.",
   );
 
 export const threadGone = () =>

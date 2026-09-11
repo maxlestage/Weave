@@ -1,4 +1,4 @@
-import { MOTIF_TAGS, WEAVING_HOURS } from "@weave/contracts";
+import { MAX_ACTIVE_THREADS, MOTIF_TAGS, WEAVING_HOURS } from "@weave/contracts";
 import { Section } from "../composants.tsx";
 
 const ETAPES = [
@@ -17,7 +17,7 @@ const ETAPES = [
     texte: `Un rendez-vous quotidien, à ${WEAVING_HOURS.slice(0, -1).join(" h, ")} h ou ${WEAVING_HOURS.at(-1)} h. C'est le seul moment où Weave vous sollicite.`,
   },
   {
-    titre: "Trois fils arrivent",
+    titre: `${MAX_ACTIVE_THREADS} fils arrivent`,
     texte:
       "Chacun se présente par sa trame : trois fragments et un motif. La photo est là, mais floue.",
   },

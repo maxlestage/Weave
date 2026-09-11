@@ -2,14 +2,14 @@ import Foundation
 import Testing
 @testable import WeaveKit
 
-// MARK: - Invariant des trois fils
+// MARK: - Invariant du plafond de fils
 
 @Suite("Le métier")
 struct LoomTests {
-    @Test("Le plafond de trois est appliqué même si l'API en renvoie plus")
+    @Test("Le plafond est appliqué même si l'API renvoie davantage de fils")
     func plafond() {
         let loom = Loom(
-            threads: (0..<7).map { fil(id: "\($0)") },
+            threads: (0..<(Loom.maxActiveThreads + 4)).map { fil(id: "\($0)") },
             nextWeavingAt: .now,
             freeSlots: 0,
             nextRefillAt: nil,

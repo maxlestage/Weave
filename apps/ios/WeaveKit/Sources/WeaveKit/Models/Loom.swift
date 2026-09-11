@@ -84,10 +84,10 @@ public struct ThreadCard: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// Le métier : au plus trois fils, et de quoi savoir quand la suite arrive.
+/// Le métier : un nombre fixe de fils, et de quoi savoir quand la suite arrive.
 public struct Loom: Codable, Hashable, Sendable {
     /// Invariant produit, identique côté serveur (`MAX_ACTIVE_THREADS`).
-    public static let maxActiveThreads = 3
+    public static let maxActiveThreads = 12
 
     public let threads: [ThreadCard]
     public let nextWeavingAt: Date
@@ -112,6 +112,9 @@ public struct Loom: Codable, Hashable, Sendable {
     ) {
         // Le plafond est une garantie du produit, pas une supposition : on le
         // fait respecter aussi à la réception, au cas où l'API dérive un jour.
+        // `maxActiveThreads` doit rester égal à `MAX_ACTIVE_THREADS` côté
+        // serveur — les tests de WeaveKit le vérifient sur des charges utiles
+        // réelles.
         self.threads = Array(threads.prefix(Self.maxActiveThreads))
         self.nextWeavingAt = nextWeavingAt
         self.freeSlots = freeSlots

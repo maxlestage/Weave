@@ -1,3 +1,4 @@
+import { MAX_ACTIVE_THREADS } from "@weave/contracts";
 import { Carte, Section } from "../composants.tsx";
 
 export function Appareils() {
@@ -51,7 +52,7 @@ function ApercuActivite() {
     <div
       className="mt-6 rounded-2xl p-4"
       role="img"
-      aria-label="Aperçu de la Live Activity : 3 fils, 1 en attente, 4 h 12 restantes"
+      aria-label={`Aperçu de la Live Activity : ${MAX_ACTIVE_THREADS} fils, 1 en attente, 4 h 12 restantes`}
       style={{ background: "var(--color-encre)", color: "#f4efe7" }}
     >
       <div className="flex items-center justify-between gap-4">
@@ -69,7 +70,7 @@ function ApercuActivite() {
             </g>
           </svg>
           <div>
-            <p className="text-sm font-semibold">3 fils sur le métier</p>
+            <p className="text-sm font-semibold">{MAX_ACTIVE_THREADS} fils sur le métier</p>
             <p className="text-xs" style={{ color: "#b6aa9c" }}>
               1 attend votre réponse
             </p>

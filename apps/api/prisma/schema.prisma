@@ -6,7 +6,7 @@
 // dérive automatiquement `schema.sqlite.prisma` à partir de ce fichier.
 //
 // RÈGLE STRUCTURANTE — Aucune table ne contient de copie d'un profil proposé.
-// Les trois fils d'un utilisateur vivent exclusivement dans Redis. La base ne
+// Les fils d'un utilisateur vivent exclusivement dans Redis. La base ne
 // conserve que `ThreadLedger` : des identifiants, un horodatage et une issue,
 // afin de ne jamais reproposer deux fois la même personne.
 

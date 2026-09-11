@@ -18,7 +18,7 @@
                 │                       │
         ┌───────▼────────┐      ┌───────▼──────────┐
         │     Redis      │      │   PostgreSQL     │
-        │  LES 3 FILS    │      │  comptes, motifs │
+        │  LES 12 FILS   │      │  comptes, motifs │
         │  (cache seul)  │      │  conversations   │
         └────────────────┘      └──────────────────┘
 

@@ -57,6 +57,14 @@ const MOTIF_VOCABULARY = [
   "échecs",
 ];
 
+/**
+ * Population de démonstration.
+ *
+ * Elle doit être assez fournie pour que le moteur puisse composer un métier
+ * complet : il faut au moins `MAX_ACTIVE_THREADS` candidats proposables dans
+ * le rayon de recherche de chaque personne. Les profils sont donc concentrés
+ * par ville, les critères du jeu de données portant sur 60 km.
+ */
 const PEOPLE: {
   name: string;
   gender: string;
@@ -64,21 +72,60 @@ const PEOPLE: {
   year: number;
   intent: string;
 }[] = [
+  // Paris — assez nombreux pour garnir un métier entier.
   { name: "Camille", gender: "femme", city: "Paris", year: 1994, intent: "relation" },
   { name: "Inès", gender: "femme", city: "Paris", year: 1991, intent: "ouverte" },
-  { name: "Léa", gender: "femme", city: "Lyon", year: 1996, intent: "relation" },
   { name: "Sofia", gender: "femme", city: "Paris", year: 1993, intent: "amitié_dabord" },
-  { name: "Mathilde", gender: "femme", city: "Bordeaux", year: 1990, intent: "relation" },
+  { name: "Louise", gender: "femme", city: "Paris", year: 1995, intent: "relation" },
+  { name: "Anouk", gender: "femme", city: "Paris", year: 1990, intent: "ouverte" },
+  { name: "Salomé", gender: "femme", city: "Paris", year: 1997, intent: "relation" },
+  { name: "Nour", gender: "femme", city: "Paris", year: 1992, intent: "ouverte" },
+  { name: "Agathe", gender: "femme", city: "Paris", year: 1989, intent: "relation" },
+  { name: "Elsa", gender: "femme", city: "Paris", year: 1996, intent: "amitié_dabord" },
+  { name: "Margaux", gender: "femme", city: "Paris", year: 1993, intent: "relation" },
   { name: "Jonas", gender: "homme", city: "Paris", year: 1992, intent: "relation" },
-  { name: "Ravi", gender: "homme", city: "Lyon", year: 1989, intent: "ouverte" },
   { name: "Théo", gender: "homme", city: "Paris", year: 1995, intent: "relation" },
-  { name: "Malik", gender: "homme", city: "Marseille", year: 1993, intent: "ouverte" },
-  { name: "Basile", gender: "homme", city: "Nantes", year: 1988, intent: "relation" },
+  { name: "Aurélien", gender: "homme", city: "Paris", year: 1990, intent: "ouverte" },
+  { name: "Noé", gender: "homme", city: "Paris", year: 1994, intent: "relation" },
+  { name: "Hugo", gender: "homme", city: "Paris", year: 1991, intent: "ouverte" },
+  { name: "Ismaël", gender: "homme", city: "Paris", year: 1988, intent: "relation" },
+  { name: "Victor", gender: "homme", city: "Paris", year: 1996, intent: "amitié_dabord" },
+  { name: "Antoine", gender: "homme", city: "Paris", year: 1993, intent: "relation" },
+  { name: "Gaspard", gender: "homme", city: "Paris", year: 1989, intent: "ouverte" },
+  { name: "Simon", gender: "homme", city: "Paris", year: 1997, intent: "relation" },
   { name: "Alex", gender: "non_binaire", city: "Paris", year: 1994, intent: "ouverte" },
-  { name: "Sacha", gender: "non_binaire", city: "Lille", year: 1997, intent: "amitié_dabord" },
+  { name: "Charlie", gender: "non_binaire", city: "Paris", year: 1992, intent: "relation" },
+  { name: "Camille B", gender: "non_binaire", city: "Paris", year: 1995, intent: "ouverte" },
+
+  // Lyon
+  { name: "Léa", gender: "femme", city: "Lyon", year: 1996, intent: "relation" },
+  { name: "Manon", gender: "femme", city: "Lyon", year: 1992, intent: "ouverte" },
+  { name: "Clara", gender: "femme", city: "Lyon", year: 1994, intent: "relation" },
+  { name: "Ravi", gender: "homme", city: "Lyon", year: 1989, intent: "ouverte" },
+  { name: "Paul", gender: "homme", city: "Lyon", year: 1993, intent: "relation" },
+  { name: "Youssef", gender: "homme", city: "Lyon", year: 1991, intent: "ouverte" },
+  { name: "Sacha", gender: "non_binaire", city: "Lyon", year: 1997, intent: "amitié_dabord" },
+
+  // Marseille
+  { name: "Malik", gender: "homme", city: "Marseille", year: 1993, intent: "ouverte" },
+  { name: "Lucas", gender: "homme", city: "Marseille", year: 1990, intent: "relation" },
+  { name: "Nina", gender: "femme", city: "Marseille", year: 1995, intent: "relation" },
+  { name: "Jade", gender: "femme", city: "Marseille", year: 1992, intent: "ouverte" },
+
+  // Bordeaux
+  { name: "Mathilde", gender: "femme", city: "Bordeaux", year: 1990, intent: "relation" },
+  { name: "Romain", gender: "homme", city: "Bordeaux", year: 1994, intent: "ouverte" },
+  { name: "Chloé", gender: "femme", city: "Bordeaux", year: 1996, intent: "relation" },
+
+  // Nantes
+  { name: "Basile", gender: "homme", city: "Nantes", year: 1988, intent: "relation" },
+  { name: "Maëlle", gender: "femme", city: "Nantes", year: 1993, intent: "ouverte" },
+
+  // Lille
+  { name: "Adrien", gender: "homme", city: "Lille", year: 1991, intent: "relation" },
+  { name: "Zoé", gender: "femme", city: "Lille", year: 1995, intent: "ouverte" },
 ];
 
-/** Retire les diacritiques : les adresses et identifiants restent en ASCII. */
 function slug(value: string): string {
   return value
     .normalize("NFD")

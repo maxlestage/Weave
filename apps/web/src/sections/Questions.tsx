@@ -4,11 +4,11 @@ import { Section } from "../composants.tsx";
 const QUESTIONS = [
   {
     q: `Pourquoi seulement ${MAX_ACTIVE_THREADS} profils ?`,
-    r: "Parce qu'au-delà, on ne lit plus. Trois fils tiennent dans une soirée : on peut vraiment répondre à chacun, ce qui change la nature de ce qu'on écrit.",
+    r: `Parce qu'un nombre fini change tout. ${MAX_ACTIVE_THREADS} fils, on en voit le bout : on peut lire chaque trame et répondre à celles qui comptent. Une pile sans fin, on la fait défiler — ce n'est plus la même activité, et ce n'est plus la même façon d'écrire.`,
   },
   {
     q: "Puis-je en avoir plus en payant ?",
-    r: "Non, et c'est délibéré. Les abonnements accélèrent le remplacement d'un fil dénoué, ils n'élargissent jamais le métier. Vendre du volume reviendrait à défaire le produit.",
+    r: `Non, et c'est délibéré. ${MAX_ACTIVE_THREADS} pour tout le monde, du gratuit au plus cher. Les abonnements accélèrent le remplacement d'un fil dénoué, ils n'élargissent jamais le métier : vendre du volume reviendrait à défaire le produit.`,
   },
   {
     q: "Que se passe-t-il si je ne réponds pas ?",

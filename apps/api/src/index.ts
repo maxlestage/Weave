@@ -79,7 +79,7 @@ export const app = new Elysia()
         tags: [
           { name: "Authentification", description: "Connexion par code à usage unique." },
           { name: "Profil", description: "Sa fiche, ses fragments, son motif, ses critères." },
-          { name: "Métier", description: "Les trois fils : lecture, réponse, dénouage." },
+          { name: "Métier", description: "Les fils du jour : lecture, réponse, dénouage." },
           { name: "Conversations", description: "Fils tissés et messages." },
           { name: "Appareils", description: "APNs, Live Activity, Apple Watch." },
           { name: "Offres", description: "Quatre abonnements, et le même à l'unité." },

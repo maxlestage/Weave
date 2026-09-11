@@ -1,3 +1,5 @@
+import { MAX_ACTIVE_THREADS } from "@weave/contracts";
+
 export function PiedDePage() {
   return (
     <footer
@@ -9,8 +11,8 @@ export function PiedDePage() {
           Weave
         </p>
         <p className="mt-2 max-w-md leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-          Trois fils par jour. Une application de rencontre qui préfère la conversation à la
-          collection.
+          {MAX_ACTIVE_THREADS} fils par jour. Une application de rencontre qui préfère la
+          conversation à la collection.
         </p>
 
         <nav aria-label="Liens de pied de page" className="mt-8">
