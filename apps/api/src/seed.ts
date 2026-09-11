@@ -1,39 +1,14 @@
 /**
  * Jeu de données de développement.
  *
- * Crée la bibliothèque de questions et une petite population de comptes
- * complets, suffisante pour que le moteur de tissage ait de quoi composer trois
- * fils. Idempotent : on peut le relancer sans dupliquer.
+ * Une petite population de jeunes adultes dans six villes, et surtout des plans
+ * pour les jours qui viennent : sans plans, le fil est vide et il n'y a rien à
+ * regarder. Idempotent : on peut le relancer sans dupliquer.
  */
-import { MOTIF_TAGS } from "@weave/contracts";
+import { PLAN_CAPACITY_GROUP_MAX, PLAN_CATEGORIES, type PlanCategory } from "@weave/contracts";
 import { emailHash } from "./lib/crypto.ts";
 import { log } from "./lib/log.ts";
 import { prisma } from "./lib/prisma.ts";
-
-const PROMPTS: { text: string; theme: string }[] = [
-  // Écrites pour des jeunes adultes : ce qu'on vit entre 18 et 30 ans — les
-  // études, le premier travail, le premier appartement, les amitiés qui se
-  // déplacent. Elles demandent une vraie réponse, jamais un mot-clé.
-  { text: "Qu'est-ce qui vous a fait changer d'avis récemment ?", theme: "esprit" },
-  { text: "Décrivez un dimanche réussi, heure par heure.", theme: "rythme" },
-  { text: "Ce que vous faites quand un plan tombe à l'eau à 21 h.", theme: "rythme" },
-  { text: "La dernière fois que vous vous êtes senti·e vraiment à votre place.", theme: "lien" },
-  { text: "Un morceau que vous mettez toujours en premier dans une voiture.", theme: "goûts" },
-  { text: "Ce que vous avez appris à faire cette année, même mal.", theme: "faire" },
-  { text: "Une amitié qui a tenu malgré la distance, et pourquoi.", theme: "lien" },
-  { text: "Ce que vous feriez d'un samedi entier sans téléphone.", theme: "rythme" },
-  { text: "Le conseil qu'on vous répète et que vous n'écoutez pas.", theme: "esprit" },
-  { text: "Ce qui vous occupe quand personne ne regarde.", theme: "rythme" },
-  { text: "Un endroit de votre ville que vous montreriez en premier.", theme: "lieux" },
-  { text: "Ce que vous défendez même quand ça vous coûte.", theme: "valeurs" },
-  { text: "Ce que vous cherchez ici, dit sans détour.", theme: "intentions" },
-  { text: "Une chose que vous avez ratée et refaite.", theme: "faire" },
-  { text: "Ce qui vous fait rire alors que ça ne devrait pas.", theme: "goûts" },
-  {
-    text: "Où vous imaginez vivre dans cinq ans — ou pourquoi vous n'en savez rien.",
-    theme: "intentions",
-  },
-];
 
 const CITIES: Record<string, { lat: number; lon: number }> = {
   Paris: { lat: 48.86, lon: 2.35 },
@@ -44,92 +19,151 @@ const CITIES: Record<string, { lat: number; lon: number }> = {
   Lille: { lat: 50.63, lon: 3.06 },
 };
 
-const MOTIF_VOCABULARY = [
-  "escalade",
-  "vinyles",
-  "ciné-club",
-  "cuisine",
-  "colocation",
-  "vélo",
-  "impro",
-  "concerts",
-  "jeux de société",
-  "rando",
-  "photo",
-  "théâtre",
-  "natation",
-  "skate",
-  "podcasts",
-  "sérigraphie",
-  "course",
-  "céramique",
-  "bénévolat",
-  "jazz",
-  "karaoké",
-  "brocantes",
-  "bouldering",
-  "cuisine coréenne",
-];
+type Ville = keyof typeof CITIES;
 
-const PEOPLE: {
-  name: string;
-  gender: string;
-  city: keyof typeof CITIES;
-  year: number;
-  intent: string;
-}[] = [
-  // Paris — assez nombreux pour garnir un métier entier.
-  { name: "Camille", gender: "femme", city: "Paris", year: 1996, intent: "relation" },
-  { name: "Inès", gender: "femme", city: "Paris", year: 1997, intent: "ouverte" },
-  { name: "Sofia", gender: "femme", city: "Paris", year: 1998, intent: "amitié_dabord" },
-  { name: "Louise", gender: "femme", city: "Paris", year: 1999, intent: "relation" },
-  { name: "Anouk", gender: "femme", city: "Paris", year: 2000, intent: "ouverte" },
-  { name: "Salomé", gender: "femme", city: "Paris", year: 2001, intent: "relation" },
-  { name: "Nour", gender: "femme", city: "Paris", year: 2002, intent: "ouverte" },
-  { name: "Agathe", gender: "femme", city: "Paris", year: 2003, intent: "relation" },
-  { name: "Elsa", gender: "femme", city: "Paris", year: 2004, intent: "amitié_dabord" },
-  { name: "Margaux", gender: "femme", city: "Paris", year: 2005, intent: "relation" },
-  { name: "Jonas", gender: "homme", city: "Paris", year: 2006, intent: "relation" },
-  { name: "Théo", gender: "homme", city: "Paris", year: 1996, intent: "relation" },
-  { name: "Aurélien", gender: "homme", city: "Paris", year: 1997, intent: "ouverte" },
-  { name: "Noé", gender: "homme", city: "Paris", year: 1998, intent: "relation" },
-  { name: "Hugo", gender: "homme", city: "Paris", year: 1999, intent: "ouverte" },
-  { name: "Ismaël", gender: "homme", city: "Paris", year: 2000, intent: "relation" },
-  { name: "Victor", gender: "homme", city: "Paris", year: 2001, intent: "amitié_dabord" },
-  { name: "Antoine", gender: "homme", city: "Paris", year: 2002, intent: "relation" },
-  { name: "Gaspard", gender: "homme", city: "Paris", year: 2003, intent: "ouverte" },
-  { name: "Simon", gender: "homme", city: "Paris", year: 2004, intent: "relation" },
-  { name: "Alex", gender: "non_binaire", city: "Paris", year: 2005, intent: "ouverte" },
-  { name: "Charlie", gender: "non_binaire", city: "Paris", year: 2006, intent: "relation" },
-  { name: "Camille B", gender: "non_binaire", city: "Paris", year: 1996, intent: "ouverte" },
+const PEOPLE: { name: string; gender: string; city: Ville; year: number }[] = [
+  // Paris — assez nombreux pour qu'un fil parisien ait de la matière.
+  { name: "Camille", gender: "femme", city: "Paris", year: 1999 },
+  { name: "Inès", gender: "femme", city: "Paris", year: 2000 },
+  { name: "Sofia", gender: "femme", city: "Paris", year: 2001 },
+  { name: "Louise", gender: "femme", city: "Paris", year: 2002 },
+  { name: "Anouk", gender: "femme", city: "Paris", year: 2003 },
+  { name: "Salomé", gender: "femme", city: "Paris", year: 2004 },
+  { name: "Nour", gender: "femme", city: "Paris", year: 2005 },
+  { name: "Agathe", gender: "femme", city: "Paris", year: 2006 },
+  { name: "Elsa", gender: "femme", city: "Paris", year: 1999 },
+  { name: "Margaux", gender: "femme", city: "Paris", year: 2000 },
+  { name: "Jonas", gender: "homme", city: "Paris", year: 2001 },
+  { name: "Théo", gender: "homme", city: "Paris", year: 2002 },
+  { name: "Aurélien", gender: "homme", city: "Paris", year: 2003 },
+  { name: "Noé", gender: "homme", city: "Paris", year: 2004 },
+  { name: "Hugo", gender: "homme", city: "Paris", year: 2005 },
+  { name: "Ismaël", gender: "homme", city: "Paris", year: 2006 },
+  { name: "Victor", gender: "homme", city: "Paris", year: 1999 },
+  { name: "Antoine", gender: "homme", city: "Paris", year: 2000 },
+  { name: "Gaspard", gender: "homme", city: "Paris", year: 2001 },
+  { name: "Simon", gender: "homme", city: "Paris", year: 2002 },
+  { name: "Alex", gender: "non_binaire", city: "Paris", year: 2003 },
+  { name: "Charlie", gender: "non_binaire", city: "Paris", year: 2004 },
+  { name: "Camille B", gender: "non_binaire", city: "Paris", year: 2005 },
 
   // Lyon
-  { name: "Léa", gender: "femme", city: "Lyon", year: 1997, intent: "relation" },
-  { name: "Manon", gender: "femme", city: "Lyon", year: 1998, intent: "ouverte" },
-  { name: "Clara", gender: "femme", city: "Lyon", year: 1999, intent: "relation" },
-  { name: "Ravi", gender: "homme", city: "Lyon", year: 2000, intent: "ouverte" },
-  { name: "Paul", gender: "homme", city: "Lyon", year: 2001, intent: "relation" },
-  { name: "Youssef", gender: "homme", city: "Lyon", year: 2002, intent: "ouverte" },
-  { name: "Sacha", gender: "non_binaire", city: "Lyon", year: 2003, intent: "amitié_dabord" },
+  { name: "Léa", gender: "femme", city: "Lyon", year: 2000 },
+  { name: "Manon", gender: "femme", city: "Lyon", year: 2001 },
+  { name: "Clara", gender: "femme", city: "Lyon", year: 2002 },
+  { name: "Ravi", gender: "homme", city: "Lyon", year: 2003 },
+  { name: "Paul", gender: "homme", city: "Lyon", year: 2004 },
+  { name: "Youssef", gender: "homme", city: "Lyon", year: 2005 },
+  { name: "Sacha", gender: "non_binaire", city: "Lyon", year: 2006 },
 
   // Marseille
-  { name: "Malik", gender: "homme", city: "Marseille", year: 2004, intent: "ouverte" },
-  { name: "Lucas", gender: "homme", city: "Marseille", year: 2005, intent: "relation" },
-  { name: "Nina", gender: "femme", city: "Marseille", year: 2006, intent: "relation" },
-  { name: "Jade", gender: "femme", city: "Marseille", year: 1996, intent: "ouverte" },
+  { name: "Malik", gender: "homme", city: "Marseille", year: 2000 },
+  { name: "Lucas", gender: "homme", city: "Marseille", year: 2001 },
+  { name: "Nina", gender: "femme", city: "Marseille", year: 2002 },
+  { name: "Jade", gender: "femme", city: "Marseille", year: 2003 },
 
   // Bordeaux
-  { name: "Mathilde", gender: "femme", city: "Bordeaux", year: 1997, intent: "relation" },
-  { name: "Romain", gender: "homme", city: "Bordeaux", year: 1998, intent: "ouverte" },
-  { name: "Chloé", gender: "femme", city: "Bordeaux", year: 1999, intent: "relation" },
+  { name: "Mathilde", gender: "femme", city: "Bordeaux", year: 2004 },
+  { name: "Romain", gender: "homme", city: "Bordeaux", year: 2005 },
+  { name: "Chloé", gender: "femme", city: "Bordeaux", year: 2000 },
 
   // Nantes
-  { name: "Basile", gender: "homme", city: "Nantes", year: 2000, intent: "relation" },
-  { name: "Maëlle", gender: "femme", city: "Nantes", year: 2001, intent: "ouverte" },
+  { name: "Basile", gender: "homme", city: "Nantes", year: 2001 },
+  { name: "Maëlle", gender: "femme", city: "Nantes", year: 2002 },
 
   // Lille
-  { name: "Adrien", gender: "homme", city: "Lille", year: 2002, intent: "relation" },
-  { name: "Zoé", gender: "femme", city: "Lille", year: 2003, intent: "ouverte" },
+  { name: "Adrien", gender: "homme", city: "Lille", year: 2003 },
+  { name: "Zoé", gender: "femme", city: "Lille", year: 2004 },
+];
+
+const BIOS = [
+  "Toujours partante pour un truc décidé la veille.",
+  "Je cuisine trop pour une personne, d'où les invitations.",
+  "Je connais mal ma ville, je compte sur vous.",
+  "Deux vitesses : rien, ou tout le week-end dehors.",
+  "Je viens d'emménager, je repars de zéro côté bande.",
+  "Je préfère marcher deux heures que prendre le métro.",
+  "Je dis oui d'abord, je regarde l'heure ensuite.",
+  "En stage la semaine, disponible dès vendredi soir.",
+];
+
+/**
+ * Des plans écrits comme on les écrirait : un titre qui dit ce qu'on fait, une
+ * note qui dit pourquoi et comment. Jamais une annonce, jamais un profil.
+ */
+const PLANS: { title: string; note: string; category: PlanCategory; capacity: number }[] = [
+  {
+    title: "Marché de la Croix-Rousse puis brunch",
+    note: "Je fais les courses de la semaine et je traîne. Venez si vous aimez goûter dix choses avant d'acheter.",
+    category: "repas",
+    capacity: 2,
+  },
+  {
+    title: "Bloc au mur de 19 h, niveau débutant",
+    note: "Je grimpe depuis six mois, très mal. On peut y aller ensemble, l'entrée est à 12 €.",
+    category: "sport",
+    capacity: 1,
+  },
+  {
+    title: "Expo photo, puis un verre pour en dire du mal",
+    note: "J'ai un billet de trop. La moitié sera nulle, c'est tout l'intérêt.",
+    category: "culture",
+    capacity: 1,
+  },
+  {
+    title: "Concert d'un groupe que personne ne connaît",
+    note: "Petite salle, 8 € à l'entrée. Je n'ai écouté que deux morceaux et j'ai aimé.",
+    category: "musique",
+    capacity: 2,
+  },
+  {
+    title: "Soirée jeux de société chez des amis",
+    note: "On est quatre, il manque quelqu'un. Rien de compétitif, promis.",
+    category: "jeux",
+    capacity: 1,
+  },
+  {
+    title: "Balade au bord de l'eau, dix kilomètres",
+    note: "Départ tranquille, pause sandwich au milieu. Prévoir des chaussures correctes.",
+    category: "balade",
+    capacity: 3,
+  },
+  {
+    title: "Coup de main à la distribution alimentaire",
+    note: "Deux heures le samedi matin. On termine par un café, c'est le meilleur moment.",
+    category: "benevolat",
+    capacity: 2,
+  },
+  {
+    title: "Ciné en VO, film de trois heures",
+    note: "Personne ne veut venir avec moi, je comprends. Séance de 20 h 15.",
+    category: "culture",
+    capacity: 1,
+  },
+  {
+    title: "Course tranquille au parc, 5 km",
+    note: "Allure conversation. Je cherche quelqu'un pour ne pas annuler à la dernière minute.",
+    category: "sport",
+    capacity: 2,
+  },
+  {
+    title: "Friperies puis café, l'après-midi entier",
+    note: "Trois adresses repérées. Budget serré, patience requise.",
+    category: "sortie",
+    capacity: 1,
+  },
+  {
+    title: "Karaoké, et j'assume mon répertoire",
+    note: "Variété française exclusivement. On peut être quatre.",
+    category: "musique",
+    capacity: 3,
+  },
+  {
+    title: "Je teste une recette coréenne, venez goûter",
+    note: "Première fois que je fais ça. Il y aura du riz en secours.",
+    category: "repas",
+    capacity: 2,
+  },
 ];
 
 function slug(value: string): string {
@@ -140,114 +174,112 @@ function slug(value: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function pick<T>(source: readonly T[], count: number, offset: number): T[] {
-  const out: T[] = [];
-  for (let i = 0; i < count; i++) out.push(source[(offset * 7 + i * 3) % source.length]!);
-  return [...new Set(out)];
+/**
+ * Décalage déterministe autour d'une ville, pour que les distances ne soient
+ * pas toutes nulles. On reste dans l'ordre du kilomètre — comme en production,
+ * où les coordonnées sont arrondies avant d'être écrites.
+ */
+function autour(base: number, index: number, pas: number): number {
+  return Math.round((base + ((index % 7) - 3) * pas) * 100) / 100;
 }
 
-async function seedPrompts(): Promise<string[]> {
-  const ids: string[] = [];
-  for (const prompt of PROMPTS) {
-    const row = await prisma.prompt.upsert({
-      where: { text: prompt.text },
-      create: { text: prompt.text, theme: prompt.theme, locale: "fr-FR", active: true },
-      update: { theme: prompt.theme, active: true },
-      select: { id: true },
-    });
-    ids.push(row.id);
-  }
-  return ids;
-}
+async function seedPeople(): Promise<{ id: string; city: Ville; index: number }[]> {
+  const comptes: { id: string; city: Ville; index: number }[] = [];
 
-async function seedPeople(promptIds: string[]): Promise<void> {
-  for (const [index, person] of PEOPLE.entries()) {
-    const email = `${slug(person.name)}@weave.test`;
-    const hash = emailHash(email);
-    const coords = CITIES[person.city]!;
+  for (const [index, personne] of PEOPLE.entries()) {
+    const handle = `${slug(personne.name)}${index}`;
+    const email = `${handle}@weave.test`;
+    const ville = CITIES[personne.city]!;
 
-    const account = await prisma.account.upsert({
-      where: { emailHash: hash },
+    const compte = await prisma.account.upsert({
+      where: { email },
       create: {
         email,
-        emailHash: hash,
-        handle: slug(person.name),
-        displayName: person.name,
-        birthDate: new Date(Date.UTC(person.year, index % 12, 1 + (index % 27))),
+        emailHash: emailHash(email),
+        handle,
+        displayName: personne.name,
+        birthDate: new Date(Date.UTC(personne.year, (index % 12) + 1, ((index * 3) % 27) + 1)),
         status: "active",
-        verified: index % 3 === 0,
-        weavingHour: [8, 12, 18, 21][index % 4]!,
-        lastSeenAt: new Date(Date.now() - index * 60 * 60 * 1000),
-        preference: {
-          create: {
-            minAge: 18,
-            maxAge: 32,
-            maxDistanceKm: 60,
-            seekingJson: JSON.stringify(["femme", "homme", "non_binaire"]),
-            intentsJson: JSON.stringify(["relation", "ouverte", "amitié_dabord"]),
-          },
-        },
-        subscription: { create: { tier: index === 0 ? "chaine" : "fil" } },
+        verified: index % 4 === 0,
+        preference: { create: {} },
+        subscription: { create: { tier: "depart" } },
       },
       update: { status: "active" },
       select: { id: true },
     });
 
-    const profile = await prisma.profile.upsert({
-      where: { accountId: account.id },
+    await prisma.profile.upsert({
+      where: { accountId: compte.id },
       create: {
-        accountId: account.id,
-        city: person.city,
-        // Légère dispersion pour que les distances ne soient pas toutes nulles.
-        latRounded: Math.round((coords.lat + (index % 5) * 0.02) * 100) / 100,
-        lonRounded: Math.round((coords.lon + (index % 4) * 0.02) * 100) / 100,
-        gender: person.gender,
-        intent: person.intent,
-        bio: "",
-        photoKey: `demo/${slug(person.name)}.jpg`,
-        photoReviewedAt: new Date(),
-        completeness: 100,
+        accountId: compte.id,
+        city: personne.city,
+        latRounded: autour(ville.lat, index, 0.03),
+        lonRounded: autour(ville.lon, index, 0.04),
+        gender: personne.gender,
+        bio: BIOS[index % BIOS.length]!,
       },
-      update: { photoKey: `demo/${slug(person.name)}.jpg`, completeness: 100 },
-      select: { id: true },
+      update: {},
     });
 
-    const tags = pick(MOTIF_VOCABULARY, MOTIF_TAGS, index);
-    await prisma.motifTag.deleteMany({ where: { profileId: profile.id } });
-    await prisma.motifTag.createMany({
-      data: tags.map((tag, position) => ({
-        profileId: profile.id,
-        tag,
-        weight: 100 - position * 10,
-      })),
-    });
-
-    const chosen = pick(promptIds, 3, index);
-    for (const [position, promptId] of chosen.entries()) {
-      await prisma.profileFragment.upsert({
-        where: { profileId_promptId: { profileId: profile.id, promptId } },
-        create: {
-          profileId: profile.id,
-          promptId,
-          kind: "question",
-          body: `Réponse de ${person.name} — ${tags[position % tags.length]}, surtout le matin.`,
-          position,
-        },
-        update: { position },
-      });
-    }
+    comptes.push({ id: compte.id, city: personne.city, index });
   }
+
+  return comptes;
 }
 
-const promptIds = await seedPrompts();
-await seedPeople(promptIds);
+/**
+ * Publie des plans étalés sur la semaine à venir. Le seed en recrée un jeu
+ * complet à chaque exécution : des plans datés d'hier ne servent à rien, et
+ * les laisser fausserait la lecture du fil.
+ */
+async function seedPlans(comptes: { id: string; city: Ville; index: number }[]): Promise<number> {
+  await prisma.plan.deleteMany({ where: { authorId: { in: comptes.map((c) => c.id) } } });
 
-const counts = {
-  questions: await prisma.prompt.count(),
-  comptes: await prisma.account.count(),
-  profils: await prisma.profile.count(),
-  fragments: await prisma.profileFragment.count(),
-};
+  const maintenant = Date.now();
+  let publies = 0;
 
-log.info("Jeu de données prêt", counts);
+  for (const compte of comptes) {
+    // Deux plans sur trois personnes : tout le monde ne publie pas, et un fil
+    // où chacun propose quelque chose ne ressemblerait à rien de réel.
+    const combien = compte.index % 3 === 2 ? 0 : 1 + (compte.index % 2);
+
+    for (let n = 0; n < combien; n++) {
+      const modele = PLANS[(compte.index * 5 + n * 3) % PLANS.length]!;
+      const dansHeures = 6 + ((compte.index * 11 + n * 29) % 160);
+      const ville = CITIES[compte.city]!;
+
+      await prisma.plan.create({
+        data: {
+          authorId: compte.id,
+          title: modele.title,
+          note: modele.note,
+          category: modele.category,
+          startsAt: new Date(maintenant + dansHeures * 60 * 60 * 1000),
+          city: compte.city,
+          latRounded: autour(ville.lat, compte.index, 0.03),
+          lonRounded: autour(ville.lon, compte.index, 0.04),
+          capacity: Math.min(PLAN_CAPACITY_GROUP_MAX, modele.capacity),
+        },
+      });
+      publies += 1;
+    }
+  }
+
+  return publies;
+}
+
+async function main(): Promise<void> {
+  log.info("Semis en cours…");
+
+  const comptes = await seedPeople();
+  const plans = await seedPlans(comptes);
+
+  log.info("Semis terminé", {
+    comptes: comptes.length,
+    plans,
+    categories: PLAN_CATEGORIES.length,
+  });
+}
+
+await main();
 await prisma.$disconnect();

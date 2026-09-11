@@ -7,7 +7,6 @@ CREATE TABLE "accounts" (
     "displayName" TEXT NOT NULL,
     "birthDate" DATETIME NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'onboarding',
-    "weavingHour" INTEGER NOT NULL DEFAULT 18,
     "timezone" TEXT NOT NULL DEFAULT 'Europe/Paris',
     "locale" TEXT NOT NULL DEFAULT 'fr-FR',
     "verified" BOOLEAN NOT NULL DEFAULT false,
@@ -49,50 +48,12 @@ CREATE TABLE "profiles" (
     "latRounded" REAL NOT NULL,
     "lonRounded" REAL NOT NULL,
     "gender" TEXT NOT NULL,
-    "intent" TEXT NOT NULL DEFAULT 'ouverte',
     "bio" TEXT NOT NULL DEFAULT '',
     "photoKey" TEXT,
     "photoReviewedAt" DATETIME,
-    "completeness" INTEGER NOT NULL DEFAULT 0,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "profiles_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "profile_fragments" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "profileId" TEXT NOT NULL,
-    "promptId" TEXT NOT NULL,
-    "kind" TEXT NOT NULL DEFAULT 'question',
-    "body" TEXT NOT NULL,
-    "audioKey" TEXT,
-    "durationSeconds" INTEGER,
-    "position" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "profile_fragments_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "profiles" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "profile_fragments_promptId_fkey" FOREIGN KEY ("promptId") REFERENCES "prompts" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "motif_tags" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "profileId" TEXT NOT NULL,
-    "tag" TEXT NOT NULL,
-    "weight" INTEGER NOT NULL DEFAULT 50,
-    CONSTRAINT "motif_tags_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "profiles" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "prompts" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "text" TEXT NOT NULL,
-    "theme" TEXT NOT NULL,
-    "locale" TEXT NOT NULL DEFAULT 'fr-FR',
-    "active" BOOLEAN NOT NULL DEFAULT true,
-    "activeFrom" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
@@ -100,11 +61,10 @@ CREATE TABLE "preferences" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "accountId" TEXT NOT NULL,
     "minAge" INTEGER NOT NULL DEFAULT 18,
-    "maxAge" INTEGER NOT NULL DEFAULT 99,
-    "maxDistanceKm" INTEGER NOT NULL DEFAULT 50,
+    "maxAge" INTEGER NOT NULL DEFAULT 32,
+    "maxDistanceKm" INTEGER NOT NULL DEFAULT 25,
     "seekingJson" TEXT NOT NULL DEFAULT '[]',
-    "intentsJson" TEXT NOT NULL DEFAULT '[]',
-    "refinedJson" TEXT NOT NULL DEFAULT '{}',
+    "categoriesJson" TEXT NOT NULL DEFAULT '[]',
     "escaleCity" TEXT,
     "escaleUntil" DATETIME,
     "updatedAt" DATETIME NOT NULL,
@@ -112,48 +72,64 @@ CREATE TABLE "preferences" (
 );
 
 -- CreateTable
-CREATE TABLE "thread_ledger" (
+CREATE TABLE "plans" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "viewerId" TEXT NOT NULL,
-    "candidateId" TEXT NOT NULL,
-    "cacheKey" TEXT NOT NULL,
-    "outcome" TEXT NOT NULL DEFAULT 'propose',
-    "score" INTEGER NOT NULL DEFAULT 0,
-    "servedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "resolvedAt" DATETIME,
-    "expiresAt" DATETIME NOT NULL,
-    CONSTRAINT "thread_ledger_viewerId_fkey" FOREIGN KEY ("viewerId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "thread_ledger_candidateId_fkey" FOREIGN KEY ("candidateId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "authorId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "note" TEXT NOT NULL DEFAULT '',
+    "category" TEXT NOT NULL,
+    "startsAt" DATETIME NOT NULL,
+    "city" TEXT NOT NULL,
+    "latRounded" REAL NOT NULL,
+    "lonRounded" REAL NOT NULL,
+    "capacity" INTEGER NOT NULL DEFAULT 1,
+    "state" TEXT NOT NULL DEFAULT 'ouvert',
+    "cancelledAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "plans_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
-CREATE TABLE "woven_threads" (
+CREATE TABLE "join_requests" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "initiatorId" TEXT NOT NULL,
-    "responderId" TEXT NOT NULL,
-    "wovenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "planId" TEXT NOT NULL,
+    "authorId" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "state" TEXT NOT NULL DEFAULT 'envoyee',
+    "sentAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "decidedAt" DATETIME,
+    CONSTRAINT "join_requests_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "join_requests_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "conversations" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "planId" TEXT NOT NULL,
+    "requestId" TEXT NOT NULL,
+    "hostId" TEXT NOT NULL,
+    "guestId" TEXT NOT NULL,
+    "openedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastMessageAt" DATETIME,
-    "state" TEXT NOT NULL DEFAULT 'tisse',
-    "exchanges" INTEGER NOT NULL DEFAULT 1,
-    "revealPercent" INTEGER NOT NULL DEFAULT 33,
     "closedAt" DATETIME,
     "closedBy" TEXT,
-    CONSTRAINT "woven_threads_initiatorId_fkey" FOREIGN KEY ("initiatorId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "woven_threads_responderId_fkey" FOREIGN KEY ("responderId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "conversations_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "conversations_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "join_requests" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "conversations_hostId_fkey" FOREIGN KEY ("hostId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "conversations_guestId_fkey" FOREIGN KEY ("guestId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "messages" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "threadId" TEXT NOT NULL,
+    "conversationId" TEXT NOT NULL,
     "authorId" TEXT NOT NULL,
     "body" TEXT NOT NULL,
-    "audioKey" TEXT,
-    "durationSeconds" INTEGER,
     "sentAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "readAt" DATETIME,
     "purgeAfter" DATETIME,
-    CONSTRAINT "messages_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "woven_threads" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "messages_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "conversations" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "messages_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "accounts" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -193,7 +169,7 @@ CREATE TABLE "live_activity_sessions" (
 CREATE TABLE "subscriptions" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "accountId" TEXT NOT NULL,
-    "tier" TEXT NOT NULL DEFAULT 'fil',
+    "tier" TEXT NOT NULL DEFAULT 'depart',
     "period" TEXT,
     "storeKitProductId" TEXT,
     "originalTransactionId" TEXT,
@@ -292,7 +268,7 @@ CREATE UNIQUE INDEX "accounts_emailHash_key" ON "accounts"("emailHash");
 CREATE UNIQUE INDEX "accounts_handle_key" ON "accounts"("handle");
 
 -- CreateIndex
-CREATE INDEX "accounts_status_weavingHour_idx" ON "accounts"("status", "weavingHour");
+CREATE INDEX "accounts_status_idx" ON "accounts"("status");
 
 -- CreateIndex
 CREATE INDEX "accounts_deletionRequestedAt_idx" ON "accounts"("deletionRequestedAt");
@@ -316,49 +292,37 @@ CREATE INDEX "profiles_city_idx" ON "profiles"("city");
 CREATE INDEX "profiles_latRounded_lonRounded_idx" ON "profiles"("latRounded", "lonRounded");
 
 -- CreateIndex
-CREATE INDEX "profile_fragments_profileId_position_idx" ON "profile_fragments"("profileId", "position");
-
--- CreateIndex
-CREATE UNIQUE INDEX "profile_fragments_profileId_promptId_key" ON "profile_fragments"("profileId", "promptId");
-
--- CreateIndex
-CREATE INDEX "motif_tags_tag_idx" ON "motif_tags"("tag");
-
--- CreateIndex
-CREATE UNIQUE INDEX "motif_tags_profileId_tag_key" ON "motif_tags"("profileId", "tag");
-
--- CreateIndex
-CREATE UNIQUE INDEX "prompts_text_key" ON "prompts"("text");
-
--- CreateIndex
-CREATE INDEX "prompts_locale_active_idx" ON "prompts"("locale", "active");
-
--- CreateIndex
 CREATE UNIQUE INDEX "preferences_accountId_key" ON "preferences"("accountId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "thread_ledger_cacheKey_key" ON "thread_ledger"("cacheKey");
+CREATE INDEX "plans_state_startsAt_idx" ON "plans"("state", "startsAt");
 
 -- CreateIndex
-CREATE INDEX "thread_ledger_viewerId_outcome_idx" ON "thread_ledger"("viewerId", "outcome");
+CREATE INDEX "plans_latRounded_lonRounded_idx" ON "plans"("latRounded", "lonRounded");
 
 -- CreateIndex
-CREATE INDEX "thread_ledger_expiresAt_idx" ON "thread_ledger"("expiresAt");
+CREATE INDEX "plans_authorId_startsAt_idx" ON "plans"("authorId", "startsAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "thread_ledger_viewerId_candidateId_key" ON "thread_ledger"("viewerId", "candidateId");
+CREATE INDEX "join_requests_authorId_state_idx" ON "join_requests"("authorId", "state");
 
 -- CreateIndex
-CREATE INDEX "woven_threads_initiatorId_lastMessageAt_idx" ON "woven_threads"("initiatorId", "lastMessageAt");
+CREATE INDEX "join_requests_planId_state_idx" ON "join_requests"("planId", "state");
 
 -- CreateIndex
-CREATE INDEX "woven_threads_responderId_lastMessageAt_idx" ON "woven_threads"("responderId", "lastMessageAt");
+CREATE UNIQUE INDEX "join_requests_planId_authorId_key" ON "join_requests"("planId", "authorId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "woven_threads_initiatorId_responderId_key" ON "woven_threads"("initiatorId", "responderId");
+CREATE UNIQUE INDEX "conversations_requestId_key" ON "conversations"("requestId");
 
 -- CreateIndex
-CREATE INDEX "messages_threadId_sentAt_idx" ON "messages"("threadId", "sentAt");
+CREATE INDEX "conversations_hostId_lastMessageAt_idx" ON "conversations"("hostId", "lastMessageAt");
+
+-- CreateIndex
+CREATE INDEX "conversations_guestId_lastMessageAt_idx" ON "conversations"("guestId", "lastMessageAt");
+
+-- CreateIndex
+CREATE INDEX "messages_conversationId_sentAt_idx" ON "messages"("conversationId", "sentAt");
 
 -- CreateIndex
 CREATE INDEX "messages_purgeAfter_idx" ON "messages"("purgeAfter");

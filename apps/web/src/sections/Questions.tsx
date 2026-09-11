@@ -1,30 +1,34 @@
-import { MAX_ACTIVE_THREADS, MIN_AGE } from "@weave/contracts";
+import { MAX_OPEN_PLANS, MIN_AGE, REQUESTS_PER_DAY_FLOOR } from "@weave/contracts";
 import { filVar, Section } from "../composants.tsx";
 
 const QUESTIONS = [
   {
     q: "À qui s'adresse Weave ?",
-    r: `Aux jeunes adultes, d'abord : les questions, le vocabulaire et le rythme sont écrits pour ce moment de la vie où l'on change de ville, de travail et de cercle d'amis. L'accès est réservé aux ${MIN_AGE} ans et plus, sans exception — c'est une application de rencontre, elle n'a rien à faire entre les mains de mineurs.`,
+    r: `Aux jeunes adultes, d'abord : le vocabulaire, les prix et le rythme sont écrits pour ce moment de la vie où l'on change de ville, de travail et de cercle d'amis, et où l'on se retrouve à ne connaître personne un vendredi soir. L'accès est réservé aux ${MIN_AGE} ans et plus, sans exception.`,
   },
   {
-    q: `Pourquoi seulement ${MAX_ACTIVE_THREADS} profils ?`,
-    r: `Parce qu'un nombre fini change tout. ${MAX_ACTIVE_THREADS} fils, on en voit le bout : on peut lire chaque trame et répondre à celles qui comptent. Une pile sans fin, on la fait défiler — ce n'est plus la même activité, et ce n'est plus la même façon d'écrire.`,
+    q: "Ce n'est pas une application de rencontre, alors ?",
+    r: "Si. Simplement, on ne commence pas par se décrire : on commence par proposer quelque chose à faire. Ce qui se passe ensuite ne regarde que les deux personnes concernées — amitié, relation, ou rien du tout.",
   },
   {
-    q: "Puis-je en avoir plus en payant ?",
-    r: `Non, et c'est délibéré. ${MAX_ACTIVE_THREADS} pour tout le monde, du gratuit au plus cher. Les abonnements accélèrent le remplacement d'un fil dénoué, ils n'élargissent jamais le métier : vendre du volume reviendrait à défaire le produit.`,
+    q: "Pourquoi un nombre limité de demandes par jour ?",
+    r: `Parce que sans limite, demander ne veut plus rien dire : on envoie le même message à trente personnes et on trie les réponses. Avec un quota — au minimum ${REQUESTS_PER_DAY_FLOOR} par jour, même sans payer — on choisit les plans auxquels on veut vraiment aller, et on écrit quelque chose qui tient debout.`,
   },
   {
-    q: "Que se passe-t-il si je ne réponds pas ?",
-    r: "Le fil se dénoue au bout de vingt-quatre heures et disparaît. L'autre personne ne reçoit pas de refus : elle voit simplement le fil s'éteindre.",
+    q: "Je peux payer pour que mon plan passe devant ?",
+    r: "Non, et c'est la règle qui ne bougera pas. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près. Aucun abonnement, aucun achat n'intervient dans cet ordre. Ce qui se paie, c'est l'horizon de publication, la finesse des critères et les plans de groupe.",
   },
   {
-    q: "Pourquoi la photo est-elle floue ?",
-    r: "Parce qu'elle prend toute la place quand elle arrive en premier. Chez Weave, elle se dévoile à mesure que la conversation avance — après trois échanges, elle est nette.",
+    q: "Que se passe-t-il si ma demande est refusée ?",
+    r: "Elle se ferme, sans motif et sans notification accusatrice. Si vous la retirez avant qu'elle ait été lue, elle vous est rendue — se raviser vite ne doit pas coûter la journée.",
   },
   {
-    q: "Puis-je récupérer un fil que j'ai laissé passer ?",
-    r: "Une fois, avec un « Écho ». C'est inclus dans les abonnements à partir de Trame, et achetable à l'unité. Au-delà, non : le temps a fait son travail.",
+    q: "Combien de plans puis-je publier ?",
+    r: `${MAX_OPEN_PLANS} ouverts à la fois. Ce n'est pas une brimade : au-delà, ce ne sont plus des plans, c'est une annonce permanente. Quand une date passe, la place se libère.`,
+  },
+  {
+    q: "Et si personne ne demande à venir ?",
+    r: "Le plan passe et disparaît. Vous faites ce que vous aviez prévu — c'était l'idée de départ. Rien ne vous reproche un plan sans réponse, et aucun compteur ne vous le rappelle.",
   },
   {
     q: "Y a-t-il une version Android ou web ?",

@@ -21,9 +21,8 @@ export interface AuthenticatedAccount {
   displayName: string;
   status: string;
   timezone: string;
-  weavingHour: number;
   locale: string;
-  plan: PlanTier;
+  tier: PlanTier;
   verified: boolean;
 }
 
@@ -44,7 +43,6 @@ async function loadAccount(accountId: string): Promise<AuthenticatedAccount | nu
       displayName: true,
       status: true,
       timezone: true,
-      weavingHour: true,
       locale: true,
       verified: true,
       subscription: { select: { tier: true, expiresAt: true } },
@@ -63,10 +61,9 @@ async function loadAccount(accountId: string): Promise<AuthenticatedAccount | nu
     displayName: row.displayName,
     status: row.status,
     timezone: row.timezone,
-    weavingHour: row.weavingHour,
     locale: row.locale,
     verified: row.verified,
-    plan: (active ? (subscription!.tier as PlanTier) : "fil") satisfies PlanTier,
+    tier: (active ? (subscription!.tier as PlanTier) : "depart") satisfies PlanTier,
   };
 
   await setJson(keys.identity(accountId), account, SESSION_CACHE_TTL_SECONDS);

@@ -1,76 +1,104 @@
 /**
  * Invariants produit de Weave.
  *
- * Ces constantes ne sont pas des « réglages » : elles définissent l'identité du
- * produit. Toute modification doit passer par une décision produit explicite,
- * car plusieurs d'entre elles sont ce qui distingue juridiquement et
- * fonctionnellement Weave des applications de rencontre existantes.
+ * Weave ne présente pas des profils : il présente des **plans**. Quelqu'un
+ * publie ce qu'il compte faire dans les jours qui viennent, les autres
+ * demandent à venir en écrivant pourquoi. La conversation démarre donc sur
+ * quelque chose à faire, jamais sur « salut ça va ».
+ *
+ * Ces constantes ne sont pas des réglages : elles définissent le produit, et
+ * plusieurs d'entre elles sont ce qui le distingue des applications de
+ * rencontre existantes.
  */
 
 /**
- * INVARIANT CENTRAL — le métier porte un nombre fixe de fils, en cache seul.
+ * INVARIANT CENTRAL — on ne peut pas arroser.
  *
- * Un utilisateur ne détient jamais plus de `MAX_ACTIVE_THREADS` fils actifs, et
- * le contenu de ces fils (photos, fragments, motifs) n'existe QUE dans Redis,
- * avec un TTL. Aucune table de la base relationnelle ne contient de copie d'un
- * profil proposé : la base ne garde qu'un registre minimal (identifiants +
- * horodatage + issue) permettant de ne pas re-proposer deux fois la même
- * personne.
+ * Un plan se demande en écrivant, et le nombre de demandes par jour est borné.
+ * C'est la contrainte qui change la nature de ce qu'on écrit : quand on ne peut
+ * en envoyer que quelques-unes, on les écrit vraiment.
  *
- * Aucun palier d'abonnement ne relève ce plafond. Les offres payantes agissent
- * sur la VITESSE de remplacement d'un fil dénoué, jamais sur le nombre de fils
- * détenus simultanément.
- *
- * Le plafond est appliqué de façon atomique côté serveur (script Lua, voir
- * `apps/api/src/lib/cache.ts`) et réappliqué à la réception côté client. Le
- * changer ici le change partout : le site, l'application et la documentation
- * lisent cette constante plutôt que d'écrire le nombre en dur.
+ * Le plafond dépend du palier (voir `catalog.ts`), mais il existe à tous les
+ * paliers — y compris au plus cher. Personne ne peut acheter le droit
+ * d'envoyer la même phrase à cinquante personnes.
  */
-export const MAX_ACTIVE_THREADS = 12 as const;
+export const REQUESTS_PER_DAY_FLOOR = 5 as const;
 
-/** Type du plafond, pour que le catalogue d'offres ne puisse pas en diverger. */
-export type MaxActiveThreads = typeof MAX_ACTIVE_THREADS;
+/**
+ * SECOND INVARIANT — on n'achète pas de visibilité.
+ *
+ * Aucun palier, aucun achat ne fait remonter un plan devant les autres. Le
+ * classement du fil ne dépend que de la proximité, de la date et des critères
+ * de la personne qui regarde. C'est aussi ce qui éloigne Weave des mécaniques
+ * de mise en avant payante du secteur.
+ */
+export const PAID_VISIBILITY = false as const;
 
-/** Durée de vie d'un fil non engagé, en secondes (24 h). */
-export const THREAD_TTL_SECONDS = 24 * 60 * 60;
+/** Plans ouverts simultanément par personne. Une intention, pas un catalogue. */
+export const MAX_OPEN_PLANS = 3 as const;
 
-/** Durée de vie maximale d'un fil après achat de « Prolonge » (48 h au total). */
-export const THREAD_TTL_MAX_SECONDS = 48 * 60 * 60;
+/** Longueur minimale d'une demande : on écrit, on ne clique pas. */
+export const REQUEST_MIN_CHARS = 20;
+export const REQUEST_MAX_CHARS = 600;
 
-/** TTL du cache de session/identité (15 min). */
+/** Intitulé d'un plan. */
+export const PLAN_TITLE_MIN_CHARS = 8;
+export const PLAN_TITLE_MAX_CHARS = 80;
+
+/** Note qui accompagne un plan : l'esprit de la chose, en une ou deux phrases. */
+export const PLAN_NOTE_MAX_CHARS = 280;
+
+/** Un plan se publie au plus tôt dans une heure. */
+export const PLAN_MIN_LEAD_MINUTES = 60;
+
+/** Nombre de personnes qu'un plan peut accueillir, en plus de son auteur. */
+export const PLAN_CAPACITY_SOLO = 1 as const;
+export const PLAN_CAPACITY_GROUP_MAX = 4 as const;
+
+/**
+ * Un plan disparaît du fil à son heure de rendez-vous. Personne n'a à le
+ * retirer : le temps s'en charge, comme dans la vraie vie.
+ */
+export const PLAN_GRACE_MINUTES = 30;
+
+/** Durée de vie du fil composé, en cache. */
+export const FEED_TTL_SECONDS = 5 * 60;
+
+/** TTL du cache d'identité. */
 export const SESSION_CACHE_TTL_SECONDS = 15 * 60;
 
-/** TTL du cache de composition (candidats pré-calculés), en secondes. */
-export const CANDIDATE_POOL_TTL_SECONDS = 30 * 60;
-
-/** Nombre de fragments composant la trame d'un fil. */
-export const FRAGMENTS_PER_THREAD = 3 as const;
-
-/** Nombre de mots-clés du « motif » d'un profil. */
-export const MOTIF_TAGS = 5 as const;
-
-/** Durée maximale d'un fragment vocal, en secondes. */
-export const VOICE_FRAGMENT_MAX_SECONDS = 8;
-
-/** Longueur minimale d'une réponse à un fragment (pas de réaction binaire). */
-export const RESPONSE_MIN_CHARS = 12;
-
-/** Longueur maximale d'une réponse à un fragment. */
-export const RESPONSE_MAX_CHARS = 480;
-
-/**
- * Paliers de révélation progressive de la photo, en pourcentage de netteté.
- * Index = nombre d'échanges mutuels aboutis sur le fil.
- */
-export const REVEAL_STEPS = [0, 33, 66, 100] as const;
-
-/** Âge minimum requis. */
+/** Âge minimum. Weave est une application de rencontre : elle est réservée aux majeurs. */
 export const MIN_AGE = 18;
 
-/** Nombre d'heures de tissage proposées (créneaux d'ouverture quotidiens). */
-export const WEAVING_HOURS = [8, 12, 18, 21] as const;
+/** Rayon de recherche par défaut, en kilomètres. */
+export const DEFAULT_RADIUS_KM = 25;
+export const MAX_RADIUS_KM = 100;
 
-/** Délai de rétention des messages après dénouage d'un fil (RGPD), en jours. */
+/** Catégories de plans. Volontairement peu nombreuses et concrètes. */
+export const PLAN_CATEGORIES = [
+  "sortie",
+  "sport",
+  "culture",
+  "repas",
+  "musique",
+  "jeux",
+  "balade",
+  "benevolat",
+] as const;
+export type PlanCategory = (typeof PLAN_CATEGORIES)[number];
+
+export const PLAN_CATEGORY_LABELS: Readonly<Record<PlanCategory, string>> = {
+  sortie: "Sortie",
+  sport: "Sport",
+  culture: "Culture",
+  repas: "Repas",
+  musique: "Musique",
+  jeux: "Jeux",
+  balade: "Balade",
+  benevolat: "Bénévolat",
+};
+
+/** Rétention des messages après clôture d'une conversation, en jours. */
 export const MESSAGE_RETENTION_DAYS = 90;
 
 /** Délai de purge d'un compte supprimé, en jours. */

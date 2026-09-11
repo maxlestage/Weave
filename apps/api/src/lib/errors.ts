@@ -7,10 +7,11 @@ const STATUS: Record<ErrorCode, number> = {
   [ERROR_CODES.NOT_FOUND]: 404,
   [ERROR_CODES.VALIDATION]: 422,
   [ERROR_CODES.RATE_LIMITED]: 429,
-  [ERROR_CODES.LOOM_FULL]: 409,
-  [ERROR_CODES.THREAD_GONE]: 410,
+  [ERROR_CODES.NO_REQUESTS_LEFT]: 429,
+  [ERROR_CODES.TOO_MANY_PLANS]: 409,
+  [ERROR_CODES.PLAN_CLOSED]: 409,
+  [ERROR_CODES.ALREADY_REQUESTED]: 409,
   [ERROR_CODES.ENTITLEMENT_REQUIRED]: 402,
-  [ERROR_CODES.ALREADY_EXTENDED]: 409,
   [ERROR_CODES.UPSTREAM]: 502,
   [ERROR_CODES.INTERNAL]: 500,
 };
@@ -50,14 +51,26 @@ export const invalid = (message: string, details?: unknown) =>
 export const rateLimited = (message = "Trop de requêtes. Réessayez dans un instant.") =>
   new AppError(ERROR_CODES.RATE_LIMITED, message);
 
-export const loomFull = () =>
+export const noRequestsLeft = (quota: number) =>
   new AppError(
-    ERROR_CODES.LOOM_FULL,
-    "Votre métier est complet. Dénouez un fil pour faire de la place.",
+    ERROR_CODES.NO_REQUESTS_LEFT,
+    `Vous avez utilisé vos ${quota} demandes du jour. Elles reviennent à minuit.`,
   );
 
-export const threadGone = () =>
-  new AppError(ERROR_CODES.THREAD_GONE, "Ce fil s'est dénoué : il n'existe plus.");
+export const tooManyPlans = (maximum: number) =>
+  new AppError(
+    ERROR_CODES.TOO_MANY_PLANS,
+    `Vous avez déjà ${maximum} plans ouverts. Annulez-en un pour en publier un autre.`,
+  );
+
+export const planClosed = (message = "Ce plan n'accepte plus de demandes.") =>
+  new AppError(ERROR_CODES.PLAN_CLOSED, message);
+
+export const alreadyRequested = () =>
+  new AppError(
+    ERROR_CODES.ALREADY_REQUESTED,
+    "Vous avez déjà demandé à venir. On ne redemande pas deux fois.",
+  );
 
 export const entitlementRequired = (message: string, details?: unknown) =>
   new AppError(ERROR_CODES.ENTITLEMENT_REQUIRED, message, details);

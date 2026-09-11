@@ -7,12 +7,13 @@
  */
 import { Elysia, t } from "elysia";
 import {
-  PLANS,
   PLAN_TIERS,
+  REQUESTS_PER_DAY_FLOOR,
+  TIERS,
   UNIT_PRODUCTS,
   UNIT_SKUS,
   formatPrice,
-  planFromStoreKitId,
+  tierFromStoreKitId,
   unitFromStoreKitId,
   type Entitlement,
   type PlanTier,
@@ -21,8 +22,10 @@ import { env } from "../env.ts";
 import { invalid } from "../lib/errors.ts";
 import { log } from "../lib/log.ts";
 import { prisma } from "../lib/prisma.ts";
+import { requestsLeft } from "../lib/cache.ts";
+import { localDay } from "../lib/time.ts";
 import { authPlugin, invalidateAccountCache } from "../plugins/auth.ts";
-import { creditsFor, grantCredits, refillPlanCredits } from "./entitlements.ts";
+import { creditsFor, entitlementsFor, grantCredits, refillTierCredits } from "./entitlements.ts";
 
 /**
  * Vérifie une transaction signée StoreKit 2.
@@ -74,26 +77,27 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
   .use(authPlugin)
 
   .get(
-    "/plans",
+    "/tiers",
     () => ({
-      plans: PLAN_TIERS.map((tier) => {
-        const plan = PLANS[tier];
+      tiers: PLAN_TIERS.map((tier) => {
+        const offre = TIERS[tier];
         return {
-          ...plan,
-          monthlyPrice: formatPrice(plan.monthlyPriceCents),
-          yearlyPrice: plan.yearlyPriceCents === null ? null : formatPrice(plan.yearlyPriceCents),
+          ...offre,
+          monthlyPrice: formatPrice(offre.monthlyPriceCents),
+          yearlyPrice: offre.yearlyPriceCents === null ? null : formatPrice(offre.yearlyPriceCents),
         };
       }),
       units: UNIT_SKUS.map((sku) => ({
         ...UNIT_PRODUCTS[sku],
         price: formatPrice(UNIT_PRODUCTS[sku].priceCents),
       })),
-      note: "Aucun palier n'augmente le nombre de fils : le plafond de trois est le même pour tout le monde.",
+      note: `Aucune offre n'achète de visibilité : payer ne fait jamais remonter un plan. Et le nombre de demandes reste borné partout, au minimum ${REQUESTS_PER_DAY_FLOOR} par jour.`,
     }),
     {
       detail: {
         summary: "Catalogue des offres",
-        description: "Quatre abonnements, et chaque avantage également disponible à l'unité.",
+        description:
+          "Un socle gratuit, quatre abonnements, et chaque avantage également disponible à l'unité.",
       },
     },
   )
@@ -107,9 +111,14 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       });
 
       return {
-        plan: account.plan,
+        tier: account.tier,
         renewsAt: subscription?.renewsAt?.toISOString() ?? null,
         credits: await creditsFor(account.id),
+        requestsLeftToday: await requestsLeft(
+          account.id,
+          localDay(account.timezone),
+          entitlementsFor(account.tier).requestsPerDay,
+        ),
         inGracePeriod: subscription?.inGracePeriod ?? false,
       };
     },
@@ -122,10 +131,10 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       const account = requireAccount();
       const transaction = await verifyTransaction(body.signedTransaction);
 
-      const plan = planFromStoreKitId(transaction.productId);
-      if (plan === null) throw invalid(`Produit d'abonnement inconnu : ${transaction.productId}`);
+      const offre = tierFromStoreKitId(transaction.productId);
+      if (offre === null) throw invalid(`Produit d'abonnement inconnu : ${transaction.productId}`);
 
-      const period = plan.storeKit.yearly === transaction.productId ? "yearly" : "monthly";
+      const period = offre.storeKit.yearly === transaction.productId ? "yearly" : "monthly";
       const renewsAt =
         transaction.expiresAt ??
         new Date(Date.now() + (period === "yearly" ? 365 : 30) * 24 * 60 * 60 * 1000);
@@ -134,7 +143,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
         where: { accountId: account.id },
         create: {
           accountId: account.id,
-          tier: plan.tier,
+          tier: offre.tier,
           period,
           storeKitProductId: transaction.productId,
           originalTransactionId: transaction.originalTransactionId,
@@ -143,7 +152,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
           environment: transaction.environment,
         },
         update: {
-          tier: plan.tier,
+          tier: offre.tier,
           period,
           storeKitProductId: transaction.productId,
           originalTransactionId: transaction.originalTransactionId,
@@ -155,10 +164,10 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
         },
       });
 
-      await refillPlanCredits(account.id, plan.tier, renewsAt);
+      await refillTierCredits(account.id, offre.tier, renewsAt);
       await invalidateAccountCache(account.id);
 
-      return { ok: true, plan: plan.tier, renewsAt: renewsAt.toISOString() };
+      return { ok: true, tier: offre.tier, renewsAt: renewsAt.toISOString() };
     },
     {
       body: t.Object({ signedTransaction: t.String({ minLength: 10 }) }),
@@ -206,7 +215,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       body: t.Object({ signedTransaction: t.String({ minLength: 10 }) }),
       detail: {
         summary: "Enregistrer un achat à l'unité",
-        description: "Consommables StoreKit : Écho, Prolonge, Relais, Motif, Escale, Atelier.",
+        description: "Consommables StoreKit : Renfort, Horizon, Tablée, Escale, Bilan.",
       },
     },
   )
@@ -217,8 +226,8 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       // Notifications serveur à serveur App Store (V2) : renouvellements,
       // remboursements, expirations, périodes de grâce.
       const transaction = await verifyTransaction(body.signedPayload);
-      const plan = planFromStoreKitId(transaction.productId);
-      if (plan === null) return { ok: true, ignored: true };
+      const offre = tierFromStoreKitId(transaction.productId);
+      if (offre === null) return { ok: true, ignored: true };
 
       const subscription = await prisma.subscription.findFirst({
         where: { originalTransactionId: transaction.originalTransactionId },
@@ -232,7 +241,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       await prisma.subscription.update({
         where: { id: subscription.id },
         data: {
-          tier: expired ? "fil" : plan.tier,
+          tier: expired ? "depart" : offre.tier,
           renewsAt: expiresAt,
           expiresAt,
           inGracePeriod: false,
@@ -240,7 +249,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
       });
 
       if (!expired && expiresAt !== null) {
-        await refillPlanCredits(subscription.accountId, plan.tier as PlanTier, expiresAt);
+        await refillTierCredits(subscription.accountId, offre.tier as PlanTier, expiresAt);
       }
       await invalidateAccountCache(subscription.accountId);
 
