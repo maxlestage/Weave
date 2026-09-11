@@ -64,6 +64,26 @@ jobs:
             exit 1
           fi
 
+      - name: État de l'application avant correction
+        # Affiché d'abord : savoir d'où l'on part rend la suite lisible, et
+        # c'est la seule façon de voir depuis un téléphone ce qu'Heroku a
+        # réellement configuré.
+        run: |
+          curl -sS "https://api.heroku.com/apps/$APP" \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" > /tmp/avant.json
+          pile=$(python3 -c "import json;print(json.load(open('/tmp/avant.json')).get('build_stack',{}).get('name','inconnue'))")
+
+          curl -sS "https://api.heroku.com/apps/$APP/buildpack-installations" \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" > /tmp/bp.json
+          bp=$(python3 -c "import json;d=json.load(open('/tmp/bp.json'));print(', '.join(b['buildpack']['name'] for b in d) if isinstance(d,list) and d else 'aucun')")
+
+          echo "  pile        : $pile"
+          echo "  buildpacks  : $bp"
+          echo "PILE_AVANT=$pile" >> "$GITHUB_ENV"
+          echo "BP_AVANT=$bp" >> "$GITHUB_ENV"
+
       - name: Forcer la pile « container »
         # Étape décisive. Sans elle, Heroku ignore heroku.yml, croit à une
         # application Node.js et lance `npm install` — qui échoue aussitôt,
@@ -87,6 +107,26 @@ jobs:
             exit 1
           fi
           echo "Pile de construction : container"
+
+      - name: Retirer les buildpacks
+        # Sur la pile « container », les buildpacks ne servent plus à rien. Les
+        # laisser en place entretient l'ambiguïté : le tableau de bord continue
+        # d'afficher « Node.js », et un déploiement fait par un autre chemin
+        # peut encore tenter de les utiliser.
+        run: |
+          reponse=$(curl -sS -w '\n%{http_code}' -X PUT \
+            "https://api.heroku.com/apps/$APP/buildpack-installations" \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"updates":[]}')
+          code=$(echo "$reponse" | tail -1)
+
+          if [ "$code" = "200" ]; then
+            echo "Buildpacks retirés."
+          else
+            echo "::warning::Retrait des buildpacks impossible (HTTP $code). Sans conséquence sur la pile container, mais le tableau de bord continuera d'afficher un buildpack."
+          fi
 
       - name: Brancher PostgreSQL et le magasin clé-valeur
         run: |
@@ -157,9 +197,20 @@ jobs:
             echo "| Base | Heroku Postgres Essential-0 |"
             echo "| Cache | Heroku Key-Value Store mini |"
             echo ""
-            echo "### Étape suivante"
+            echo "### Ce qui a été corrigé"
             echo ""
-            echo "Ajoutez la variable de dépôt \`HEROKU_APP_NAME\` avec la valeur \`$APP\`"
-            echo "(Settings → Secrets and variables → Actions → onglet **Variables**),"
-            echo "puis lancez le workflow **Heroku — déployer**."
+            echo "| | Avant | Après |"
+            echo "| --- | --- | --- |"
+            echo "| Pile de construction | \`$PILE_AVANT\` | \`container\` |"
+            echo "| Buildpacks | $BP_AVANT | aucun |"
+            echo ""
+            echo "### Étapes suivantes"
+            echo ""
+            echo "1. Ajoutez la variable de dépôt \`HEROKU_APP_NAME\` = \`$APP\`"
+            echo "   (Settings → Secrets and variables → Actions → onglet **Variables**)."
+            echo "2. **Dans le tableau de bord Heroku, onglet _Deploy_, désactivez les"
+            echo "   déploiements automatiques depuis GitHub.** Ils construisent avec des"
+            echo "   buildpacks et ignorent le \`Dockerfile\` : c'est ce qui fait échouer"
+            echo "   le build sur \`npm error ... workspace:*\`."
+            echo "3. Lancez le workflow **Heroku — déployer**."
           } >> "$GITHUB_STEP_SUMMARY"
