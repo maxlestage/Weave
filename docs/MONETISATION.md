@@ -1,7 +1,8 @@
 # Modèle économique
 
 Freemium : un socle gratuit, **quatre abonnements**, et **chaque avantage
-également achetable à l'unité**.
+également achetable à l'unité** — parce qu'à vingt ans, on ne s'abonne pas à
+tout, et qu'un produit qui l'exige se prive de la moitié de son public.
 
 Le catalogue est défini une seule fois, dans
 [`packages/contracts/src/catalog.ts`](../packages/contracts/src/catalog.ts), et
@@ -10,34 +11,46 @@ fois.
 
 ## La règle qui tient tout
 
-> **Aucun palier n'augmente le nombre de fils.**
+> **Aucune offre n'achète de visibilité.**
 
-Douze pour tout le monde, du gratuit au plus cher. Ce qui se vend :
+Le fil est trié par imminence puis par proximité, et par rien d'autre. Aucun
+palier, aucun achat ne place un plan devant celui de quelqu'un d'autre. Ce qui
+se vend :
 
-- la **vitesse de regarnissage** d'une place libérée ;
-- la **finesse des critères** de composition ;
-- des **facilités** ponctuelles — prolonger un fil, en rappeler un dénoué.
+- l'**horizon de publication** — combien de jours à l'avance on peut poser un
+  plan ;
+- la **finesse des critères** du fil ;
+- les **plans de groupe**, jusqu'à quatre personnes ;
+- des **à-côtés** — publier depuis une autre ville, un bilan de ses plans.
 
-Vendre du volume reviendrait à défaire le produit. C'est la contrainte
-commerciale la plus forte du projet, et elle est assumée : elle plafonne le
-revenu par utilisateur, mais c'est ce plafond qui rend l'offre crédible.
+Le second invariant tient aussi face à l'argent : **le nombre de demandes par
+jour reste borné à tous les paliers**. Les paliers l'élèvent, un « Renfort »
+l'assouplit au plus deux fois par jour, mais il n'existe aucune façon d'envoyer
+la même phrase à cent personnes dans la journée.
+
+C'est la contrainte commerciale la plus forte du projet, et elle est assumée :
+elle plafonne le revenu par utilisateur, mais c'est ce plafond qui rend l'offre
+crédible.
 
 ## Les paliers
 
-| | **Fil** | **Trame** | **Chaîne** | **Navette** | **Métier** |
+| | **Départ** | **Virée** | **Escapade** | **Expédition** | **Grand Tour** |
 | --- | --- | --- | --- | --- | --- |
-| Prix mensuel | Gratuit | 6,99 € | 12,99 € | 19,99 € | 34,99 € |
-| Prix annuel | — | 59,90 € | 109,90 € | 169,90 € | 299,90 € |
-| **Fils actifs** | **3** | **3** | **3** | **3** | **3** |
-| Regarnissage | prochaine heure | 6 h | 3 h | 1 h | 15 min |
+| Prix mensuel | Gratuit | 4,99 € | 8,99 € | 14,99 € | 24,99 € |
+| Prix annuel | — | 44,90 € | 79,90 € | 129,90 € | 209,90 € |
+| **Remontée dans le fil** | **aucune** | **aucune** | **aucune** | **aucune** | **aucune** |
+| Demandes / jour | 5 | 12 | 25 | 40 | 60 |
+| Plans ouverts | 3 | 3 | 3 | 3 | 3 |
+| Publier à l'avance | 7 j | 14 j | 30 j | 60 j | 90 j |
 | Critères | de base | étendus | précis | précis | précis |
-| Fragments vocaux | — | ✓ | ✓ | ✓ | ✓ |
-| Écho / mois | 0 | 1 | 3 | 6 | 15 |
-| Prolonge / mois | 0 | 2 | 5 | 10 | 30 |
+| Plans de groupe | — | ✓ | ✓ | ✓ | ✓ |
 | Escale / mois | 0 | 0 | 1 | 2 | 4 |
-| Accusé de lecture | — | — | ✓ | ✓ | ✓ |
-| Rapport Atelier | — | — | — | ✓ | ✓ |
+| Bilan | — | — | — | ✓ | ✓ |
 | Assistance prioritaire | — | — | — | — | ✓ |
+
+Les prix sont volontairement bas pour le secteur : le public visé a vingt ans et
+paie ses courses. Un abonnement de rencontre à 30 € par mois ne lui est pas
+destiné, quoi qu'en dise le marché.
 
 ## À l'unité
 
@@ -46,15 +59,27 @@ sans jamais s'abonner.
 
 | Produit | Prix | Ce que ça fait |
 | --- | --- | --- |
-| **Écho** | 2,49 € | Rappeler une fois un fil laissé se dénouer |
-| **Prolonge** | 1,49 € | +24 h sur un fil en cours, une fois par fil |
-| **Relais** | 1,99 € | Regarnir une place tout de suite, sans attendre son délai |
-| **Motif** | 0,99 € | Retisser ses cinq mots à partir de nouvelles réponses |
-| **Escale** | 4,99 € | Tisser depuis une autre ville pendant sept jours |
-| **Atelier** | 3,49 € | Un rapport ponctuel sur la résonance de ses fragments |
+| **Renfort** | 1,49 € | Cinq demandes de plus aujourd'hui |
+| **Horizon** | 0,99 € | Publier un plan au-delà de son horizon, une fois |
+| **Tablée** | 1,49 € | Un plan de groupe, une fois |
+| **Escale** | 3,99 € | Publier et lire depuis une autre ville pendant sept jours |
+| **Bilan** | 2,49 € | Un rapport ponctuel : quels plans attirent, et pourquoi |
 
-Le plafond de 48 h de vie d'un fil s'applique quel que soit le nombre de
-« Prolonge » achetées : on ne peut pas retenir indéfiniment quelqu'un.
+Il n'existe **aucun produit de remontée** — ni « boost », ni « relance », ni
+mise en avant. C'est la seule case du catalogue que le secteur remplit toujours
+et que Weave laisse vide. Un test de `WeaveKit` vérifie qu'aucun SKU portant ce
+genre de nom n'apparaît par inadvertance.
+
+### Le plafond du Renfort
+
+Un « Renfort » ajoute `RENFORT_GRANT` demandes à la journée en cours, **au plus
+`MAX_RENFORTS_PER_DAY` fois par jour**. Ce second plafond n'est pas une
+limitation commerciale timide : sans lui, « on ne peut pas arroser » deviendrait
+« on ne peut pas arroser gratuitement », ce qui n'est pas la même règle.
+
+La place de renfort est réservée avant que le crédit soit dépensé, et rendue si
+le crédit manque — sinon une tentative refusée grignoterait le plafond du jour.
+Un test d'intégration couvre les deux cas.
 
 ## Mise en œuvre
 
@@ -72,6 +97,9 @@ Le plafond de 48 h de vie d'un fil s'applique quel que soit le nombre de
   remboursement, période de grâce.
 - Les crédits inclus dans un abonnement sont redotés au renouvellement ; les
   crédits **achetés à l'unité ne sont jamais remis à zéro**.
+- La dépense d'un crédit passe par un `updateMany` conditionnel
+  (`balance >= 1`) : deux requêtes simultanées ne peuvent pas dépenser le même
+  crédit.
 
 ## Refus explicites
 

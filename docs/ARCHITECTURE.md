@@ -13,13 +13,13 @@
                   ▼                       │ APNs (liveactivity)
         ┌───────────────────────────────────────────┐
         │        API Weave — Bun + Elysia           │
-        │  moteur de tissage · droits · APNs        │
+        │  composition du fil · droits · APNs       │
         └───────┬───────────────────────┬───────────┘
                 │                       │
         ┌───────▼────────┐      ┌───────▼──────────┐
         │     Redis      │      │   PostgreSQL     │
-        │  LES 12 FILS   │      │  comptes, motifs │
-        │  (cache seul)  │      │  conversations   │
+        │ QUOTA DU JOUR  │      │  comptes, plans  │
+        │  fil composé   │      │  demandes, msgs  │
         └────────────────┘      └──────────────────┘
 
         ┌────────────────┐
@@ -70,10 +70,14 @@ propre client, et `src/lib/prisma.ts` charge le bon au démarrage selon
 ### Redis n'est pas un cache d'accélération
 
 Dans la plupart des services, retirer le cache dégrade les performances. Ici, il
-n'y a plus de produit : **les fils n'existent nulle part ailleurs**. C'est
-pourquoi la sonde `/health` déclare `cache.required: true` et bascule en 503 si
-Redis ne répond pas — un service qui accepterait des requêtes sans cache
-mentirait sur ce qu'il peut faire.
+emporte l'invariant central : **le quota de demandes du jour n'existe nulle part
+ailleurs.** C'est pourquoi la sonde `/health` déclare `cache.required: true` et
+bascule en 503 si Redis ne répond pas — un service qui accepterait des demandes
+sans pouvoir les compter mentirait sur sa règle principale.
+
+Les plans, eux, vivent en base : ce sont des engagements datés que leurs auteurs
+ont écrits. Le fil n'est qu'une vue calculée par-dessus, mise en cache cinq
+minutes.
 
 Détails dans [CACHE.md](./CACHE.md).
 
@@ -94,30 +98,47 @@ weave/
 
 ### `@weave/contracts` : une seule définition
 
-Les invariants (`MAX_ACTIVE_THREADS`), le catalogue des offres et les types de
-transport sont définis une fois et consommés par l'API **et** par le site. Le
-site ne peut donc pas afficher un tarif ou un plafond que l'API n'applique pas.
+Les invariants (`REQUESTS_PER_DAY_FLOOR`, `PAID_VISIBILITY`, `MAX_OPEN_PLANS`),
+le catalogue des offres et les types de transport sont définis une fois et
+consommés par l'API **et** par le site. Le site ne peut donc pas afficher un
+tarif ou un plafond que l'API n'applique pas.
 
 Côté Swift, les mêmes structures sont redéfinies dans `WeaveKit/Models` — un
 miroir manuel, puisqu'on ne partage pas de types entre TypeScript et Swift. Les
 tests de `WeaveKit` décodent des charges utiles réelles de l'API pour vérifier
 que le miroir n'a pas dérivé.
 
-## Le moteur de tissage
+## La composition du fil
 
-`apps/api/src/modules/loom.service.ts`
+`apps/api/src/modules/plans.service.ts`
 
-1. **Vivier** — les candidats sont préfiltrés en SQL par boîte englobante
-   géographique (pas d'extension géospatiale : le schéma doit rester portable),
-   puis scorés en mémoire. Le vivier est mis en cache 30 minutes.
-2. **Score sur 1000** — proximité de motif (550), proximité géographique (300),
-   fraîcheur du profil (150). Aucun terme n'est achetable.
-3. **Composition** — pour chaque place libre, la carte est écrite dans Redis par
-   le script Lua qui applique le plafond de façon atomique, puis une ligne de
-   registre est écrite en base. Si le registre refuse (personne déjà proposée),
-   **la carte est retirée du cache** : les deux écritures restent cohérentes.
-4. **Regarnissage** — un compte à rebours par personne, dont la durée dépend du
-   palier. Le « Relais » l'efface ; il n'augmente jamais le plafond.
+1. **Préfiltre en SQL** — boîte englobante géographique (pas d'extension
+   géospatiale : le schéma doit rester portable), fenêtre de dates bornée par
+   l'horizon du palier, âge de l'auteur, catégories retenues, comptes bloqués
+   dans les deux sens.
+2. **Filtre fin en mémoire** — distance orthodromique exacte, places restantes.
+   Un plan complet reste visible : le masquer donnerait l'impression qu'il n'y a
+   rien, alors qu'il s'y passe justement quelque chose.
+3. **Tri à deux termes** — imminence, puis proximité à moins de douze heures
+   d'écart. **Aucun troisième terme**, et surtout aucun terme achetable. C'est
+   le point du code qu'il faut relire avant d'accepter toute demande
+   d'« amélioration du classement ».
+4. **Cache cinq minutes**, invalidé à la publication ou à l'annulation d'un plan.
+
+Il n'existe pas de module de « score » : il n'y a rien à scorer. Le fil est une
+requête, pas un algorithme de recommandation.
+
+## L'invariant de quota
+
+`apps/api/src/lib/cache.ts` et `apps/api/src/modules/requests.routes.ts`
+
+Le compteur de demandes du jour vit dans Redis, expire à minuit dans le fuseau
+de la personne, et se décrémente par un script Lua atomique. Le quota est
+prélevé **avant** l'écriture de la demande, et rendu si l'insertion échoue.
+
+Toutes les lectures passent par `dailyRequestQuota()`, qui tient compte des
+« Renforts » achetés : calculer `requestsPerDay` seul quelque part afficherait
+un compteur faux.
 
 ## Sécurité
 
@@ -125,9 +146,10 @@ que le miroir n'a pas dérivé.
   haché en Argon2id (intégré à Bun).
 - **Jetons de rafraîchissement rotatifs**, stockés hachés en SHA-256. Une
   réutilisation est rejetée.
-- **Médias sous URL signée**, avec le niveau de flou inscrit dans la signature :
-  il ne peut pas être contourné côté client.
+- **Médias sous URL signée**, à durée de vie courte.
 - **Localisation arrondie à ~1 km au dépôt**, jamais stockée plus précisément.
+  Un plan n'affiche jamais d'adresse dans le fil : une ville, une distance
+  arrondie. L'endroit exact se dit dans la conversation, à qui l'on a accepté.
 - **Limitation de débit adossée à Redis**, par compte et par adresse IP.
 
 ## Observabilité

@@ -284,6 +284,6 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 | « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée avant la poussée. Même correction |
 | « Déploiement ignoré : configuration Heroku absente » | C'est le workflow de déploiement *automatique*, qui exige la variable `HEROKU_APP_NAME` (étape A4). Pour publier tout de suite, lancez « Heroku — mettre en ligne » |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |
-| `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, il n'y a pas de fils : c'est une dépendance dure, pas un confort |
+| `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, le quota de demandes ne peut pas être compté : c'est une dépendance dure, pas un confort |
 | « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B3 manque |
 | Échec de signature iOS | Relancez avec la case « créer les certificats » cochée, **une seule fois** |

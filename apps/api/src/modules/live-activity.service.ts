@@ -34,10 +34,14 @@ async function situationDe(accountId: string) {
   const maintenant = new Date();
   const plancher = new Date(maintenant.getTime() - PLAN_GRACE_MINUTES * 60_000);
 
+  // Un plan complet est toujours un rendez-vous : c'est même celui dont on a le
+  // plus besoin sur l'écran verrouillé. Seuls « annule » et « passe » sortent.
+  const AVENIR = ["ouvert", "complet"];
+
   const [publies, rejoints, aTraiter, sansReponse] = await Promise.all([
     // Mes propres plans à venir.
     prisma.plan.findMany({
-      where: { authorId: accountId, state: "ouvert", startsAt: { gte: plancher } },
+      where: { authorId: accountId, state: { in: AVENIR }, startsAt: { gte: plancher } },
       orderBy: { startsAt: "asc" },
       take: 1,
       select: { title: true, startsAt: true, city: true },
@@ -47,13 +51,14 @@ async function situationDe(accountId: string) {
       where: {
         authorId: accountId,
         state: "acceptee",
-        plan: { state: "ouvert", startsAt: { gte: plancher } },
+        plan: { state: { in: AVENIR }, startsAt: { gte: plancher } },
       },
       orderBy: { plan: { startsAt: "asc" } },
       take: 1,
       select: { plan: { select: { title: true, startsAt: true, city: true } } },
     }),
-    // Demandes reçues sur mes plans, encore sans décision.
+    // Demandes reçues sur mes plans, encore sans décision. Un plan complet n'en
+    // a plus : elles sont closes au moment où la dernière place part.
     prisma.joinRequest.count({
       where: { state: "envoyee", plan: { authorId: accountId, state: "ouvert" } },
     }),

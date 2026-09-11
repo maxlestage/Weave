@@ -25,6 +25,15 @@
 export const REQUESTS_PER_DAY_FLOOR = 5 as const;
 
 /**
+ * Un « Renfort » acheté ajoute des demandes à la journée en cours — mais leur
+ * nombre est lui-même borné. Sans ce second plafond, l'argent lèverait
+ * l'invariant, et « on ne peut pas arroser » deviendrait « on ne peut pas
+ * arroser gratuitement », ce qui n'est pas la même règle.
+ */
+export const RENFORT_GRANT = 5 as const;
+export const MAX_RENFORTS_PER_DAY = 2 as const;
+
+/**
  * SECOND INVARIANT — on n'achète pas de visibilité.
  *
  * Aucun palier, aucun achat ne fait remonter un plan devant les autres. Le

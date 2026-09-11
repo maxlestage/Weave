@@ -6,6 +6,7 @@
  * (`@weave/contracts/catalog`) : il n'existe qu'une seule définition des offres.
  */
 import {
+  RENFORT_GRANT,
   TIERS,
   UNIT_PRODUCTS,
   UNIT_SKUS,
@@ -13,11 +14,30 @@ import {
   type TierEntitlements,
   type UnitSku,
 } from "@weave/contracts";
+import { renfortsToday } from "../lib/cache.ts";
 import { entitlementRequired } from "../lib/errors.ts";
 import { prisma } from "../lib/prisma.ts";
+import { localDay } from "../lib/time.ts";
 
 export function entitlementsFor(tier: PlanTier): TierEntitlements {
   return TIERS[tier].entitlements;
+}
+
+/**
+ * Quota de demandes pour la journée en cours : celui du palier, augmenté des
+ * « Renforts » déjà appliqués aujourd'hui.
+ *
+ * Toutes les lectures du quota passent par ici. Calculer `requestsPerDay` seul
+ * quelque part afficherait un compteur faux à qui vient d'acheter un renfort.
+ */
+export async function dailyRequestQuota(account: {
+  id: string;
+  tier: PlanTier;
+  timezone: string;
+}): Promise<number> {
+  const droits = entitlementsFor(account.tier);
+  const renforts = await renfortsToday(account.id, localDay(account.timezone));
+  return droits.requestsPerDay + renforts * RENFORT_GRANT;
 }
 
 export type CreditMap = Record<UnitSku, number>;

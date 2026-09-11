@@ -13,8 +13,21 @@
  * distingue une demande d'un geste.
  */
 import { Elysia, t } from "elysia";
-import { REQUEST_MAX_CHARS, REQUEST_MIN_CHARS, type JoinRequest } from "@weave/contracts";
-import { consumeRequest, invalidateFeed, refundRequest, requestsLeft } from "../lib/cache.ts";
+import {
+  MAX_RENFORTS_PER_DAY,
+  RENFORT_GRANT,
+  REQUEST_MAX_CHARS,
+  REQUEST_MIN_CHARS,
+  type JoinRequest,
+} from "@weave/contracts";
+import {
+  applyRenfort,
+  consumeRequest,
+  invalidateFeed,
+  refundRequest,
+  releaseRenfort,
+  requestsLeft,
+} from "../lib/cache.ts";
 import {
   alreadyRequested,
   forbidden,
@@ -27,7 +40,7 @@ import { prisma } from "../lib/prisma.ts";
 import { ageFrom, localDay, secondsUntilMidnight } from "../lib/time.ts";
 import { authPlugin } from "../plugins/auth.ts";
 import { consume, RULES } from "../plugins/rate-limit.ts";
-import { entitlementsFor } from "./entitlements.ts";
+import { dailyRequestQuota, requireCredit } from "./entitlements.ts";
 import { publishLiveActivityState, startLiveActivitiesFor } from "./live-activity.service.ts";
 import { photoSignee } from "./plans.service.ts";
 
@@ -155,15 +168,15 @@ export const requestRoutes = new Elysia({ prefix: "/v1/requests", tags: ["Demand
 
       // Le quota est prélevé AVANT l'écriture : si l'insertion échoue, la
       // demande est rendue. L'inverse laisserait une demande écrite gratuite.
-      const droits = entitlementsFor(compte.tier);
+      const quota = await dailyRequestQuota(compte);
       const jour = localDay(compte.timezone);
       const restantes = await consumeRequest(
         compte.id,
         jour,
-        droits.requestsPerDay,
+        quota,
         secondsUntilMidnight(compte.timezone),
       );
-      if (restantes === null) throw noRequestsLeft(droits.requestsPerDay);
+      if (restantes === null) throw noRequestsLeft(quota);
 
       let demande;
       try {
@@ -205,7 +218,6 @@ export const requestRoutes = new Elysia({ prefix: "/v1/requests", tags: ["Demand
     "/sent",
     async ({ requireAccount }): Promise<{ requests: JoinRequest[]; requestsLeftToday: number }> => {
       const compte = requireAccount();
-      const droits = entitlementsFor(compte.tier);
 
       const [lignes, restantes] = await Promise.all([
         prisma.joinRequest.findMany({
@@ -214,7 +226,9 @@ export const requestRoutes = new Elysia({ prefix: "/v1/requests", tags: ["Demand
           take: 50,
           include: INCLUDE_DEMANDE,
         }),
-        requestsLeft(compte.id, localDay(compte.timezone), droits.requestsPerDay),
+        dailyRequestQuota(compte).then((quota) =>
+          requestsLeft(compte.id, localDay(compte.timezone), quota),
+        ),
       ]);
 
       return {
@@ -226,6 +240,53 @@ export const requestRoutes = new Elysia({ prefix: "/v1/requests", tags: ["Demand
       detail: {
         summary: "Mes demandes envoyées",
         description: "Sans accusé de lecture : savoir si l'autre a lu n'aide personne à décider.",
+      },
+    },
+  )
+
+  .post(
+    "/renfort",
+    async ({ requireAccount }) => {
+      const compte = requireAccount();
+      const jour = localDay(compte.timezone);
+
+      // Le nombre de renforts applicables dans une journée est lui-même borné.
+      // Sans ce second plafond, l'argent lèverait l'invariant, et « on ne peut
+      // pas arroser » deviendrait « on ne peut pas arroser gratuitement ».
+      const applique = await applyRenfort(
+        compte.id,
+        jour,
+        MAX_RENFORTS_PER_DAY,
+        secondsUntilMidnight(compte.timezone),
+      );
+      if (applique === null) {
+        throw invalid(
+          `Au plus ${MAX_RENFORTS_PER_DAY} renforts par jour. Vos demandes reviennent à minuit.`,
+        );
+      }
+
+      // La place est réservée avant que le crédit soit dépensé — l'inverse
+      // consommerait un achat pour rien lorsque le plafond est atteint. Elle
+      // est donc rendue si le crédit manque, sans quoi une tentative refusée
+      // grignoterait le plafond du jour.
+      try {
+        await requireCredit(compte.id, "renfort");
+      } catch (erreur) {
+        await releaseRenfort(compte.id, jour);
+        throw erreur;
+      }
+
+      const quota = await dailyRequestQuota(compte);
+      return {
+        ok: true,
+        granted: RENFORT_GRANT,
+        requestsLeftToday: await requestsLeft(compte.id, jour, quota),
+      };
+    },
+    {
+      detail: {
+        summary: "Appliquer un « Renfort »",
+        description: `Ajoute ${RENFORT_GRANT} demandes à la journée en cours, au plus ${MAX_RENFORTS_PER_DAY} fois par jour. Le plafond journalier existe même en payant.`,
       },
     },
   )

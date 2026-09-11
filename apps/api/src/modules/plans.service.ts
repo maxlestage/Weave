@@ -26,7 +26,7 @@ import { prisma } from "../lib/prisma.ts";
 import { getJson, setJson } from "../lib/redis.ts";
 import { ageFrom, boundingBox, distanceKm, localDay } from "../lib/time.ts";
 import type { AuthenticatedAccount } from "../plugins/auth.ts";
-import { entitlementsFor } from "./entitlements.ts";
+import { dailyRequestQuota, entitlementsFor } from "./entitlements.ts";
 
 /** Plans extraits de la base avant tri fin en mémoire. */
 const FETCH_LIMIT = 300;
@@ -98,7 +98,7 @@ function listeJson(brut: string): string[] {
 export async function buildFeed(account: AuthenticatedAccount): Promise<Feed> {
   const droits = entitlementsFor(account.tier);
   const jour = localDay(account.timezone);
-  const restantes = await requestsLeft(account.id, jour, droits.requestsPerDay);
+  const restantes = await requestsLeft(account.id, jour, await dailyRequestQuota(account));
 
   const cache = await getJson<Omit<Feed, "requestsLeftToday">>(keys.feed(account.id));
   if (cache !== null) {
@@ -171,7 +171,8 @@ export async function buildFeed(account: AuthenticatedAccount): Promise<Feed> {
     },
   });
 
-  const plans: Plan[] = [];
+  /** Plans retenus, avec le jour local du rendez-vous pour le tri. */
+  const retenus: { plan: Plan; jour: string }[] = [];
 
   for (const ligne of lignes) {
     const distance =
@@ -186,17 +187,26 @@ export async function buildFeed(account: AuthenticatedAccount): Promise<Feed> {
     // l'impression qu'il n'y a rien, alors qu'il s'y passe justement quelque chose.
     if (placesRestantes === 0 && !ligne.requests.some((r) => r.authorId === account.id)) continue;
 
-    plans.push(versPlan(ligne, distance, placesRestantes, account.id));
+    retenus.push({
+      plan: versPlan(ligne, distance, placesRestantes, account.id),
+      jour: localDay(account.timezone, ligne.startsAt),
+    });
   }
 
   // Imminence d'abord, proximité ensuite. Rien d'autre.
-  plans.sort((a, b) => {
-    const ecart = new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
-    if (Math.abs(ecart) > 12 * 60 * 60 * 1000) return ecart;
-    return a.distanceKm - b.distanceKm;
+  //
+  // Le tri porte sur un couple (jour, distance), pas sur un écart de temps
+  // toléré : comparer « à moins de douze heures près » ne définit pas un ordre
+  // total — A et B pourraient se comparer par la distance, B et C aussi, et A
+  // et C par la date. Le résultat dépendrait alors de l'algorithme de tri, ce
+  // qui est exactement ce qu'on ne peut pas se permettre sur un classement
+  // qu'on promet explicable.
+  retenus.sort((a, b) => {
+    if (a.jour !== b.jour) return a.jour < b.jour ? -1 : 1;
+    return a.plan.distanceKm - b.plan.distanceKm;
   });
 
-  const fil = plans.slice(0, FEED_SIZE);
+  const fil = retenus.slice(0, FEED_SIZE).map((r) => r.plan);
   const genere = new Date().toISOString();
 
   await setJson(

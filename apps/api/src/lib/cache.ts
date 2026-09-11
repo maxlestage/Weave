@@ -22,6 +22,8 @@ export const keys = {
   feed: (accountId: string) => `${NS}:feed:${accountId}`,
   /** Demandes déjà envoyées aujourd'hui. Expire à minuit, heure locale. */
   requestsUsed: (accountId: string, day: string) => `${NS}:req:${accountId}:${day}`,
+  /** « Renforts » déjà appliqués aujourd'hui. Expire à minuit, heure locale. */
+  renforts: (accountId: string, day: string) => `${NS}:renfort:${accountId}:${day}`,
   /** Identité résumée, pour éviter un aller-retour base à chaque requête. */
   identity: (accountId: string) => `${NS}:me:${accountId}`,
   /** Dernier état poussé vers la Live Activity. */
@@ -76,6 +78,49 @@ export async function consumeRequest(
   ]);
   const restantes = Number(reponse);
   return restantes < 0 ? null : restantes;
+}
+
+/**
+ * Applique un « Renfort », de façon atomique et bornée.
+ *
+ * Le même script que le quota, employé à l'envers : il incrémente, et annule
+ * son incrément si le plafond journalier de renforts est franchi. Sans ce
+ * second plafond, l'argent lèverait l'invariant.
+ *
+ * Renvoie le nombre de renforts appliqués aujourd'hui, ou `null` si le plafond
+ * est atteint.
+ */
+export async function applyRenfort(
+  accountId: string,
+  day: string,
+  maximum: number,
+  secondsUntilMidnight: number,
+): Promise<number | null> {
+  const reponse = await redis.send("EVAL", [
+    CONSUME_REQUEST_LUA,
+    "1",
+    keys.renforts(accountId, day),
+    String(maximum),
+    String(Math.max(60, secondsUntilMidnight)),
+  ]);
+  const restants = Number(reponse);
+  return restants < 0 ? null : maximum - restants;
+}
+
+/**
+ * Libère une place de renfort réservée mais non payée. Ne descend jamais sous
+ * zéro, comme le remboursement d'une demande.
+ */
+export async function releaseRenfort(accountId: string, day: string): Promise<void> {
+  const cle = keys.renforts(accountId, day);
+  const brut = await redis.get(cle);
+  if (brut !== null && Number(brut) > 0) await redis.decr(cle);
+}
+
+/** Renforts appliqués aujourd'hui. */
+export async function renfortsToday(accountId: string, day: string): Promise<number> {
+  const brut = await redis.get(keys.renforts(accountId, day));
+  return brut === null ? 0 : Number(brut);
 }
 
 /** Demandes restantes aujourd'hui, sans rien consommer. */

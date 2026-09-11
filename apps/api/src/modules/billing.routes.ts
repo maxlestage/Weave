@@ -25,7 +25,7 @@ import { prisma } from "../lib/prisma.ts";
 import { requestsLeft } from "../lib/cache.ts";
 import { localDay } from "../lib/time.ts";
 import { authPlugin, invalidateAccountCache } from "../plugins/auth.ts";
-import { creditsFor, entitlementsFor, grantCredits, refillTierCredits } from "./entitlements.ts";
+import { creditsFor, dailyRequestQuota, grantCredits, refillTierCredits } from "./entitlements.ts";
 
 /**
  * Vérifie une transaction signée StoreKit 2.
@@ -117,7 +117,7 @@ export const billingRoutes = new Elysia({ prefix: "/v1/billing", tags: ["Offres"
         requestsLeftToday: await requestsLeft(
           account.id,
           localDay(account.timezone),
-          entitlementsFor(account.tier).requestsPerDay,
+          await dailyRequestQuota(account),
         ),
         inGracePeriod: subscription?.inGracePeriod ?? false,
       };

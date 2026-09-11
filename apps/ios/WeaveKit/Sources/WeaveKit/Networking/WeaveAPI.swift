@@ -143,6 +143,13 @@ public actor WeaveAPI {
         let _: EmptyResponse = try await request(.post, "/v1/requests/\(requestID)/decline")
     }
 
+    /// Applique un « Renfort » : quelques demandes de plus pour la journée en
+    /// cours. Le nombre de renforts applicables dans une journée est lui-même
+    /// borné — l'argent ne lève pas l'invariant, il l'assouplit une fois ou deux.
+    public func applyRenfort() async throws -> RenfortResult {
+        try await request(.post, "/v1/requests/renfort")
+    }
+
     // MARK: - Conversations
 
     public func conversations() async throws -> [Conversation] {
@@ -468,6 +475,11 @@ public struct SentRequest: Decodable, Sendable {
     public let id: String
     public let sentAt: Date
     /// Ce qu'il reste après cet envoi : affiché tout de suite, sans second appel.
+    public let requestsLeftToday: Int
+}
+
+public struct RenfortResult: Decodable, Sendable {
+    public let granted: Int
     public let requestsLeftToday: Int
 }
 

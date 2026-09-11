@@ -8,7 +8,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   MAX_OPEN_PLANS,
+  MAX_RENFORTS_PER_DAY,
   PLAN_MIN_LEAD_MINUTES,
+  RENFORT_GRANT,
   REQUESTS_PER_DAY_FLOOR,
   REQUEST_MIN_CHARS,
   TIERS,
@@ -159,7 +161,11 @@ async function reset(session: Session): Promise<void> {
   await prisma.joinRequest.deleteMany({ where: { authorId: session.accountId } });
   await prisma.plan.deleteMany({ where: { authorId: session.accountId } });
   await redis.del(keys.requestsUsed(session.accountId, localDay(session.timezone)));
+  await redis.del(keys.renforts(session.accountId, localDay(session.timezone)));
+  await prisma.creditBalance.deleteMany({ where: { accountId: session.accountId } });
   await redis.del(keys.feed(session.accountId));
+  await redis.del(keys.watch(session.accountId));
+  await redis.del(keys.liveActivity(session.accountId));
   for (const bucket of ["feed", "publish", "join", "message"]) {
     await redis.del(keys.rateLimit(bucket, session.accountId));
   }
@@ -231,15 +237,28 @@ describe("le fil", () => {
     expect(fil.plans.some((plan) => plan.author.id === hote.accountId)).toBeFalse();
   });
 
-  test("est trié par imminence, jamais par offre", async () => {
+  test("est trié par jour puis par distance, et par rien d'autre", async () => {
     const fil = await ok<FeedResponse>(await call("/v1/plans", auth(invite.token)));
-    expect(fil.plans.length).toBeGreaterThan(0);
+    expect(fil.plans.length).toBeGreaterThan(1);
 
-    // L'ordre exact tolère la proximité à moins de douze heures d'écart : on
-    // vérifie donc la tendance, pas un tri strict.
-    const premier = new Date(fil.plans[0]!.startsAt).getTime();
-    const dernier = new Date(fil.plans.at(-1)!.startsAt).getTime();
-    expect(premier).toBeLessThanOrEqual(dernier);
+    // L'ordre annoncé est un couple (jour du rendez-vous, distance). On le
+    // vérifie en entier : un tri « à peu près croissant » masquerait justement
+    // le défaut qu'on cherche — un comparateur non transitif, dont le résultat
+    // dépend de l'algorithme de tri.
+    // Le même jour que celui du serveur : il regroupe dans le fuseau de la
+    // personne qui regarde, pas en UTC. Comparer en UTC ferait basculer de
+    // groupe les rendez-vous de fin de soirée.
+    const jour = (iso: string) => localDay(invite.timezone, new Date(iso));
+
+    for (let i = 1; i < fil.plans.length; i++) {
+      const avant = fil.plans[i - 1]!;
+      const apres = fil.plans[i]!;
+      if (jour(avant.startsAt) === jour(apres.startsAt)) {
+        expect(avant.distanceKm).toBeLessThanOrEqual(apres.distanceKm);
+      } else {
+        expect(jour(avant.startsAt) < jour(apres.startsAt)).toBeTrue();
+      }
+    }
   });
 
   test("se sert du cache au second appel", async () => {
@@ -319,6 +338,44 @@ describe("demander à venir", () => {
   });
 });
 
+describe("le « Renfort »", () => {
+  test("ajoute des demandes, mais reste borné par jour", async () => {
+    await reset(invite);
+    const jour = localDay(invite.timezone);
+    const base = TIERS.depart.entitlements.requestsPerDay;
+
+    // Sans crédit, le renfort est refusé et n'ouvre rien.
+    const sansCredit = await call("/v1/requests/renfort", post({}, invite.token));
+    expect(sansCredit.status).toBe(402);
+
+    await prisma.creditBalance.create({
+      data: { accountId: invite.accountId, sku: "renfort", balance: 5 },
+    });
+
+    for (let n = 1; n <= MAX_RENFORTS_PER_DAY; n++) {
+      const applique = await ok<{ granted: number; requestsLeftToday: number }>(
+        await call("/v1/requests/renfort", post({}, invite.token)),
+      );
+      expect(applique.granted).toBe(RENFORT_GRANT);
+      expect(applique.requestsLeftToday).toBe(base + n * RENFORT_GRANT);
+    }
+
+    // Le plafond journalier existe même en payant : c'est ce qui fait que
+    // « on ne peut pas arroser » n'est pas « on ne peut pas arroser gratuitement ».
+    const detrop = await call("/v1/requests/renfort", post({}, invite.token));
+    expect(detrop.status).toBe(422);
+
+    // Et le crédit du renfort refusé n'a pas été prélevé.
+    const solde = await prisma.creditBalance.findFirstOrThrow({
+      where: { accountId: invite.accountId, sku: "renfort" },
+      select: { balance: true },
+    });
+    expect(solde.balance).toBe(5 - MAX_RENFORTS_PER_DAY);
+
+    await redis.del(keys.renforts(invite.accountId, jour));
+  });
+});
+
 describe("accepter une demande", () => {
   test("ouvre une conversation, et referme le plan quand il est complet", async () => {
     await reset(hote);
@@ -359,6 +416,36 @@ describe("accepter une demande", () => {
       ),
     );
     expect(message.body).toBe("Super, à jeudi alors.");
+  });
+
+  test("laisse un plan complet sur l'écran verrouillé des deux personnes", async () => {
+    // Un plan complet reste un rendez-vous — c'est même celui dont on a le plus
+    // besoin sur un écran verrouillé. Seuls un plan annulé ou passé sortent.
+    await reset(hote);
+    await reset(invite);
+    const planId = await publier(hote, "Atelier céramique, deux places");
+
+    const demande = await ok<{ id: string }>(
+      await call("/v1/requests", post({ planId, message: MESSAGE }, invite.token)),
+    );
+    await ok(await call(`/v1/requests/${demande.id}/accept`, post({}, hote.token)));
+
+    const plan = await prisma.plan.findUniqueOrThrow({ where: { id: planId } });
+    expect(plan.state).toBe("complet");
+
+    for (const session of [hote, invite]) {
+      const etat = await ok<{ planTitle: string | null; pendingRequests: number }>(
+        await call("/v1/live-activity/state", auth(session.token)),
+      );
+      expect(etat.planTitle).toBe("Atelier céramique, deux places");
+      // Les demandes en attente ont été closes en même temps.
+      expect(etat.pendingRequests).toBe(0);
+    }
+
+    const montre = await ok<{ nextPlan: { title: string } | null }>(
+      await call("/v1/watch/summary", auth(invite.token)),
+    );
+    expect(montre.nextPlan?.title).toBe("Atelier céramique, deux places");
   });
 
   test("interdit d'accepter une demande sur le plan de quelqu'un d'autre", async () => {

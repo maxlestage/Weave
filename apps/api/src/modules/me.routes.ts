@@ -12,7 +12,7 @@ import { invalid, notFound } from "../lib/errors.ts";
 import { prisma } from "../lib/prisma.ts";
 import { ageFrom, localDay } from "../lib/time.ts";
 import { authPlugin, invalidateAccountCache } from "../plugins/auth.ts";
-import { creditsFor, entitlementsFor } from "./entitlements.ts";
+import { creditsFor, dailyRequestQuota } from "./entitlements.ts";
 import { photoSignee } from "./plans.service.ts";
 
 const BIO_MAX_CHARS = 160;
@@ -39,8 +39,6 @@ export const meRoutes = new Elysia({ prefix: "/v1/me", tags: ["Profil"] })
       });
       if (ligne === null) throw notFound("Compte introuvable.");
 
-      const droits = entitlementsFor(compte.tier);
-
       return {
         id: ligne.id,
         handle: ligne.handle,
@@ -55,7 +53,7 @@ export const meRoutes = new Elysia({ prefix: "/v1/me", tags: ["Profil"] })
         requestsLeftToday: await requestsLeft(
           compte.id,
           localDay(compte.timezone),
-          droits.requestsPerDay,
+          await dailyRequestQuota(compte),
         ),
         credits: await creditsFor(compte.id),
         createdAt: ligne.createdAt.toISOString(),
