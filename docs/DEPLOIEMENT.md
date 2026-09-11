@@ -17,6 +17,26 @@ pour mettre l'application entre les mains de testeurs.
 
 ## A. L'API et le site, sur Heroku
 
+> ### À lire avant tout : n'utilisez pas les déploiements du tableau de bord
+>
+> Dans l'onglet *Deploy* du tableau de bord Heroku, **« Connect to GitHub » et
+> « Enable Automatic Deploys » ne fonctionnent pas pour ce projet.** Ce chemin
+> construit avec des *buildpacks* : il ignore le `Dockerfile`, croit à une
+> application Node.js, et échoue ainsi —
+>
+> ```
+> -----> Using buildpack: heroku/nodejs
+>        npm error Unsupported URL Type "workspace:": workspace:*
+> ```
+>
+> Weave tourne sous Bun, qui n'a pas de buildpack Heroku. Le déploiement doit
+> passer par le workflow **« Heroku — déployer »** décrit plus bas, qui pousse
+> vers le dépôt git d'Heroku et déclenche bien une construction du
+> `Dockerfile`.
+>
+> **Si vous avez déjà activé les déploiements automatiques, désactivez-les** :
+> ils échoueront à chaque poussée sur `master` et brouilleront les journaux.
+
 L'API et le site vitrine tournent dans **un seul processus** : le site est
 statique et peu visité, lui dédier un second dyno doublerait la facture sans
 rien apporter.
@@ -83,20 +103,31 @@ défaut. Dans ce cas, Heroku ignore le `Dockerfile`, croit à une application
 Node.js, et le build échoue ainsi :
 
 ```
------> Node.js app detected
+-----> Node.js app detected                  (buildpack déduit)
+-----> Using buildpack: heroku/nodejs        (buildpack imposé)
        npm error code EUNSUPPORTEDPROTOCOL
        npm error Unsupported URL Type "workspace:": workspace:*
 ```
+
+Les deux premières lignes se valent : dans un cas Heroku a deviné un buildpack,
+dans l'autre il en a un de configuré. Le résultat est le même, et la cause
+aussi — l'application n'est pas sur la pile `container`.
 
 Ce message ne parle pas de la vraie cause. `workspace:*` désigne les paquets
 internes du dépôt ; c'est une syntaxe que Bun comprend et que npm ne
 comprendra jamais. Le problème n'est pas cette ligne : c'est que npm n'aurait
 jamais dû être appelé.
 
-**Correction** : lancez le workflow de l'étape A3 avec le nom de votre
-application, puis redéployez. Le workflow de déploiement vérifie désormais la
-pile avant de pousser quoi que ce soit, et s'arrête en nommant la cause si elle
-n'est pas la bonne.
+**Correction**, dans cet ordre :
+
+1. Lancez le workflow de l'étape A3 avec le nom de votre application. Il bascule
+   la pile en `container`, **retire les buildpacks** et affiche un avant/après.
+2. Désactivez les déploiements automatiques dans l'onglet *Deploy* du tableau de
+   bord — sans quoi ils continueront d'échouer à chaque poussée.
+3. Lancez le workflow **« Heroku — déployer »**.
+
+Le workflow de déploiement vérifie désormais la pile avant de pousser quoi que
+ce soit, et s'arrête en nommant la cause si elle n'est pas la bonne.
 
 ### Déployer par le workflow, pas par le tableau de bord
 
@@ -247,7 +278,7 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 
 | Symptôme | Piste |
 | --- | --- |
-| `Node.js app detected` puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | L'application n'est pas sur la pile `container` : Heroku ignore le `Dockerfile`. Relancez l'étape A3 avec le nom existant, puis redéployez |
+| `Node.js app detected` ou `Using buildpack: heroku/nodejs`, puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | Le build n'utilise pas le `Dockerfile`. Deux causes possibles, souvent simultanées : la pile n'est pas `container` (étape A3), et/ou le déploiement vient du tableau de bord au lieu du workflow (encadré en tête de section A) |
 | « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée cette fois avant la poussée. Même correction |
 | « Déploiement ignoré : configuration Heroku absente » | Le secret `HEROKU_API_KEY` ou la variable `HEROKU_APP_NAME` manque — étapes A2 et A4 |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |

@@ -46,11 +46,20 @@ function auth(token: string): RequestInit {
   return { headers: { authorization: `Bearer ${token}` } };
 }
 
-/** Ouvre une session pour un compte du jeu de données. */
+/**
+ * Ouvre une session pour un compte du jeu de données.
+ *
+ * Les compteurs anti-abus de la connexion sont remis à zéro au préalable :
+ * sans cela, la suite dépendrait de l'état laissé dans Redis par les
+ * exécutions précédentes — cinq demandes de code par quart d'heure suffisent
+ * à la faire échouer au bout de trois passages, ou après quelques essais
+ * manuels sur le même compte.
+ */
 async function login(local: string): Promise<{ token: string; accountId: string }> {
   const email = `${local}@weave.test`;
+  await resetLoginThrottle(email);
 
-  const requested = await json<{ devCode?: string }>(
+  const requested = await ok<{ devCode?: string }>(
     await call("/v1/auth/otp/request", post({ email })),
   );
   expect(requested.devCode).toBeString();
@@ -99,6 +108,22 @@ beforeAll(async () => {
 afterAll(async () => {
   await resetAccount(session.accountId);
 });
+
+/**
+ * Efface les compteurs de débit de la connexion.
+ *
+ * Le seau est indexé par empreinte d'e-mail et par adresse d'appel ; les tests
+ * passant par `app.handle`, il n'y a pas de socket et l'adresse vaut
+ * « inconnu » — voir `auth.routes.ts`.
+ */
+async function resetLoginThrottle(email: string): Promise<void> {
+  const subjects = [emailHash(email), "inconnu"];
+  for (const bucket of ["otp-request", "otp-verify"]) {
+    for (const subject of subjects) {
+      await redis.del(keys.rateLimit(bucket, subject));
+    }
+  }
+}
 
 /** Remet un compte à zéro : cache, registre et compteurs de débit. */
 async function resetAccount(accountId: string): Promise<void> {
