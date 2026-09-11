@@ -1,7 +1,11 @@
-import { MAX_ACTIVE_THREADS } from "@weave/contracts";
-import { Section } from "../composants.tsx";
+import { MAX_ACTIVE_THREADS, MIN_AGE } from "@weave/contracts";
+import { filVar, Section } from "../composants.tsx";
 
 const QUESTIONS = [
+  {
+    q: "À qui s'adresse Weave ?",
+    r: `Aux jeunes adultes, d'abord : les questions, le vocabulaire et le rythme sont écrits pour ce moment de la vie où l'on change de ville, de travail et de cercle d'amis. L'accès est réservé aux ${MIN_AGE} ans et plus, sans exception — c'est une application de rencontre, elle n'a rien à faire entre les mains de mineurs.`,
+  },
   {
     q: `Pourquoi seulement ${MAX_ACTIVE_THREADS} profils ?`,
     r: `Parce qu'un nombre fini change tout. ${MAX_ACTIVE_THREADS} fils, on en voit le bout : on peut lire chaque trame et répondre à celles qui comptent. Une pile sans fin, on la fait défiler — ce n'est plus la même activité, et ce n'est plus la même façon d'écrire.`,
@@ -30,7 +34,7 @@ const QUESTIONS = [
 
 export function Questions() {
   return (
-    <Section id="questions" titre="Questions fréquentes">
+    <Section id="questions" fil={3} titre="Questions fréquentes">
       <div className="divide-y" style={{ borderColor: "var(--bordure)" }}>
         {QUESTIONS.map((item) => (
           <details key={item.q} className="group py-4" style={{ borderColor: "var(--bordure)" }}>
@@ -45,7 +49,7 @@ export function Questions() {
               >
                 <path
                   d="M10 4v12M4 10h12"
-                  stroke="var(--accent)"
+                  stroke={filVar(3)}
                   strokeWidth="1.8"
                   strokeLinecap="round"
                 />

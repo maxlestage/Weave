@@ -8,9 +8,18 @@ import {
   type CriteriaDepth,
 } from "@weave/contracts";
 import { useState } from "react";
-import { Carte, Etiquette, Section } from "../composants.tsx";
+import { Carte, Etiquette, filVar, Section, type Fil } from "../composants.tsx";
 
 type Periode = "mensuel" | "annuel";
+
+/** Chaque palier porte sa couleur : cinq fils du métier. */
+const COULEURS: Record<string, Fil> = {
+  fil: 4,
+  trame: 3,
+  chaine: 6,
+  navette: 5,
+  metier: 1,
+};
 
 /** Libellés affichables des profondeurs de critères (les valeurs sont en ASCII). */
 const CRITERES: Record<CriteriaDepth, string> = {
@@ -32,6 +41,7 @@ export function Offres() {
   return (
     <Section
       id="offres"
+      fil={6}
       titre="Quatre abonnements, et tout à l'unité"
       chapeau={`Aucun palier n'augmente le nombre de fils : ${MAX_ACTIVE_THREADS} pour tout le monde. Ce qui se paie, c'est la finesse des critères et la vitesse à laquelle une place libérée est regarnie.`}
     >
@@ -50,7 +60,7 @@ export function Offres() {
             className="rounded-full px-4 py-2 text-sm font-semibold capitalize"
             style={
               periode === valeur
-                ? { background: "var(--accent)", color: "var(--color-lin)" }
+                ? { background: "var(--accent)", color: "var(--sur-accent)" }
                 : { color: "var(--texte-doux)" }
             }
           >
@@ -73,13 +83,18 @@ export function Offres() {
               ? " / an"
               : " / mois";
 
+          const couleur = COULEURS[tier] ?? 6;
+
           return (
-            <Carte key={tier} accentuee={tier === "chaine"}>
+            <Carte key={tier} fil={couleur} accentuee={tier === "chaine"}>
               <div className="flex items-baseline justify-between gap-3">
-                <h3 className="text-2xl" style={{ fontFamily: "var(--font-titre)" }}>
+                <h3
+                  className="text-2xl font-bold"
+                  style={{ fontFamily: "var(--font-titre)", color: filVar(couleur) }}
+                >
                   {plan.name}
                 </h3>
-                {tier === "chaine" && <Etiquette>Le plus choisi</Etiquette>}
+                {tier === "chaine" && <Etiquette fil={couleur}>Le plus choisi</Etiquette>}
               </div>
 
               <p className="mt-2 text-sm" style={{ color: "var(--texte-doux)" }}>
@@ -115,7 +130,7 @@ export function Offres() {
               <ul className="mt-5 space-y-2 text-sm">
                 {plan.highlights.map((point) => (
                   <li key={point} className="flex gap-2.5">
-                    <span aria-hidden="true" style={{ color: "var(--accent)" }}>
+                    <span aria-hidden="true" style={{ color: filVar(couleur) }}>
                       —
                     </span>
                     <span style={{ color: "var(--texte-doux)" }}>{point}</span>
@@ -127,7 +142,7 @@ export function Offres() {
         })}
       </div>
 
-      <h3 className="mt-14 text-2xl" style={{ fontFamily: "var(--font-titre)" }}>
+      <h3 className="mt-14 text-2xl font-bold" style={{ fontFamily: "var(--font-titre)" }}>
         Sans abonnement, à l'unité
       </h3>
       <p className="mt-3 max-w-2xl leading-relaxed" style={{ color: "var(--texte-doux)" }}>
@@ -136,20 +151,18 @@ export function Offres() {
       </p>
 
       <ul className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {UNIT_SKUS.map((sku) => {
+        {UNIT_SKUS.map((sku, index) => {
           const produit = UNIT_PRODUCTS[sku];
+          const couleur = ((index % 6) + 1) as Fil;
           return (
             <li
               key={sku}
-              className="rounded-xl p-4"
-              style={{ background: "var(--carte)", border: "1px solid var(--bordure)" }}
+              className="rounded-2xl p-4"
+              style={{ background: "var(--carte)", border: `2px solid ${filVar(couleur)}` }}
             >
               <div className="flex items-baseline justify-between gap-3">
-                <span className="font-semibold">{produit.name}</span>
-                <span
-                  className="text-sm font-semibold tabular-nums"
-                  style={{ color: "var(--accent)" }}
-                >
+                <span className="font-bold">{produit.name}</span>
+                <span className="text-sm font-bold tabular-nums" style={{ color: filVar(couleur) }}>
                   {formatPrice(produit.priceCents)}
                 </span>
               </div>
