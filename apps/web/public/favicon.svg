@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Weave">
-  <rect width="32" height="32" rx="8" fill="#1b1714" />
-  <g stroke="#e6a15c" stroke-width="2.2" stroke-linecap="round" fill="none">
-    <path d="M8 7v18" />
-    <path d="M16 7v18" />
-    <path d="M24 7v18" />
-    <path d="M5 12c4 3 7 3 11 0s7-3 11 0" stroke="#f2e3cf" />
-    <path d="M5 20c4 3 7 3 11 0s7-3 11 0" stroke="#f2e3cf" />
+  <rect width="32" height="32" rx="8" fill="#16121f" />
+  <g stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M7 6v20" stroke="#ff6f9c" />
+    <path d="M16 6v20" stroke="#3ddba6" />
+    <path d="M25 6v20" stroke="#b08cff" />
+  </g>
+  <g stroke-width="2.4" stroke-linecap="round" fill="none">
+    <path d="M4 12c4 3 8 3 12 0s8-3 12 0" stroke="#ff9a5b" />
+    <path d="M4 21c4 3 8 3 12 0s8-3 12 0" stroke="#6db3f8" />
   </g>
 </svg>

@@ -1,13 +1,12 @@
-import { MAX_ACTIVE_THREADS } from "@weave/contracts";
+import { MAX_ACTIVE_THREADS, MIN_AGE } from "@weave/contracts";
 
 export function PiedDePage() {
   return (
-    <footer
-      className="px-5 py-12 sm:px-8"
-      style={{ borderTop: "1px solid var(--bordure)", background: "var(--fond-alterne)" }}
-    >
+    <footer className="px-5 py-12 sm:px-8" style={{ background: "var(--fond-alterne)" }}>
       <div className="mx-auto w-full max-w-5xl">
-        <p className="text-2xl" style={{ fontFamily: "var(--font-titre)" }}>
+        <div className="tissage mb-8 h-1.5 rounded-full" aria-hidden="true" />
+
+        <p className="text-2xl font-bold" style={{ fontFamily: "var(--font-titre)" }}>
           Weave
         </p>
         <p className="mt-2 max-w-md leading-relaxed" style={{ color: "var(--texte-doux)" }}>
@@ -41,6 +40,9 @@ export function PiedDePage() {
         </nav>
 
         <p className="mt-10 text-sm" style={{ color: "var(--texte-doux)" }}>
+          Weave est réservé aux personnes de {MIN_AGE} ans et plus.
+        </p>
+        <p className="mt-2 text-sm" style={{ color: "var(--texte-doux)" }}>
           © {new Date().getFullYear()} Weave. Apple, iPhone et Apple Watch sont des marques déposées
           d'Apple Inc.
         </p>
