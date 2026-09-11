@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["bun"],
+    "types": ["node"],
     "paths": {
       "@weave/contracts": ["../../packages/contracts/src/index.ts"],
       "@weave/contracts/*": ["../../packages/contracts/src/*"]

@@ -1,8 +1,8 @@
 # Déploiement Heroku de Weave, en conteneur.
 #
-# Le conteneur est préféré aux buildpacks pour une raison simple : Bun n'a pas
-# de buildpack officiel Heroku, et l'image officielle `oven/bun` garantit
-# exactement la même version qu'en développement et en intégration continue.
+# Cette voie reste disponible pour qui préfère maîtriser l'image exécutée. La
+# voie ordinaire est désormais le buildpack officiel `heroku/nodejs`, qui ne
+# demande aucun fichier : voir `Procfile` et `docs/DEPLOIEMENT.md`.
 
 build:
   docker:
@@ -16,4 +16,4 @@ release:
     - bash scripts/heroku-release.sh
 
 run:
-  web: bun apps/api/src/index.ts
+  web: node apps/api/src/index.ts
