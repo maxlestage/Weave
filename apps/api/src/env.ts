@@ -2,16 +2,38 @@
  * Configuration d'exécution, lue une seule fois au démarrage et validée
  * strictement : une variable manquante en production arrête le processus plutôt
  * que de laisser tourner un service à moitié configuré.
+ *
+ * Les problèmes sont TOUS rassemblés avant d'arrêter, et non levés au premier
+ * rencontré. Sur un hébergeur, chaque démarrage raté coûte un déploiement et
+ * une lecture de journal : apprendre les variables manquantes une par une fait
+ * autant d'allers-retours qu'il en manque.
  */
 
 type Mode = "development" | "test" | "production";
 
+const mode = (process.env.NODE_ENV ?? "development") as Mode;
+
+/** Ce qui empêche de démarrer, accumulé puis rapporté d'un bloc. */
+const problemes: { variable: string; raison: string; remede: string }[] = [];
+
 function required(name: string, fallbackInDev?: string): string {
   const value = process.env[name];
   if (value !== undefined && value !== "") return value;
-  if (fallbackInDev !== undefined && process.env.NODE_ENV !== "production") return fallbackInDev;
-  throw new Error(`Variable d'environnement manquante : ${name}`);
+  if (fallbackInDev !== undefined && mode !== "production") return fallbackInDev;
+  problemes.push({
+    variable: name,
+    raison: "absente",
+    remede: REMEDES[name] ?? "à définir dans la configuration de l'application",
+  });
+  return "";
 }
+
+/** Comment obtenir chaque valeur, dit une fois plutôt que cherché dans un guide. */
+const REMEDES: Readonly<Record<string, string>> = {
+  JWT_SECRET: "une chaîne aléatoire d'au moins 32 caractères — `openssl rand -base64 32`",
+  MEDIA_SIGNING_SECRET: "une autre chaîne aléatoire — `openssl rand -base64 32`",
+  DATABASE_URL: "fournie par l'add-on Heroku Postgres, à attacher à l'application",
+};
 
 function optional(name: string): string | undefined {
   const value = process.env[name];
@@ -39,7 +61,6 @@ function resolveSqliteUrl(raw: string): string {
   return `file:${packageRoot}/${path.replace(/^\.\//, "")}`;
 }
 
-const mode = (process.env.NODE_ENV ?? "development") as Mode;
 const driver = (
   process.env.WEAVE_DB ?? (mode === "production" ? "postgres" : "sqlite")
 ).toLowerCase();
@@ -48,9 +69,11 @@ if (driver !== "postgres" && driver !== "sqlite") {
   throw new Error(`WEAVE_DB doit valoir "postgres" ou "sqlite" (reçu : ${driver})`);
 }
 if (driver === "sqlite" && mode === "production") {
-  throw new Error(
-    "SQLite est réservé au développement. Définissez WEAVE_DB=postgres en production.",
-  );
+  problemes.push({
+    variable: "WEAVE_DB",
+    raison: "vaut « sqlite », réservé au développement",
+    remede: "définir WEAVE_DB=postgres",
+  });
 }
 
 export const env = {
@@ -134,6 +157,35 @@ export const env = {
   },
 } as const;
 
-if (env.isProduction && env.auth.jwtSecret.length < 32) {
-  throw new Error("JWT_SECRET doit faire au moins 32 caractères en production.");
+if (env.isProduction && env.auth.jwtSecret !== "" && env.auth.jwtSecret.length < 32) {
+  problemes.push({
+    variable: "JWT_SECRET",
+    raison: `trop court (${env.auth.jwtSecret.length} caractères, minimum 32)`,
+    remede: REMEDES.JWT_SECRET!,
+  });
+}
+
+/**
+ * Rapport de démarrage.
+ *
+ * Écrit sur la sortie d'erreur, seule voie que l'on soit sûr de retrouver dans
+ * le journal d'un hébergeur, et sous une forme qui se lit sur un téléphone :
+ * une ligne par variable, le remède à côté du problème.
+ */
+if (problemes.length > 0) {
+  const lignes = [
+    "",
+    "  Weave ne peut pas démarrer : la configuration est incomplète.",
+    "",
+    ...problemes.flatMap((probleme) => [
+      `  • ${probleme.variable} — ${probleme.raison}`,
+      `      ${probleme.remede}`,
+    ]),
+    "",
+    "  Sur Heroku : tableau de bord → Settings → Config Vars,",
+    "  ou le workflow « Heroku — configurer les variables » depuis GitHub.",
+    "",
+  ];
+  console.error(lignes.join("\n"));
+  process.exit(1);
 }

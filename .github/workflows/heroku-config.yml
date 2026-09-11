@@ -1,0 +1,185 @@
+name: Heroku — configurer les variables
+
+# Pose la configuration d'une application Heroku EXISTANTE, sans toucher ni à
+# sa pile ni à ses buildpacks. C'est ce qu'il faut quand l'application a été
+# créée depuis le tableau de bord et qu'elle démarre puis s'arrête aussitôt :
+# le journal du dyno dit alors « la configuration est incomplète ».
+#
+# À lancer depuis l'onglet Actions de GitHub, bouton « Run workflow ». Rien
+# d'autre n'est nécessaire — ni ordinateur, ni ligne de commande Heroku.
+#
+# UN SEUL PRÉREQUIS : le secret de dépôt `HEROKU_API_KEY`.
+#   1. https://dashboard.heroku.com/account → section « API Key » → Reveal
+#   2. GitHub → Settings → Secrets and variables → Actions → New repository
+#      secret → nom `HEROKU_API_KEY`, valeur collée.
+#
+# Relançable sans risque : les secrets déjà posés ne sont JAMAIS remplacés.
+# Les régénérer déconnecterait tout le monde et rendrait illisibles les URL de
+# médias déjà signées.
+#
+# Pour créer l'application de zéro, utiliser plutôt « Heroku — mettre en
+# ligne », qui fait la même chose et déploie.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Nom de l'application Heroku existante"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  configurer:
+    name: Poser la configuration
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      APP: ${{ inputs.app_name }}
+      ACCEPT: "application/vnd.heroku+json; version=3"
+
+    steps:
+      - name: Vérifier la clé d'API
+        run: |
+          if [ -z "$HEROKU_API_KEY" ]; then
+            echo "::error::Secret HEROKU_API_KEY absent. Voir l'en-tête de ce fichier."
+            exit 1
+          fi
+
+      - name: Lire la configuration actuelle
+        run: |
+          code=$(curl -sS -o /tmp/config.json -w '%{http_code}' \
+            "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: $ACCEPT" -H "Authorization: Bearer $HEROKU_API_KEY")
+
+          if [ "$code" = "404" ]; then
+            echo "::error::Application « $APP » introuvable. Vérifiez le nom."
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::Lecture de la configuration impossible (HTTP $code)."
+            exit 1
+          fi
+
+      - name: Poser ce qui manque
+        run: |
+          # Les secrets déjà présents sont conservés tels quels : les changer
+          # invaliderait toutes les sessions en cours et toutes les URL de
+          # médias déjà signées.
+          jwt="$(openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48)"
+          media="$(openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-48)"
+
+          python3 - "$jwt" "$media" <<'PY'
+          import json, sys
+
+          jwt, media = sys.argv[1], sys.argv[2]
+          actuel = json.load(open("/tmp/config.json"))
+
+          def vide(nom):
+              valeur = actuel.get(nom)
+              return valeur is None or valeur == ""
+
+          # Valeurs fixes : toujours (ré)affirmées, car s'en écarter casse le
+          # démarrage et aucune n'est un choix personnel.
+          patch = {
+              "NODE_ENV": "production",
+              "WEAVE_DB": "postgres",
+              # La base et le magasin clé-valeur d'Heroku présentent un
+              # certificat auto-signé sur le réseau interne. Le trafic reste
+              # chiffré ; l'identité du serveur n'est pas vérifiée.
+              "DATABASE_SSL_INSECURE": "true",
+              "REDIS_TLS_INSECURE": "true",
+              "APNS_BUNDLE_ID": "com.weave.app",
+              "APNS_ENVIRONMENT": "sandbox",
+              "APPSTORE_ENVIRONMENT": "sandbox",
+          }
+
+          # Secrets : posés une seule fois.
+          if vide("JWT_SECRET"):
+              patch["JWT_SECRET"] = jwt
+          if vide("MEDIA_SIGNING_SECRET"):
+              patch["MEDIA_SIGNING_SECRET"] = media
+
+          # Adresses publiques, déduites du nom de l'application.
+          import os
+          app = os.environ["APP"]
+          if vide("PUBLIC_WEB_ORIGIN"):
+              patch["PUBLIC_WEB_ORIGIN"] = f"https://{app}.herokuapp.com"
+          if vide("MEDIA_BASE_URL"):
+              patch["MEDIA_BASE_URL"] = f"https://{app}.herokuapp.com/media"
+
+          json.dump(patch, open("/tmp/patch.json", "w"))
+
+          poses = sorted(k for k in patch if vide(k))
+          gardes = sorted(k for k in ("JWT_SECRET", "MEDIA_SIGNING_SECRET") if not vide(k))
+          print(json.dumps({"poses": poses, "gardes": gardes}), file=sys.stderr)
+          PY
+
+          code=$(curl -sS -o /tmp/reponse.json -w '%{http_code}' -X PATCH \
+            "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/patch.json)
+
+          if [ "$code" != "200" ]; then
+            echo "::error::Écriture de la configuration refusée (HTTP $code)."
+            cat /tmp/reponse.json
+            exit 1
+          fi
+
+      - name: Vérifier que la base et le cache sont attachés
+        run: |
+          curl -sS "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: $ACCEPT" -H "Authorization: Bearer $HEROKU_API_KEY" > /tmp/apres.json
+
+          python3 - <<'PY'
+          import json
+
+          config = json.load(open("/tmp/apres.json"))
+          manque = []
+
+          if not config.get("DATABASE_URL"):
+              manque.append(
+                  "DATABASE_URL — ajoutez l'add-on « Heroku Postgres » "
+                  "(Resources → Add-ons)"
+              )
+          if not (config.get("REDIS_URL") or config.get("REDIS_TLS_URL")):
+              manque.append(
+                  "REDIS_URL — ajoutez l'add-on « Heroku Key-Value Store » "
+                  "(Resources → Add-ons)"
+              )
+
+          if manque:
+              print("::warning::La configuration est posée, mais il manque encore :")
+              for ligne in manque:
+                  print(f"::warning::  • {ligne}")
+              print("")
+              print("Weave ne démarrera pas tant que ces add-ons ne sont pas attachés.")
+          else:
+              print("Base et cache attachés. L'application peut démarrer.")
+          PY
+
+      - name: Récapitulatif
+        run: |
+          {
+            echo "## Configuration posée"
+            echo ""
+            echo "Application : \`$APP\`"
+            echo ""
+            echo "Les secrets déjà présents ont été conservés — les régénérer"
+            echo "déconnecterait tout le monde."
+            echo ""
+            echo "### Ensuite"
+            echo ""
+            echo "Relancez un déploiement (Deploy → Manual deploy), puis vérifiez :"
+            echo ""
+            echo '```'
+            echo "https://$APP.herokuapp.com/health"
+            echo '```'
+            echo ""
+            echo "Une réponse \`\"status\":\"ok\"\` signifie que la base et le cache"
+            echo "répondent tous les deux."
+          } >> "$GITHUB_STEP_SUMMARY"
