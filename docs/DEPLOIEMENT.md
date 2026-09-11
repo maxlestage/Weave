@@ -109,6 +109,51 @@ Le buildpack installe Bun à la version indiquée par `packageManager`, construi
 les clients Prisma et le site, puis élague les dépendances de développement. Le
 `Procfile` applique les migrations en phase de publication, puis démarre l'API.
 
+#### Poser la configuration
+
+Une application créée depuis le tableau de bord n'a **aucune** des variables que
+Weave exige : `app.json` ne s'applique qu'aux déploiements par bouton Heroku.
+Sans elles, la construction réussit, puis le dyno démarre et s'arrête aussitôt —
+Heroku affiche `H10 App crashed`.
+
+Le plus simple, depuis un téléphone : Actions → **« Heroku — configurer les
+variables »** → **Run workflow**, en donnant le nom de l'application. Le
+workflow pose tout ce qui manque, **sans toucher à la pile ni aux buildpacks**,
+et conserve les secrets déjà posés — les régénérer déconnecterait tout le monde
+et rendrait illisibles les URL de médias déjà signées.
+
+À la main, c'est **Settings → Config Vars** :
+
+| Variable | Valeur |
+| --- | --- |
+| `JWT_SECRET` | une chaîne aléatoire d'au moins 32 caractères |
+| `MEDIA_SIGNING_SECRET` | une autre chaîne aléatoire |
+| `NODE_ENV` | `production` |
+| `WEAVE_DB` | `postgres` |
+| `DATABASE_SSL_INSECURE` | `true` |
+| `REDIS_TLS_INSECURE` | `true` |
+| `PUBLIC_WEB_ORIGIN` | `https://<application>.herokuapp.com` |
+| `MEDIA_BASE_URL` | `https://<application>.herokuapp.com/media` |
+
+`DATABASE_URL` et `REDIS_URL` sont posées par les add-ons **Heroku Postgres** et
+**Heroku Key-Value Store**, à attacher dans **Resources**. Sans eux, rien ne
+démarre.
+
+Si une variable manque, Weave ne démarre pas — mais il dit lesquelles, **toutes
+d'un coup** et avec le remède à côté de chaque ligne :
+
+```
+  Weave ne peut pas démarrer : la configuration est incomplète.
+
+  • JWT_SECRET — absente
+      une chaîne aléatoire d'au moins 32 caractères — `openssl rand -base64 32`
+  • MEDIA_SIGNING_SECRET — absente
+      une autre chaîne aléatoire — `openssl rand -base64 32`
+```
+
+Apprendre les variables manquantes une par une coûterait un déploiement par
+variable.
+
 #### Ce que cette variante coûte
 
 Le slug Heroku est plafonné à **500 Mo**, et cette voie en consomme **environ
@@ -288,6 +333,7 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 | `Slug de … Mo : au-delà de la limite de 500 Mo` | La variante buildpack a dépassé le plafond. Passez à la voie conteneur (A2), qui n'a pas cette contrainte |
 | « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée avant la poussée. Même correction |
 | « Déploiement ignoré : configuration Heroku absente » | C'est le workflow de déploiement *automatique*, qui exige la variable `HEROKU_APP_NAME` (étape A4). Pour publier tout de suite, lancez « Heroku — mettre en ligne » |
+| `H10 App crashed` juste après un déploiement réussi | La configuration est incomplète. Le journal du dyno (**More → View logs**, lignes `app[web.1]`) liste les variables manquantes. Lancez « Heroku — configurer les variables » |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |
 | `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, le quota de demandes ne peut pas être compté : c'est une dépendance dure, pas un confort |
 | « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B3 manque |
