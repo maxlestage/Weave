@@ -22,9 +22,14 @@ const url = useSqlite
 // continue et la construction de l'image, où aucune base n'existe encore.
 // Les commandes qui en ont réellement besoin (`migrate`, `db pull`) échouent
 // d'elles-mêmes, avec le message de Prisma.
+// Base fantôme, utilisée par `migrate diff --from-migrations` et `migrate dev`
+// pour rejouer les migrations à blanc. SQLite en crée une en mémoire tout seul ;
+// PostgreSQL demande une base réelle.
+const shadowDatabaseUrl = process.env.SHADOW_DATABASE_URL;
+
 export default defineConfig({
   schema: useSqlite ? "prisma/schema.sqlite.prisma" : "prisma/schema.prisma",
-  ...(url ? { datasource: { url } } : {}),
+  ...(url ? { datasource: { url, ...(shadowDatabaseUrl ? { shadowDatabaseUrl } : {}) } } : {}),
   migrations: {
     path: useSqlite ? "prisma/migrations-sqlite" : "prisma/migrations",
     seed: "bun src/seed.ts",

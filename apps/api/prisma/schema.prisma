@@ -200,7 +200,9 @@ model Preference {
   id             String @id @default(cuid(2))
   accountId      String @unique
   minAge         Int    @default(18)
-  maxAge         Int    @default(99)
+  /// Par défaut, une tranche de jeunes adultes : l'essentiel du public de
+  /// Weave. Chacun peut l'élargir depuis ses critères.
+  maxAge         Int    @default(32)
   maxDistanceKm  Int    @default(50)
   /// Liste de genres recherchés, encodée en JSON (portabilité SQLite/PostgreSQL).
   seekingJson    String @default("[]")

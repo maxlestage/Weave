@@ -1,46 +1,86 @@
 @import "tailwindcss";
 
 /*
- * Weave — jeu de couleurs.
+ * Weave — couleurs.
  *
- * Palette textile : lin, encre, cuivre. Le site est pensé pour être lu sur un
- * téléphone tenu à une main, en extérieur : contrastes élevés, corps de texte
- * généreux, pas de gris clair sur fond clair.
+ * Le métier porte douze fils : la palette en compte autant, et chaque fil
+ * affiché prend la sienne. La couleur n'est donc pas un habillage, elle dit
+ * quelque chose du produit — douze choses distinctes, pas une pile indistincte.
+ *
+ * Contraintes tenues : lisible sur un téléphone tenu à une main en extérieur,
+ * correct en thème clair comme sombre, et aucun texte de petite taille posé
+ * sur une couleur vive.
  */
 @theme {
-  --color-lin: #faf7f2;
-  --color-lin-ombre: #f0eae0;
-  --color-encre: #1b1714;
-  --color-encre-douce: #2a2420;
-  --color-cuivre: #b4652a;
-  --color-cuivre-clair: #e6a15c;
-  --color-fil: #6b5f54;
+  /* Les fils, en thème clair. */
+  --color-framboise: #d81b60;
+  --color-mandarine: #e2621b;
+  --color-safran: #b8860b;
+  --color-menthe: #067a5a;
+  --color-ocean: #1565c0;
+  --color-iris: #6231c7;
 
-  --font-titre: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  /* Les mêmes, éclaircis pour le thème sombre. */
+  --color-framboise-nuit: #ff6f9c;
+  --color-mandarine-nuit: #ff9a5b;
+  --color-safran-nuit: #ffc94d;
+  --color-menthe-nuit: #3ddba6;
+  --color-ocean-nuit: #6db3f8;
+  --color-iris-nuit: #b08cff;
+
+  --color-craie: #fffdf9;
+  --color-encre: #16121f;
+  --color-encre-douce: #221c30;
+
+  /* Arrondie et chaleureuse : le produit s'adresse à des jeunes adultes,
+     pas à un cabinet d'avocats. */
+  --font-titre:
+    ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", system-ui, -apple-system, sans-serif;
   --font-corps:
     ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
 }
 
 :root {
   color-scheme: light dark;
-  --fond: var(--color-lin);
-  --fond-alterne: var(--color-lin-ombre);
+
+  --fond: var(--color-craie);
+  --fond-alterne: #fff6ec;
   --texte: var(--color-encre);
-  --texte-doux: var(--color-fil);
-  --accent: var(--color-cuivre);
+  --texte-doux: #5d5470;
+  --carte: #ffffff;
   --bordure: color-mix(in oklab, var(--color-encre) 12%, transparent);
-  --carte: #fffdfa;
+
+  --fil-1: var(--color-framboise);
+  --fil-2: var(--color-mandarine);
+  --fil-3: var(--color-safran);
+  --fil-4: var(--color-menthe);
+  --fil-5: var(--color-ocean);
+  --fil-6: var(--color-iris);
+
+  --accent: var(--fil-6);
+  /* Le texte posé sur un aplat de couleur vive. */
+  --sur-accent: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --fond: var(--color-encre);
     --fond-alterne: var(--color-encre-douce);
-    --texte: #f4efe7;
-    --texte-doux: #b6aa9c;
-    --accent: var(--color-cuivre-clair);
-    --bordure: color-mix(in oklab, #f4efe7 14%, transparent);
-    --carte: #221d19;
+    --texte: #f6f2ff;
+    --texte-doux: #b5adc9;
+    --carte: #251e34;
+    --bordure: color-mix(in oklab, #f6f2ff 16%, transparent);
+
+    --fil-1: var(--color-framboise-nuit);
+    --fil-2: var(--color-mandarine-nuit);
+    --fil-3: var(--color-safran-nuit);
+    --fil-4: var(--color-menthe-nuit);
+    --fil-5: var(--color-ocean-nuit);
+    --fil-6: var(--color-iris-nuit);
+
+    --accent: var(--fil-6);
+    /* Les teintes de nuit sont claires : le texte posé dessus doit être sombre. */
+    --sur-accent: var(--color-encre);
   }
 }
 
@@ -71,32 +111,57 @@ body {
     env(safe-area-inset-left);
 }
 
-/* Cible de toucher confortable partout, y compris sur les liens en ligne. */
 a,
 button {
   touch-action: manipulation;
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 /*
- * Motif de trame, dessiné en CSS : deux jeux de lignes croisées, très discrets.
- * Aucune image à télécharger.
+ * Trame de fond : six fils verticaux colorés, très pâles. Dessinée en
+ * dégradés CSS — aucune image à télécharger.
  */
 .trame {
-  background-image:
-    repeating-linear-gradient(
-      90deg,
-      color-mix(in oklab, var(--texte) 7%, transparent) 0 1px,
-      transparent 1px 14px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      color-mix(in oklab, var(--texte) 4%, transparent) 0 1px,
-      transparent 1px 14px
-    );
+  background-image: repeating-linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--fil-1) 22%, transparent) 0 3px,
+    transparent 3px 26px,
+    color-mix(in oklab, var(--fil-4) 22%, transparent) 26px 29px,
+    transparent 29px 52px,
+    color-mix(in oklab, var(--fil-6) 22%, transparent) 52px 55px,
+    transparent 55px 78px
+  );
+}
+
+/* Bandeau tissé : les six fils, côte à côte. */
+.tissage {
+  background-image: linear-gradient(
+    90deg,
+    var(--fil-1) 0 16.66%,
+    var(--fil-2) 16.66% 33.33%,
+    var(--fil-3) 33.33% 50%,
+    var(--fil-4) 50% 66.66%,
+    var(--fil-5) 66.66% 83.33%,
+    var(--fil-6) 83.33% 100%
+  );
+}
+
+/* Un titre dont chaque mot peut prendre la couleur d'un fil. */
+.degrade-fils {
+  background-image: linear-gradient(
+    100deg,
+    var(--fil-1),
+    var(--fil-2),
+    var(--fil-4),
+    var(--fil-5),
+    var(--fil-6)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
