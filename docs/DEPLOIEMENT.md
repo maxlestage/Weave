@@ -17,80 +17,102 @@ pour mettre l'application entre les mains de testeurs.
 
 ## A. L'API et le site, sur Heroku
 
-> ### À lire avant tout : n'utilisez pas les déploiements du tableau de bord
->
-> Dans l'onglet *Deploy* du tableau de bord Heroku, **« Connect to GitHub » et
-> « Enable Automatic Deploys » ne fonctionnent pas pour ce projet.** Ce chemin
-> construit avec des *buildpacks* : il ignore le `Dockerfile`, croit à une
-> application Node.js, et échoue ainsi —
->
-> ```
-> -----> Using buildpack: heroku/nodejs
->        npm error Unsupported URL Type "workspace:": workspace:*
-> ```
->
-> Weave tourne sous Bun, qui n'a pas de buildpack Heroku. Le déploiement doit
-> passer par le workflow **« Heroku — déployer »** décrit plus bas, qui pousse
-> vers le dépôt git d'Heroku et déclenche bien une construction du
-> `Dockerfile`.
->
-> **Si vous avez déjà activé les déploiements automatiques, désactivez-les** :
-> ils échoueront à chaque poussée sur `master` et brouilleront les journaux.
-
 L'API et le site vitrine tournent dans **un seul processus** : le site est
 statique et peu visité, lui dédier un second dyno doublerait la facture sans
 rien apporter.
 
-### A1. Créer la clé d'API Heroku
+Il y a **deux étapes**, et rien d'autre.
 
-1. Ouvrez **dashboard.heroku.com/account**
-2. Section **API Key** → **Reveal** → copiez la valeur
+### A1. Déposer votre clé Heroku dans GitHub
 
-### A2. Déposer la clé dans GitHub
-
-1. Sur le dépôt : **Settings → Secrets and variables → Actions**
-2. Onglet **Secrets** → **New repository secret**
+1. Ouvrez **dashboard.heroku.com/account**, section **API Key** → **Reveal**,
+   copiez la valeur.
+2. Sur le dépôt GitHub : **Settings → Secrets and variables → Actions**, onglet
+   **Secrets** → **New repository secret**.
    - Nom : `HEROKU_API_KEY`
    - Valeur : la clé copiée
 
-### A3. Créer l'application
-
-> **Si vous avez déjà créé l'application depuis le tableau de bord Heroku**,
-> faites quand même cette étape en indiquant **le nom existant**. Le workflow
-> détectera que l'application est déjà là et se contentera de corriger la pile
-> de construction — ce qui est justement le réglage que le tableau de bord ne
-> pose pas. Voir « Pourquoi la pile compte » plus bas.
+### A2. Lancer la mise en ligne
 
 1. Onglet **Actions** du dépôt
-2. Workflow **« Heroku — créer l'application »** → **Run workflow**
-3. Renseignez un nom (minuscules, chiffres et tirets — il doit être unique sur
-   tout Heroku, par exemple `weave-api-2026`) et la région `eu`
+2. Workflow **« Heroku — mettre en ligne »** → **Run workflow**
+3. Indiquez un nom d'application (minuscules, chiffres et tirets — il doit être
+   unique sur tout Heroku, par exemple `weave-api-2026`) et la région `eu`
 4. **Run workflow**
 
-En deux minutes, le workflow crée l'application, y branche PostgreSQL et le
-magasin clé-valeur, et **génère les secrets** de signature. Ceux-ci ne passent
-par aucun écran : ils sont écrits directement dans la configuration Heroku.
+Le workflow crée l'application, la met sur la bonne pile, y branche PostgreSQL
+et le magasin clé-valeur, génère les secrets de signature, construit l'image et
+déploie. Il interroge enfin `/health` et n'annonce « en ligne » que si le
+service répond vraiment.
 
-Le récapitulatif affiché à la fin rappelle le nom et l'adresse de
-l'application.
+**Si vous avez déjà une application Heroku**, indiquez son nom : le workflow
+détecte qu'elle existe, corrige ce qui doit l'être, et déploie. Il est
+relançable sans risque.
 
-### A4. Déclarer le nom de l'application
+Comptez cinq à dix minutes pour la première construction.
 
-1. **Settings → Secrets and variables → Actions**, onglet **Variables**
-2. **New repository variable**
-   - Nom : `HEROKU_APP_NAME`
-   - Valeur : le nom choisi à l'étape A3
+### A3. Vérifier
 
-### A5. Déployer
+Le récapitulatif du workflow affiche les trois adresses. Vous pouvez aussi les
+ouvrir directement :
 
-1. **Actions** → **« Heroku — déployer »** → **Run workflow**
+- `https://VOTRE-APP.herokuapp.com` → le site vitrine
+- `https://VOTRE-APP.herokuapp.com/health` → doit afficher `"status":"ok"`
+- `https://VOTRE-APP.herokuapp.com/openapi` → la documentation de l'API
 
-Le workflow pousse le code vers Heroku, qui construit l'image, applique les
-migrations de base, puis met la nouvelle version en ligne. Il interroge enfin
-`/health` et n'affiche « Déployé » que si le service répond vraiment.
+### A4. Déployer automatiquement ensuite (facultatif)
 
-**À partir de là, tout ce qui est fusionné sur `master` est déployé
-automatiquement.** Vous n'avez plus rien à lancer à la main.
+Pour que chaque fusion sur `master` parte en ligne toute seule, ajoutez une
+variable de dépôt — **Settings → Secrets and variables → Actions**, onglet
+**Variables** :
+
+- Nom : `HEROKU_APP_NAME`
+- Valeur : le nom choisi en A2
+
+Sans elle, le workflow de déploiement automatique s'arrête proprement sans rien
+faire ; relancez simplement « Heroku — mettre en ligne » quand vous voulez
+publier.
+
+### N'utilisez pas les déploiements du tableau de bord
+
+Dans l'onglet *Deploy* du tableau de bord Heroku, **« Connect to GitHub » et
+« Enable Automatic Deploys » ne fonctionnent pas pour ce projet.** Ce chemin
+construit avec des *buildpacks* : il ignore le `Dockerfile`, croit à une
+application Node.js, et échoue ainsi —
+
+```
+-----> Using buildpack: heroku/nodejs
+       npm error Unsupported URL Type "workspace:": workspace:*
+```
+
+Weave tourne sous Bun, qui n'a pas de buildpack Heroku — ni officiel, ni
+maintenu par Heroku. Ce chemin ne peut pas fonctionner, quel que soit le
+réglage de la pile.
+
+**Si vous les avez activés, désactivez-les.** Ils n'empêchent pas le workflow
+de fonctionner, mais ils échoueront à chaque poussée et encombreront vos
+notifications.
+
+### Ce que ça coûte
+
+| Poste | Plan | Prix indicatif |
+| --- | --- | --- |
+| Dyno web | Basic | ~7 $/mois |
+| PostgreSQL | Essential-0 | ~5 $/mois |
+| Magasin clé-valeur | Mini | ~3 $/mois |
+
+Soit environ **15 $ par mois**. Vérifiez les tarifs en vigueur : ils changent.
+
+### Deux réglages à connaître
+
+`DATABASE_SSL_INSECURE` et `REDIS_TLS_INSECURE` sont positionnés à `true`.
+
+Heroku présente des certificats **auto-signés** sur son réseau interne : sans
+ces réglages, la connexion échoue. Le trafic reste chiffré, mais l'identité du
+serveur n'est pas vérifiée. C'est acceptable parce que la base et le cache sont
+joints par le réseau privé de l'hébergeur — **ce ne le serait pas** pour
+atteindre une base à travers l'internet public. Si vous changez d'hébergeur,
+repassez ces deux valeurs à vide.
 
 ### Pourquoi la pile de construction est décisive
 
@@ -118,57 +140,9 @@ internes du dépôt ; c'est une syntaxe que Bun comprend et que npm ne
 comprendra jamais. Le problème n'est pas cette ligne : c'est que npm n'aurait
 jamais dû être appelé.
 
-**Correction**, dans cet ordre :
-
-1. Lancez le workflow de l'étape A3 avec le nom de votre application. Il bascule
-   la pile en `container`, **retire les buildpacks** et affiche un avant/après.
-2. Désactivez les déploiements automatiques dans l'onglet *Deploy* du tableau de
-   bord — sans quoi ils continueront d'échouer à chaque poussée.
-3. Lancez le workflow **« Heroku — déployer »**.
-
-Le workflow de déploiement vérifie désormais la pile avant de pousser quoi que
-ce soit, et s'arrête en nommant la cause si elle n'est pas la bonne.
-
-### Déployer par le workflow, pas par le tableau de bord
-
-Si vous avez activé les **déploiements automatiques depuis GitHub** dans
-l'onglet *Deploy* du tableau de bord Heroku, désactivez-les : utilisez le
-workflow **« Heroku — déployer »**, qui pousse vers le dépôt git d'Heroku et
-déclenche bien une construction du `Dockerfile`.
-
-Deux mécanismes de déploiement concurrents sur la même application, c'est la
-garantie de ne plus savoir lequel a produit la version en ligne.
-
-### A6. Vérifier
-
-Ouvrez dans votre navigateur :
-
-- `https://VOTRE-APP.herokuapp.com` → le site vitrine
-- `https://VOTRE-APP.herokuapp.com/health` → doit afficher `"status":"ok"`
-- `https://VOTRE-APP.herokuapp.com/openapi` → la documentation de l'API
-
-### Ce que ça coûte
-
-| Poste | Plan | Prix indicatif |
-| --- | --- | --- |
-| Dyno web | Basic | ~7 $/mois |
-| PostgreSQL | Essential-0 | ~5 $/mois |
-| Magasin clé-valeur | Mini | ~3 $/mois |
-
-Soit environ **15 $ par mois**. Vérifiez les tarifs en vigueur : ils changent.
-
-### Deux réglages à connaître
-
-`DATABASE_SSL_INSECURE` et `REDIS_TLS_INSECURE` sont positionnés à `true`.
-
-Heroku présente des certificats **auto-signés** sur son réseau interne : sans
-ces réglages, la connexion échoue. Le trafic reste chiffré, mais l'identité du
-serveur n'est pas vérifiée. C'est acceptable parce que la base et le cache sont
-joints par le réseau privé de l'hébergeur — **ce ne le serait pas** pour
-atteindre une base à travers l'internet public. Si vous changez d'hébergeur,
-repassez ces deux valeurs à vide.
-
----
+**Correction** : lancez le workflow **« Heroku — mettre en ligne »** (étape A2)
+avec le nom de votre application. Il bascule la pile en `container`, retire les
+buildpacks, affiche un avant/après, et déploie dans la foulée.
 
 ## B. L'application iOS, sans posséder de Mac
 
@@ -270,7 +244,7 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 - **Les noms de plans Heroku** (`heroku-postgresql:essential-0`,
   `heroku-redis:mini`) étaient exacts en septembre 2026. Heroku les renomme de
   temps à autre ; en cas d'erreur à l'étape A3, vérifiez-les sur le tableau de
-  bord et corrigez `.github/workflows/heroku-provision.yml`.
+  bord et corrigez `.github/workflows/heroku-setup.yml`.
 
 ---
 
@@ -278,9 +252,9 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 
 | Symptôme | Piste |
 | --- | --- |
-| `Node.js app detected` ou `Using buildpack: heroku/nodejs`, puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | Le build n'utilise pas le `Dockerfile`. Deux causes possibles, souvent simultanées : la pile n'est pas `container` (étape A3), et/ou le déploiement vient du tableau de bord au lieu du workflow (encadré en tête de section A) |
-| « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée cette fois avant la poussée. Même correction |
-| « Déploiement ignoré : configuration Heroku absente » | Le secret `HEROKU_API_KEY` ou la variable `HEROKU_APP_NAME` manque — étapes A2 et A4 |
+| `Node.js app detected` ou `Using buildpack: heroku/nodejs`, puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | Ce build ne vient pas du workflow : c'est le tableau de bord Heroku. Lancez « Heroku — mettre en ligne » (A2), et désactivez les déploiements automatiques du tableau de bord |
+| « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée avant la poussée. Même correction |
+| « Déploiement ignoré : configuration Heroku absente » | C'est le workflow de déploiement *automatique*, qui exige la variable `HEROKU_APP_NAME` (étape A4). Pour publier tout de suite, lancez « Heroku — mettre en ligne » |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |
 | `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, il n'y a pas de fils : c'est une dépendance dure, pas un confort |
 | « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B3 manque |
