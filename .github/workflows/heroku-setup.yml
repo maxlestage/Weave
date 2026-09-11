@@ -1,12 +1,17 @@
-name: Heroku — créer l'application
+name: Heroku — mettre en ligne
 
-# À lancer UNE SEULE FOIS, depuis l'onglet Actions de GitHub (bouton
-# « Run workflow »). Crée l'application Heroku, y branche PostgreSQL et le
-# magasin clé-valeur, et génère les secrets. Tout se fait depuis un téléphone.
+# Met Weave en ligne, d'un seul tenant : crée l'application, la configure
+# correctement, et déploie. À lancer depuis l'onglet Actions de GitHub, bouton
+# « Run workflow ». Rien d'autre n'est nécessaire — ni ordinateur, ni ligne de
+# commande Heroku.
 #
-# Prérequis : un secret de dépôt `HEROKU_API_KEY`
-# (Settings → Secrets and variables → Actions → New repository secret).
-# La clé se récupère sur https://dashboard.heroku.com/account
+# UN SEUL PRÉREQUIS : le secret de dépôt `HEROKU_API_KEY`.
+#   1. https://dashboard.heroku.com/account → section « API Key » → Reveal
+#   2. GitHub → Settings → Secrets and variables → Actions → New repository
+#      secret → nom `HEROKU_API_KEY`, valeur collée.
+#
+# Relançable sans risque : si l'application existe déjà, le workflow se
+# contente de corriger ce qui doit l'être, puis redéploie.
 
 on:
   workflow_dispatch:
@@ -26,8 +31,8 @@ permissions:
   contents: read
 
 jobs:
-  creer:
-    name: Créer et configurer
+  mettre_en_ligne:
+    name: Créer, configurer et déployer
     runs-on: ubuntu-latest
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -185,17 +190,61 @@ jobs:
             --data-binary @/tmp/config.json > /dev/null
           echo "Configuration posée (secrets générés aléatoirement)."
 
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v5
+        with:
+          # Heroku refuse une poussée depuis un clone superficiel.
+          fetch-depth: 0
+
+      - name: Déployer
+        run: |
+          echo "Publication de $GITHUB_SHA vers $APP"
+          git push --force \
+            "https://heroku:$HEROKU_API_KEY@git.heroku.com/$APP.git" \
+            "$GITHUB_SHA:refs/heads/master"
+
+      - name: Vérifier que l'application répond
+        id: sonde
+        run: |
+          adresse="https://$APP.herokuapp.com/health"
+          echo "Sonde : $adresse"
+
+          for tentative in $(seq 12); do
+            corps=$(curl -sS --max-time 10 "$adresse" || true)
+            if echo "$corps" | grep -q '"status":"ok"'; then
+              echo "en_ligne=true" >> "$GITHUB_OUTPUT"
+              echo "corps=$corps" >> "$GITHUB_OUTPUT"
+              echo "Application en ligne."
+              exit 0
+            fi
+            echo "  tentative $tentative : pas encore prête"
+            sleep 10
+          done
+
+          echo "en_ligne=false" >> "$GITHUB_OUTPUT"
+          echo "corps=$corps" >> "$GITHUB_OUTPUT"
+
       - name: Récapitulatif
+        if: always()
         run: |
           {
-            echo "## Application Heroku prête"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| Nom | \`$APP\` |"
-            echo "| Adresse | https://$APP.herokuapp.com |"
-            echo "| Base | Heroku Postgres Essential-0 |"
-            echo "| Cache | Heroku Key-Value Store mini |"
+            if [ "${{ steps.sonde.outputs.en_ligne }}" = "true" ]; then
+              echo "## Weave est en ligne"
+              echo ""
+              echo "### https://$APP.herokuapp.com"
+              echo ""
+              echo "| | |"
+              echo "| --- | --- |"
+              echo "| Site vitrine | https://$APP.herokuapp.com |"
+              echo "| Documentation de l'API | https://$APP.herokuapp.com/openapi |"
+              echo "| Sonde de santé | https://$APP.herokuapp.com/health |"
+            else
+              echo "## Déployé, mais l'application ne répond pas encore"
+              echo ""
+              echo "La construction a réussi ; \`/health\` n'a pas répondu \`ok\`."
+              echo "Regardez les journaux : tableau de bord Heroku → **More → View logs**."
+            fi
+
             echo ""
             echo "### Ce qui a été corrigé"
             echo ""
@@ -204,13 +253,15 @@ jobs:
             echo "| Pile de construction | \`$PILE_AVANT\` | \`container\` |"
             echo "| Buildpacks | $BP_AVANT | aucun |"
             echo ""
-            echo "### Étapes suivantes"
+            echo "### Pour déployer automatiquement à chaque fusion"
             echo ""
-            echo "1. Ajoutez la variable de dépôt \`HEROKU_APP_NAME\` = \`$APP\`"
-            echo "   (Settings → Secrets and variables → Actions → onglet **Variables**)."
-            echo "2. **Dans le tableau de bord Heroku, onglet _Deploy_, désactivez les"
-            echo "   déploiements automatiques depuis GitHub.** Ils construisent avec des"
-            echo "   buildpacks et ignorent le \`Dockerfile\` : c'est ce qui fait échouer"
-            echo "   le build sur \`npm error ... workspace:*\`."
-            echo "3. Lancez le workflow **Heroku — déployer**."
+            echo "Ajoutez la variable de dépôt \`HEROKU_APP_NAME\` = \`$APP\`"
+            echo "(Settings → Secrets and variables → Actions → onglet **Variables**)."
+            echo ""
+            echo "### Si le tableau de bord Heroku vous envoie des échecs"
+            echo ""
+            echo "Onglet *Deploy* → désactivez **Automatic deploys**. Ce chemin construit"
+            echo "avec des buildpacks, ignore le \`Dockerfile\`, et échoue sur"
+            echo "\`workspace:*\`. Il n'affecte pas ce workflow, mais il encombre vos"
+            echo "notifications."
           } >> "$GITHUB_STEP_SUMMARY"
