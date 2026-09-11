@@ -15,17 +15,16 @@ const useSqlite = (process.env.WEAVE_DB ?? "postgres").toLowerCase() === "sqlite
 
 const url = useSqlite
   ? (process.env.DATABASE_URL_SQLITE ?? "file:./prisma/dev.db")
-  : (process.env.DATABASE_URL ?? "");
+  : process.env.DATABASE_URL;
 
-if (!useSqlite && url === "") {
-  throw new Error(
-    "DATABASE_URL est requis pour PostgreSQL. Utilisez WEAVE_DB=sqlite pour le développement local.",
-  );
-}
-
+// `datasource` n'est renseigné que si une URL est connue. `prisma generate`
+// n'a pas besoin de joindre une base : l'exiger ici casserait l'intégration
+// continue et la construction de l'image, où aucune base n'existe encore.
+// Les commandes qui en ont réellement besoin (`migrate`, `db pull`) échouent
+// d'elles-mêmes, avec le message de Prisma.
 export default defineConfig({
   schema: useSqlite ? "prisma/schema.sqlite.prisma" : "prisma/schema.prisma",
-  datasource: { url },
+  ...(url ? { datasource: { url } } : {}),
   migrations: {
     path: useSqlite ? "prisma/migrations-sqlite" : "prisma/migrations",
     seed: "bun src/seed.ts",
