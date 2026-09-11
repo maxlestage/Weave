@@ -93,10 +93,15 @@ contenu dans le dépôt de l'application. Aucun code tiers n'intervient.
 buildpack** → `heroku-community/inline`.
 
 Retirer `heroku/nodejs` est préférable — il ne sert à rien ici — mais le laisser
-ne casse plus rien : les dépendances internes sont déclarées avec une syntaxe
-que npm comprend, et `heroku-postbuild` neutralise son étape de construction.
-Il installera des paquets pour rien, puis le buildpack inline fera le vrai
-travail.
+ne casse plus rien. Il installera des paquets pour rien, puis le buildpack
+inline fera le vrai travail :
+
+- les dépendances internes sont déclarées avec une syntaxe que npm comprend, et
+  `heroku-postbuild` neutralise son étape de construction ;
+- le Node.js qu'il dépose dans le slug — **208 Mo** — est retiré par
+  `bin/compile` avant la mesure finale. Sans cela, le slug passait de 422 à
+  622 Mo et Heroku rejetait la publication. Rien dans Weave n'utilise Node :
+  le serveur, les migrations et la construction passent tous par Bun.
 
 Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
 

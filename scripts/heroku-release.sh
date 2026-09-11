@@ -19,10 +19,15 @@ cd apps/api
 
 # Le binaire local est préféré à `bunx`, qui peut tenter d'aller chercher le
 # paquet sur le réseau — au moment précis où l'on veut le moins en dépendre.
+#
+# Il est lancé PAR BUN, jamais directement : le script d'entrée de Prisma porte
+# un en-tête `#!/usr/bin/env node`, que le noyau résout en cherchant un binaire
+# `node`. Or il n'y en a pas dans le slug, et c'est voulu — Bun remplace
+# Node.js de bout en bout. Bun, lui, sait exécuter un tel fichier.
 if [ -x ./node_modules/.bin/prisma ]; then
-  prisma_bin=./node_modules/.bin/prisma
+  prisma_bin="bun ./node_modules/.bin/prisma"
 elif [ -x ../../node_modules/.bin/prisma ]; then
-  prisma_bin=../../node_modules/.bin/prisma
+  prisma_bin="bun ../../node_modules/.bin/prisma"
 else
   prisma_bin="bunx prisma"
 fi
