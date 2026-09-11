@@ -5,7 +5,8 @@
   "description": "Weave — application de rencontre : des plans, pas des profils.",
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=22.18"
+    "node": "22.x",
+    "npm": ">=10"
   },
   "workspaces": [
     "apps/api",
@@ -17,7 +18,7 @@
     "dev:api": "npm run dev --workspace @weave/api",
     "dev:web": "npm run dev --workspace @weave/web",
     "build": "npm run --workspaces --if-present build",
-    "heroku-postbuild": "npm run db:sqlite && npm run db:generate && npm run build --workspace @weave/web",
+    "heroku-postbuild": "npm install --include=dev --no-save --no-audit --no-fund && npm run db:sqlite && npm run db:generate && npm run build --workspace @weave/web",
     "typecheck": "npm run --workspaces --if-present typecheck",
     "test": "npm run --workspaces --if-present test",
     "lint": "prettier --check .",
