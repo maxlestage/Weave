@@ -109,8 +109,9 @@ Tout se pilote depuis un navigateur, y compris sur téléphone — aucun ordinat
 n'est nécessaire.
 
 - **L'API et le site** partent sur Heroku, dans un conteneur bâti sur l'image
-  officielle Bun. Deux workflows GitHub s'en chargent : l'un crée l'application
-  et ses add-ons, l'autre déploie à chaque fusion sur `master`.
+  officielle Bun. Deux étapes suffisent : déposer sa clé d'API Heroku dans les
+  secrets du dépôt, puis lancer le workflow **« Heroku — mettre en ligne »**,
+  qui crée l'application, la configure et déploie d'un seul tenant.
 - **L'application iOS** est construite sur un exécuteur macOS loué à la minute
   par GitHub, signée par `fastlane match`, puis envoyée à TestFlight. Posséder
   un Mac n'est donc pas nécessaire ; un compte Apple Developer l'est.
