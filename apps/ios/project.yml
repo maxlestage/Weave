@@ -1,0 +1,131 @@
+# Projet Xcode de Weave, décrit en YAML.
+#
+# Le fichier .xcodeproj n'est pas versionné : il se régénère par
+# `xcodegen generate` (voir apps/ios/README.md). Cela évite les conflits de
+# fusion illisibles sur le format pbxproj, et rend la configuration du projet
+# relisible comme du code.
+
+name: Weave
+options:
+  bundleIdPrefix: com.weave
+  deploymentTarget:
+    iOS: "26.0"
+    watchOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "6.2"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEVELOPMENT_TEAM: $(WEAVE_TEAM_ID)
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      WEAVE_API_URL: http:/$()/localhost:3000
+    Release:
+      WEAVE_API_URL: https:/$()/api.weave.app
+
+packages:
+  WeaveKit:
+    path: WeaveKit
+
+targets:
+  # ------------------------------------------------------------------
+  # Application iPhone
+  # ------------------------------------------------------------------
+  Weave:
+    type: application
+    platform: iOS
+    sources:
+      - path: Weave
+    dependencies:
+      - package: WeaveKit
+      - target: WeaveActivity
+        embed: true
+      - target: WeaveWatch
+        embed: true
+        codeSign: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app
+        INFOPLIST_FILE: Weave/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Weave/Weave.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+
+  # ------------------------------------------------------------------
+  # Extension widget : Live Activity « Métier »
+  # ------------------------------------------------------------------
+  WeaveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WeaveActivity
+    dependencies:
+      - package: WeaveKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app.activity
+        INFOPLIST_FILE: WeaveActivity/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WeaveActivity/WeaveActivity.entitlements
+
+  # ------------------------------------------------------------------
+  # Application Apple Watch
+  # ------------------------------------------------------------------
+  WeaveWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: WeaveWatch
+    dependencies:
+      - package: WeaveKit
+      - target: WeaveWatchWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app.watchkitapp
+        INFOPLIST_FILE: WeaveWatch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WeaveWatch/WeaveWatch.entitlements
+        WATCHOS_DEPLOYMENT_TARGET: "26.0"
+
+  # ------------------------------------------------------------------
+  # Complication de cadran
+  # ------------------------------------------------------------------
+  WeaveWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: WeaveWatchWidgets
+    dependencies:
+      - package: WeaveKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app.watchkitapp.widgets
+        INFOPLIST_FILE: WeaveWatchWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WeaveWatchWidgets/WeaveWatchWidgets.entitlements
+
+schemes:
+  Weave:
+    build:
+      targets:
+        Weave: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - package: WeaveKit/WeaveKitTests
+    archive:
+      config: Release

@@ -1,0 +1,64 @@
+# Dépendances
+node_modules/
+.bun/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+.vite/
+
+# Environnement
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Base de données (développement uniquement)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+prisma/dev.db*
+apps/api/prisma/dev.db*
+
+# Prisma généré
+apps/api/src/generated/
+
+# Schéma SQLite dérivé (généré par scripts/gen-sqlite-schema.ts)
+apps/api/prisma/schema.sqlite.prisma
+
+# Logs
+*.log
+logs/
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Éditeurs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Xcode / iOS
+apps/ios/*.xcodeproj/
+apps/ios/*.xcworkspace/
+apps/ios/DerivedData/
+apps/ios/.build/
+apps/ios/build/
+xcuserdata/
+*.xcuserstate
+apps/ios/Secrets.xcconfig
+
+# Clés APNs — ne jamais commiter
+*.p8
+*.p12
+*.mobileprovision
+
+# Configuration Xcode locale
+apps/ios/Secrets.xcconfig
+
+# Vérification locale de l'image (généré, jamais versionné)
+Dockerfile.verify
+ca-bundle.crt
