@@ -18,6 +18,7 @@
     "dev:api": "bun run --filter @weave/api dev",
     "dev:web": "bun run --filter @weave/web dev",
     "build": "bun run --filter '*' build",
+    "heroku-postbuild": "echo 'Rien à faire ici : la construction est assurée par bin/compile (buildpack inline).'",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun test",
     "lint": "bunx --bun prettier --check .",

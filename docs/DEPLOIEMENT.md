@@ -89,8 +89,14 @@ Heroku ne fournit aucun buildpack Bun. Weave embarque donc **le sien**, dans
 `heroku-community/inline` — dont le rôle est précisément de lancer un buildpack
 contenu dans le dépôt de l'application. Aucun code tiers n'intervient.
 
-**Une seule action :** tableau de bord → **Settings → Buildpacks** → retirer
-`heroku/nodejs`, puis **Add buildpack** → `heroku-community/inline`.
+**Une seule action :** tableau de bord → **Settings → Buildpacks** → **Add
+buildpack** → `heroku-community/inline`.
+
+Retirer `heroku/nodejs` est préférable — il ne sert à rien ici — mais le laisser
+ne casse plus rien : les dépendances internes sont déclarées avec une syntaxe
+que npm comprend, et `heroku-postbuild` neutralise son étape de construction.
+Il installera des paquets pour rien, puis le buildpack inline fera le vrai
+travail.
 
 Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
 
