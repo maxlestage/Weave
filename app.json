@@ -1,6 +1,6 @@
 {
   "name": "Weave",
-  "description": "Application de rencontre : trois fils par jour, en cache uniquement. Cette configuration déploie l'API et le site vitrine dans un seul processus.",
+  "description": "Application de rencontre : douze fils par jour, en cache uniquement. Cette configuration déploie l'API et le site vitrine dans un seul processus.",
   "repository": "https://github.com/maxlestage/Weave",
   "logo": "https://raw.githubusercontent.com/maxlestage/Weave/master/apps/web/public/favicon.svg",
   "keywords": ["bun", "elysia", "prisma", "redis", "rencontre"],
