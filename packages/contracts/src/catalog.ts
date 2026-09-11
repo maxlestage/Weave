@@ -10,14 +10,20 @@
  * vitesse de remplacement d'un fil dénoué — jamais le volume de profils.
  */
 
+import { MAX_ACTIVE_THREADS, type MaxActiveThreads } from "./invariants.ts";
+
 export const PLAN_TIERS = ["fil", "trame", "chaine", "navette", "metier"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
 export type CriteriaDepth = "base" | "etendue" | "precise";
 
 export interface PlanEntitlements {
-  /** Plafond de fils actifs. Constant sur tous les paliers, par conception. */
-  readonly activeThreads: 3;
+  /**
+   * Plafond de fils actifs. Constant sur tous les paliers, par conception.
+   * Le type est celui de l'invariant : un palier ne peut pas annoncer un autre
+   * nombre, même par inadvertance.
+   */
+  readonly activeThreads: MaxActiveThreads;
   /** Délai avant qu'un fil dénoué soit remplacé, en minutes. */
   readonly refillDelayMinutes: number;
   /** Profondeur des critères de composition. */
@@ -68,7 +74,7 @@ export const PLANS: Readonly<Record<PlanTier, Plan>> = {
     yearlyPriceCents: null,
     storeKit: { monthly: null, yearly: null },
     entitlements: {
-      activeThreads: 3,
+      activeThreads: MAX_ACTIVE_THREADS,
       refillDelayMinutes: 24 * 60,
       criteria: "base",
       voiceFragments: false,
@@ -94,7 +100,7 @@ export const PLANS: Readonly<Record<PlanTier, Plan>> = {
     yearlyPriceCents: 5990,
     storeKit: { monthly: `${BUNDLE}.sub.trame.monthly`, yearly: `${BUNDLE}.sub.trame.yearly` },
     entitlements: {
-      activeThreads: 3,
+      activeThreads: MAX_ACTIVE_THREADS,
       refillDelayMinutes: 6 * 60,
       criteria: "etendue",
       voiceFragments: true,
@@ -120,7 +126,7 @@ export const PLANS: Readonly<Record<PlanTier, Plan>> = {
     yearlyPriceCents: 10990,
     storeKit: { monthly: `${BUNDLE}.sub.chaine.monthly`, yearly: `${BUNDLE}.sub.chaine.yearly` },
     entitlements: {
-      activeThreads: 3,
+      activeThreads: MAX_ACTIVE_THREADS,
       refillDelayMinutes: 3 * 60,
       criteria: "precise",
       voiceFragments: true,
@@ -146,7 +152,7 @@ export const PLANS: Readonly<Record<PlanTier, Plan>> = {
     yearlyPriceCents: 16990,
     storeKit: { monthly: `${BUNDLE}.sub.navette.monthly`, yearly: `${BUNDLE}.sub.navette.yearly` },
     entitlements: {
-      activeThreads: 3,
+      activeThreads: MAX_ACTIVE_THREADS,
       refillDelayMinutes: 60,
       criteria: "precise",
       voiceFragments: true,
@@ -172,7 +178,7 @@ export const PLANS: Readonly<Record<PlanTier, Plan>> = {
     yearlyPriceCents: 29990,
     storeKit: { monthly: `${BUNDLE}.sub.metier.monthly`, yearly: `${BUNDLE}.sub.metier.yearly` },
     entitlements: {
-      activeThreads: 3,
+      activeThreads: MAX_ACTIVE_THREADS,
       refillDelayMinutes: 15,
       criteria: "precise",
       voiceFragments: true,
