@@ -1,0 +1,113 @@
+name: Heroku — déployer
+
+# Déploie automatiquement à chaque fusion sur master, et peut être relancé à la
+# main depuis l'onglet Actions.
+#
+# Prérequis :
+#   • secret   HEROKU_API_KEY    (Settings → Secrets and variables → Actions)
+#   • variable HEROKU_APP_NAME   (même page, onglet « Variables »)
+#
+# Sans ces deux valeurs, le workflow s'arrête proprement en expliquant quoi
+# faire, plutôt que d'échouer de façon opaque.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: heroku-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deployer:
+    name: Construire et publier
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      APP: ${{ vars.HEROKU_APP_NAME }}
+
+    steps:
+      - name: Vérifier la configuration
+        id: verifier
+        run: |
+          manque=""
+          [ -z "$HEROKU_API_KEY" ] && manque="$manque HEROKU_API_KEY(secret)"
+          [ -z "$APP" ] && manque="$manque HEROKU_APP_NAME(variable)"
+
+          if [ -n "$manque" ]; then
+            {
+              echo "## Déploiement Heroku non configuré"
+              echo ""
+              echo "Valeurs manquantes :$manque"
+              echo ""
+              echo "Voir \`docs/DEPLOIEMENT.md\` — tout se règle depuis un téléphone,"
+              echo "dans Settings → Secrets and variables → Actions."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Déploiement ignoré : configuration Heroku absente."
+            echo "pret=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pret=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Récupérer le dépôt
+        if: steps.verifier.outputs.pret == 'true'
+        uses: actions/checkout@v5
+        with:
+          # Heroku refuse une poussée depuis un clone superficiel.
+          fetch-depth: 0
+
+      - name: Publier sur Heroku
+        if: steps.verifier.outputs.pret == 'true'
+        run: |
+          echo "Publication de $GITHUB_SHA vers $APP"
+          git push --force \
+            "https://heroku:$HEROKU_API_KEY@git.heroku.com/$APP.git" \
+            "$GITHUB_SHA:refs/heads/master"
+
+      - name: Vérifier que l'application répond
+        if: steps.verifier.outputs.pret == 'true'
+        run: |
+          adresse="https://$APP.herokuapp.com/health"
+          echo "Sonde : $adresse"
+
+          # Le dyno met quelques secondes à prendre le relais après la
+          # publication : on réessaie avant de conclure à un échec.
+          for tentative in 1 2 3 4 5 6 7 8 9 10; do
+            corps=$(curl -sS --max-time 10 "$adresse" || true)
+
+            if echo "$corps" | grep -q '"status":"ok"'; then
+              echo "Application en ligne."
+              {
+                echo "## Déployé"
+                echo ""
+                echo "https://$APP.herokuapp.com"
+                echo ""
+                echo '```json'
+                echo "$corps"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            echo "  tentative $tentative : pas encore prêt ($corps)"
+            sleep 10
+          done
+
+          {
+            echo "## Déployé, mais la sonde ne répond pas"
+            echo ""
+            echo "La publication a réussi ; \`/health\` n'a pas renvoyé \`ok\`."
+            echo "Dernière réponse :"
+            echo ""
+            echo '```'
+            echo "$corps"
+            echo '```'
+            echo ""
+            echo "Regardez les journaux depuis le tableau de bord Heroku."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::L'application ne répond pas encore correctement."
+          exit 1

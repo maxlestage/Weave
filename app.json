@@ -1,0 +1,78 @@
+{
+  "name": "Weave",
+  "description": "Application de rencontre : trois fils par jour, en cache uniquement. Cette configuration déploie l'API et le site vitrine dans un seul processus.",
+  "repository": "https://github.com/maxlestage/Weave",
+  "logo": "https://raw.githubusercontent.com/maxlestage/Weave/master/apps/web/public/favicon.svg",
+  "keywords": ["bun", "elysia", "prisma", "redis", "rencontre"],
+  "stack": "container",
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0",
+      "as": "DATABASE"
+    },
+    {
+      "plan": "heroku-redis:mini",
+      "as": "REDIS"
+    }
+  ],
+  "env": {
+    "JWT_SECRET": {
+      "description": "Secret de signature des jetons de session. Généré automatiquement, à ne jamais partager.",
+      "generator": "secret"
+    },
+    "MEDIA_SIGNING_SECRET": {
+      "description": "Secret de signature des URL de médias. Généré automatiquement.",
+      "generator": "secret"
+    },
+    "NODE_ENV": {
+      "description": "Mode d'exécution.",
+      "value": "production"
+    },
+    "WEAVE_DB": {
+      "description": "Moteur de base. SQLite est refusé en production.",
+      "value": "postgres"
+    },
+    "DATABASE_SSL_INSECURE": {
+      "description": "Heroku Postgres présente un certificat auto-signé sur son réseau interne. La connexion reste chiffrée, mais l'identité du serveur n'est pas vérifiée. Requis chez Heroku ; à laisser vide ailleurs.",
+      "value": "true"
+    },
+    "REDIS_TLS_INSECURE": {
+      "description": "Même situation pour le magasin clé-valeur Heroku.",
+      "value": "true"
+    },
+    "APNS_BUNDLE_ID": {
+      "description": "Identifiant de l'application iOS, pour les notifications.",
+      "value": "com.weave.app"
+    },
+    "APNS_ENVIRONMENT": {
+      "description": "sandbox tant que l'application n'est pas publiée, production ensuite.",
+      "value": "sandbox"
+    },
+    "APPSTORE_ENVIRONMENT": {
+      "description": "Environnement de vérification des achats.",
+      "value": "sandbox"
+    },
+    "PUBLIC_WEB_ORIGIN": {
+      "description": "Adresse publique du site. Laissez vide au premier déploiement, puis renseignez l'adresse de l'application.",
+      "required": false
+    },
+    "MEDIA_BASE_URL": {
+      "description": "Base des URL de médias. Laissez vide au premier déploiement.",
+      "required": false
+    }
+  },
+  "environments": {
+    "test": {
+      "addons": ["heroku-redis:mini"],
+      "scripts": {
+        "test": "bun run db:sqlite && bun run db:generate && bun test"
+      }
+    }
+  }
+}

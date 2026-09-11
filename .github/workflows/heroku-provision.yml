@@ -1,0 +1,152 @@
+name: Heroku — créer l'application
+
+# À lancer UNE SEULE FOIS, depuis l'onglet Actions de GitHub (bouton
+# « Run workflow »). Crée l'application Heroku, y branche PostgreSQL et le
+# magasin clé-valeur, et génère les secrets. Tout se fait depuis un téléphone.
+#
+# Prérequis : un secret de dépôt `HEROKU_API_KEY`
+# (Settings → Secrets and variables → Actions → New repository secret).
+# La clé se récupère sur https://dashboard.heroku.com/account
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Nom de l'application Heroku (minuscules, chiffres et tirets)"
+        required: true
+        type: string
+      region:
+        description: "Région"
+        required: true
+        default: eu
+        type: choice
+        options: [eu, us]
+
+permissions:
+  contents: read
+
+jobs:
+  creer:
+    name: Créer et configurer
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      APP: ${{ inputs.app_name }}
+      ACCEPT: "application/vnd.heroku+json; version=3"
+
+    steps:
+      - name: Vérifier la clé d'API
+        run: |
+          if [ -z "$HEROKU_API_KEY" ]; then
+            echo "::error::Le secret HEROKU_API_KEY est absent. Ajoutez-le dans Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          nom=$(curl -sS -H "Accept: $ACCEPT" -H "Authorization: Bearer $HEROKU_API_KEY" \
+                https://api.heroku.com/account | python3 -c 'import sys,json; print(json.load(sys.stdin).get("email","?"))')
+          echo "Connecté à Heroku en tant que $nom"
+
+      - name: Créer l'application
+        run: |
+          reponse=$(curl -sS -w '\n%{http_code}' -X POST https://api.heroku.com/apps \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"$APP\",\"region\":\"${{ inputs.region }}\",\"stack\":\"container\"}")
+          code=$(echo "$reponse" | tail -1)
+          corps=$(echo "$reponse" | sed '$d')
+
+          if [ "$code" = "201" ]; then
+            echo "Application $APP créée."
+          elif echo "$corps" | grep -q "already taken"; then
+            echo "::warning::Le nom $APP est déjà pris. S'il s'agit de votre application, la suite se poursuit."
+          else
+            echo "::error::Création impossible (HTTP $code) : $corps"
+            exit 1
+          fi
+
+      - name: Forcer la pile « container »
+        # Indispensable : sans elle, Heroku ignore heroku.yml et cherche un
+        # buildpack, qui n'existe pas pour Bun.
+        run: |
+          curl -sS -X PATCH "https://api.heroku.com/apps/$APP" \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"build_stack":"container"}' > /dev/null
+          echo "Pile : container"
+
+      - name: Brancher PostgreSQL et le magasin clé-valeur
+        run: |
+          ajouter() {
+            reponse=$(curl -sS -w '\n%{http_code}' -X POST "https://api.heroku.com/apps/$APP/addons" \
+              -H "Accept: $ACCEPT" \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"plan\":\"$1\"}")
+            code=$(echo "$reponse" | tail -1)
+            corps=$(echo "$reponse" | sed '$d')
+            if [ "$code" = "201" ] || [ "$code" = "202" ]; then
+              echo "  $1 : ajouté"
+            elif echo "$corps" | grep -qi "already"; then
+              echo "  $1 : déjà présent"
+            else
+              echo "::error::Ajout de $1 impossible (HTTP $code) : $corps"
+              exit 1
+            fi
+          }
+          ajouter "heroku-postgresql:essential-0"
+          ajouter "heroku-redis:mini"
+
+      - name: Poser les secrets et la configuration
+        run: |
+          # Les secrets sont générés ici et ne transitent par aucun écran :
+          # ils sont écrits directement dans la configuration Heroku.
+          jwt=$(openssl rand -base64 48 | tr -d '\n')
+          media=$(openssl rand -base64 48 | tr -d '\n')
+
+          python3 - "$APP" "$jwt" "$media" <<'PY' > /tmp/config.json
+          import json, sys
+          app, jwt, media = sys.argv[1], sys.argv[2], sys.argv[3]
+          print(json.dumps({
+              "NODE_ENV": "production",
+              "WEAVE_DB": "postgres",
+              "JWT_SECRET": jwt,
+              "MEDIA_SIGNING_SECRET": media,
+              # Heroku présente des certificats auto-signés sur son réseau
+              # interne : le trafic reste chiffré, l'identité du serveur n'est
+              # pas vérifiée. Voir docs/DEPLOIEMENT.md.
+              "DATABASE_SSL_INSECURE": "true",
+              "REDIS_TLS_INSECURE": "true",
+              "PUBLIC_WEB_ORIGIN": f"https://{app}.herokuapp.com",
+              "MEDIA_BASE_URL": f"https://{app}.herokuapp.com/media",
+              "APNS_BUNDLE_ID": "com.weave.app",
+              "APNS_ENVIRONMENT": "sandbox",
+              "APPSTORE_ENVIRONMENT": "sandbox",
+          }))
+          PY
+
+          curl -sS -X PATCH "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: $ACCEPT" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/config.json > /dev/null
+          echo "Configuration posée (secrets générés aléatoirement)."
+
+      - name: Récapitulatif
+        run: |
+          {
+            echo "## Application Heroku prête"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Nom | \`$APP\` |"
+            echo "| Adresse | https://$APP.herokuapp.com |"
+            echo "| Base | Heroku Postgres Essential-0 |"
+            echo "| Cache | Heroku Key-Value Store mini |"
+            echo ""
+            echo "### Étape suivante"
+            echo ""
+            echo "Ajoutez la variable de dépôt \`HEROKU_APP_NAME\` avec la valeur \`$APP\`"
+            echo "(Settings → Secrets and variables → Actions → onglet **Variables**),"
+            echo "puis lancez le workflow **Heroku — déployer**."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,87 @@
+# Chaîne de publication iOS de Weave.
+#
+# Elle est conçue pour tourner sur un exécuteur macOS de GitHub Actions : il
+# n'est donc pas nécessaire de posséder un Mac. Tout est piloté par des
+# variables d'environnement, sans interaction.
+#
+# Authentification : clé d'API App Store Connect (et non un identifiant Apple),
+# parce qu'elle ne demande pas de double authentification — indispensable pour
+# une machine.
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.weave.app".freeze
+
+EXTENSIONS = [
+  "com.weave.app.activity",
+  "com.weave.app.watchkitapp",
+  "com.weave.app.watchkitapp.widgets",
+].freeze
+
+platform :ios do
+  before_all do
+    setup_ci if ENV["CI"]
+  end
+
+  desc "Génère le projet Xcode depuis project.yml"
+  lane :generer do
+    sh("command -v xcodegen >/dev/null 2>&1 || brew install xcodegen")
+    sh("cd .. && xcodegen generate")
+  end
+
+  desc "Construit et envoie une version à TestFlight"
+  lane :beta do
+    cle = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_content: ENV.fetch("ASC_KEY_CONTENT"),
+      is_key_content_base64: true,
+      in_house: false,
+    )
+
+    generer
+
+    # Le numéro de version interne suit le numéro d'exécution du workflow :
+    # il est ainsi toujours croissant, ce qu'exige App Store Connect.
+    increment_build_number(
+      build_number: ENV.fetch("BUILD_NUMBER", Time.now.to_i.to_s),
+      xcodeproj: "Weave.xcodeproj",
+    )
+
+    # `match` conserve certificats et profils chiffrés dans un dépôt privé :
+    # c'est ce qui permet à une machine neuve de signer sans Mac de référence.
+    (["#{APP_IDENTIFIER}"] + EXTENSIONS).each do |identifiant|
+      match(
+        type: "appstore",
+        app_identifier: identifiant,
+        api_key: cle,
+        readonly: ENV["MATCH_READONLY"] != "false",
+      )
+    end
+
+    build_app(
+      project: "Weave.xcodeproj",
+      scheme: "Weave",
+      configuration: "Release",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "build",
+      output_name: "Weave.ipa",
+      xcargs: "-allowProvisioningUpdates",
+    )
+
+    upload_to_testflight(
+      api_key: cle,
+      skip_waiting_for_build_processing: true,
+      # Les notes de version viennent du message du dernier commit : la
+      # personne qui teste sait ce qui a changé sans qu'on le ressaisisse.
+      changelog: ENV.fetch("CHANGELOG", "Version interne."),
+      distribute_external: false,
+    )
+  end
+
+  desc "Lance les tests du paquet WeaveKit"
+  lane :tests do
+    sh("cd ../WeaveKit && swift test")
+  end
+end
