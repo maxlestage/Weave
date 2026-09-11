@@ -33,23 +33,31 @@ import { threadRoutes } from "./modules/threads.routes.ts";
  * `WEB_DIST_PATH` n'est pas défini — Vite s'en charge — et ce greffon
  * n'enregistre alors aucune route.
  */
-const vitrine =
-  env.webDist === undefined
-    ? new Elysia({ name: "weave/vitrine-absente" })
-    : new Elysia({ name: "weave/vitrine" })
-        .use(
-          await staticPlugin({
-            assets: env.webDist,
-            prefix: "/",
-            indexHTML: true,
-            maxAge: 3600,
-          }),
-        )
-        // `indexHTML` ne couvre pas la racine elle-même : sans cette route,
-        // ouvrir l'adresse du service renvoie une 404.
-        .get("/", () => Bun.file(`${env.webDist}/index.html`), {
-          detail: { summary: "Site vitrine", tags: ["Service"] },
-        });
+const vitrineDisponible =
+  env.webDist !== undefined && (await Bun.file(`${env.webDist}/index.html`).exists());
+
+if (env.webDist !== undefined && !vitrineDisponible) {
+  // Un site absent ne doit pas empêcher l'API de démarrer : elle rend un
+  // service autonome, dont l'application iOS dépend.
+  log.warn("Site vitrine introuvable, l'API démarre sans lui", { chemin: env.webDist });
+}
+
+const vitrine = !vitrineDisponible
+  ? new Elysia({ name: "weave/vitrine-absente" })
+  : new Elysia({ name: "weave/vitrine" })
+      .use(
+        await staticPlugin({
+          assets: env.webDist!,
+          prefix: "/",
+          indexHTML: true,
+          maxAge: 3600,
+        }),
+      )
+      // `indexHTML` ne couvre pas la racine elle-même : sans cette route,
+      // ouvrir l'adresse du service renvoie une 404.
+      .get("/", () => Bun.file(`${env.webDist}/index.html`), {
+        detail: { summary: "Site vitrine", tags: ["Service"] },
+      });
 
 export const app = new Elysia()
   .use(
