@@ -18,10 +18,10 @@ struct WeaveWatchApp: App {
 
 /// État de l'application montre.
 ///
-/// La montre ne reçoit qu'un résumé compact : compteurs, prénoms, échéances.
-/// Ni photo, ni fragment, ni message — d'abord parce que c'est inutile sur un
-/// écran de cette taille, ensuite parce qu'un poignet est plus exposé au regard
-/// d'autrui qu'un téléphone.
+/// La montre ne reçoit qu'un résumé compact : le prochain plan et deux
+/// compteurs. Ni nom, ni photo, ni message — d'abord parce que c'est inutile
+/// sur un écran de cette taille, ensuite parce qu'un poignet est plus exposé au
+/// regard d'autrui qu'un téléphone.
 @MainActor
 @Observable
 final class ModeleMontre {
@@ -63,5 +63,5 @@ final class ModeleMontre {
 }
 
 extension Color {
-    static let weaveCuivreMontre = Color(red: 0.902, green: 0.631, blue: 0.361)
+    static let weaveCuivreMontre = Color(red: 0.690, green: 0.549, blue: 1.0)
 }

@@ -1,119 +1,140 @@
-# « Les profils du jour, en cache uniquement »
+# Le cache
 
-C'est l'exigence structurante de Weave. Ce document explique comment elle est
-tenue, et où sont les limites.
+Redis n'est pas un confort dans Weave : **l'invariant central du produit y vit
+tout entier.** Ce document explique ce qu'on y met, pourquoi, et où sont les
+limites.
 
-## Ce que la règle veut dire, précisément
+## Ce que Redis porte
 
-1. Un utilisateur détient **au plus douze fils actifs** (`MAX_ACTIVE_THREADS`), à tout instant.
-2. Le **contenu** de ces fils — prénom, âge, ville, motif, fragments, photo —
-   n'existe que dans Redis, avec une durée de vie.
-3. La base relationnelle ne contient **aucune copie** de ce contenu.
-4. Aucun palier d'abonnement ne relève ce plafond.
+| Ce qui est stocké | Pourquoi là, et pas en base |
+| --- | --- |
+| **Le quota de demandes du jour** | C'est un compteur à haute fréquence, remis à zéro chaque nuit, qui doit se décrémenter de façon atomique. Aucune ligne de base n'a besoin d'en garder trace le lendemain |
+| **Le fil composé** | Il dépend de la position, des critères et de l'heure ; il se périme en minutes. Le recalculer à chaque ouverture coûterait une requête lourde pour un résultat identique |
+| **Le résumé d'identité** | Évite un aller-retour base à chaque requête authentifiée |
+| **Les états Live Activity et montre** | Une donnée d'affichage, poussée quelques fois par jour |
+| **Les compteurs de limitation de débit** | Fenêtres courtes, sans valeur historique |
+
+Les plans, eux, **vivent en base**. Ce sont des engagements datés que leurs
+auteurs ont écrits : les perdre serait perdre le produit. C'est une différence
+de nature avec le fil, qui n'est qu'une vue calculée.
 
 ## Les clés
 
 | Clé | Type | Contenu | TTL |
 | --- | --- | --- | --- |
-| `weave:v1:loom:<compte>` | ZSET | Identifiants des fils, score = expiration en ms | 48 h |
-| `weave:v1:thread:<fil>` | String | La carte complète, en JSON | 24 h (48 h max) |
-| `weave:v1:pool:<compte>` | String | Vivier de candidats pré-calculé | 30 min |
-| `weave:v1:refill:<compte>` | String | Date de regarnissage de la prochaine place | 24 h |
-| `weave:v1:me:<compte>` | String | Résumé d'identité, pour éviter un aller-retour base | 15 min |
-| `weave:v1:la:<compte>` | String | Dernier état poussé vers la Live Activity | 48 h |
-| `weave:v1:watch:<compte>` | String | Résumé compact pour watchOS | 48 h |
-| `weave:v1:rl:<seau>:<sujet>` | String | Compteur de limitation de débit | fenêtre |
-| `weave:v1:lock:weave:<compte>` | String | Verrou de composition | 10 s |
+| `weave:v2:feed:<compte>` | String | Fil composé, en JSON | 5 min |
+| `weave:v2:req:<compte>:<jour>` | String | Demandes déjà envoyées aujourd'hui | jusqu'à minuit |
+| `weave:v2:me:<compte>` | String | Résumé d'identité | 15 min |
+| `weave:v2:la:<compte>` | String | Dernier état poussé vers la Live Activity | 24 h |
+| `weave:v2:watch:<compte>` | String | Résumé compact pour watchOS | 24 h |
+| `weave:v2:rl:<seau>:<sujet>` | String | Compteur de limitation de débit | fenêtre |
 
 **Toute entrée porte un TTL.** `setJson` refuse un TTL nul ou négatif : une clé
-sans expiration serait un stockage déguisé, et c'est précisément ce que la règle
-interdit.
+sans expiration serait un stockage déguisé.
 
-## Le plafond, appliqué de façon atomique
+## Le quota, appliqué de façon atomique
 
-Deux ouvertures simultanées de l'application ne doivent pas pouvoir produire un
-quatrième fil. La vérification et l'écriture sont donc faites en un seul script
-Lua, exécuté par Redis :
+Deux demandes envoyées simultanément ne doivent pas pouvoir dépenser la même
+unité. La vérification et l'écriture sont donc faites en un seul script Lua,
+exécuté par Redis :
 
 ```lua
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)   -- purge des fils échus
-if redis.call('ZCARD', KEYS[1]) >= maximum then
-  return -1                                            -- métier plein
+local utilisees = redis.call('INCR', KEYS[1])
+if utilisees == 1 then
+  redis.call('EXPIRE', KEYS[1], expiration)
 end
-redis.call('ZADD', KEYS[1], expiresAt, threadId)
-redis.call('EXPIRE', KEYS[1], loomTtl)
-redis.call('SET', KEYS[2], payload, 'EX', ttl)
-return redis.call('ZCARD', KEYS[1])
+
+if utilisees > plafond then
+  redis.call('DECR', KEYS[1])   -- on annule son propre incrément
+  return -1
+end
+
+return plafond - utilisees
 ```
 
-Un test d'intégration lance six lectures concurrentes du métier sur un compte
-vide et vérifie que `ZCARD` ne dépasse jamais le plafond.
+L'ordre compte : on incrémente **puis** on compare. Une lecture suivie d'une
+écriture en deux temps laisserait passer deux demandes concurrentes sur la
+dernière place.
 
-## Ce qui est écrit en base, et pourquoi
+L'expiration est posée sur la **première** demande du jour, et calculée jusqu'à
+minuit dans le fuseau de la personne — pas 24 h glissantes. Un quota qui se
+recharge à une heure différente chaque jour est incompréhensible.
 
-Une seule table concerne les propositions : `thread_ledger`.
+### Le prélèvement précède l'écriture
 
-```
-id · viewerId · candidateId · cacheKey · outcome · score · servedAt · resolvedAt · expiresAt
-```
+Dans `requests.routes.ts`, le quota est consommé **avant** l'insertion de la
+demande, et rendu si l'insertion échoue. L'inverse laisserait une demande écrite
+gratuitement en cas d'erreur — c'est-à-dire un trou dans l'invariant, exploitable
+en provoquant des erreurs.
 
-Rien d'autre. Pas de prénom, pas de photo, pas de fragment, pas de motif.
+### Le remboursement
 
-Elle existe pour trois raisons, et aucune ne pourrait être satisfaite par le
-cache seul :
+Une demande **retirée** rend son unité, avec une précision qui compte : le jour
+crédité est celui de **l'envoi**, pas celui du retrait. Sans cela, retirer une
+demande après minuit créditerait une journée qu'on n'a pas entamée.
 
-- **Ne jamais reproposer la même personne.** Une contrainte d'unicité
-  `(viewerId, candidateId)` le garantit, y compris après expiration du cache.
-- **Mesurer la qualité de la composition.** Le score et l'issue permettent de
-  savoir si le moteur propose bien, sans jamais avoir à relire un profil.
-- **Réconcilier après incident.** Si Redis redémarre, les fils sont perdus — et
-  c'est acceptable — mais on sait qui avait déjà été proposé.
+Une demande **refusée** ne rend rien : elle a été lue.
 
-Un test d'intégration énumère les colonnes réellement présentes sur les lignes
-de registre et échoue si une colonne s'y ajoute : c'est le garde-fou contre la
-dérive, plus fiable qu'une note dans un document.
+## L'invalidation du fil
+
+Trois événements invalident un fil :
+
+- **ses propres critères changent** — `invalidateFeed(compte)` ;
+- **un blocage** — les deux fils, dans les deux sens ;
+- **un plan est publié ou annulé** — `invalidateAllFeeds()`, car il doit
+  apparaître ou disparaître sans attendre l'expiration des fils déjà composés.
+
+`invalidateAllFeeds` utilise `SCAN`, pas `KEYS` : cette dernière bloque le
+serveur le temps du parcours, ce qui est acceptable sur un jeu de développement
+et ne l'est plus en production.
 
 ## Ce qu'un redémarrage de Redis emporte
 
-Les fils en cours, les viviers, les compteurs de débit. C'est assumé : à la
-prochaine ouverture, le métier se regarnit à partir de personnes qui n'avaient
-pas encore été proposées.
+Les fils composés, les compteurs de débit, et **les quotas du jour**. Ce dernier
+point mérite d'être dit franchement : après un redémarrage, tout le monde
+récupère ses demandes du jour.
 
-Ce qui survit : les comptes, les profils, les motifs, les conversations déjà
-tissées, et le registre.
+C'est un compromis assumé. L'alternative — écrire chaque demande consommée en
+base — ajouterait une écriture synchrone sur le chemin le plus chaud du produit
+pour se prémunir d'un incident rare, dont la conséquence est qu'une poignée de
+gens envoient quelques messages de plus un soir. Ce n'est pas une fraude à la
+facturation : le quota n'est pas un bien qu'on vend, c'est une règle de
+conception.
 
-## Le passage du cache à la base
-
-Un fil ne devient persistant qu'au **deuxième échange** — quand chacun a
-répondu. À ce moment seulement, une ligne `woven_threads` et les messages sont
-écrits. Avant cela, une proposition qui n'aboutit pas ne laisse qu'une ligne de
-registre.
-
-C'est la frontière du produit : ce qui est resté sans réponse ne s'archive pas.
+Ce qui survit : les comptes, les profils, **les plans**, les demandes, les
+conversations et les messages.
 
 ## Dimensionner le cache
 
-Le plafond de fils se paie directement en mémoire Redis. Mesure relevée sur le
-jeu de données de développement, cartes réelles en cache :
+Mesure relevée sur le jeu de données de développement (fil de 22 plans,
+sérialisé tel qu'il est mis en cache) :
 
 | | |
 | --- | --- |
-| Taille d'une carte de fil | ~1,4 Ko |
-| Un utilisateur au métier complet (12 fils) | ~16 Ko |
-| Plan Heroku « mini » (25 Mo) | ~1 500 utilisateurs au métier complet |
+| Un plan dans un fil | ~476 octets |
+| Un fil plein (60 plans, `FEED_SIZE`) | ~28 Ko |
+| Compteur de quota | quelques octets |
+| Plan Heroku « mini » (25 Mo) | ~850 fils pleins simultanément en cache |
 
-Ce sont des utilisateurs **simultanément actifs**, pas des inscrits : une carte
-expire au bout de 24 h. Mais le seuil arrive vite, et il arrive quatre fois
-plus vite qu'avec un plafond de trois fils. Surveillez `used_memory` dès les
-premières centaines d'utilisateurs, et prévoyez de quitter le plan « mini »
-bien avant de l'atteindre — une éviction fait disparaître des fils en cours.
+Les photos du jeu de développement sont absentes : une URL signée réelle ajoute
+une centaine d'octets par plan. Comptez plutôt 35 Ko pour un fil plein en
+production.
+
+Un fil expire en cinq minutes : ce sont donc des personnes **actives dans les
+cinq dernières minutes**, pas des inscrites. La marge est confortable, mais
+surveillez `used_memory` : une éviction ne casse rien, elle fait seulement
+recomposer un fil.
+
+L'éviction d'un **compteur de quota**, elle, rend des demandes. C'est la raison
+de la politique recommandée ci-dessous.
 
 ## Points de vigilance en exploitation
 
-- **Éviction.** Configurer Redis en `maxmemory-policy volatile-ttl` et
-  surveiller la mémoire : une éviction fait disparaître des fils en cours. Le
-  produit y survit, mais l'expérience se dégrade silencieusement.
+- **Éviction.** Configurer Redis en `maxmemory-policy volatile-ttl` : les fils,
+  qui ont le TTL le plus court, sont évincés avant les quotas.
 - **Persistance.** Un instantané RDB toutes les cinq minutes suffit ; l'AOF
-  n'apporte pas grand-chose pour une donnée dont la durée de vie est de 24 h.
+  n'apporte pas grand-chose pour une donnée dont la durée de vie se compte en
+  minutes.
 - **Sonde.** `/health` renvoie 503 si Redis ne répond pas. Un service qui
-  accepterait des requêtes sans cache mentirait sur ce qu'il peut faire.
+  accepterait des demandes sans pouvoir compter les quotas mentirait sur son
+  invariant principal.

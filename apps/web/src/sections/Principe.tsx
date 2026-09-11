@@ -1,35 +1,39 @@
-import { MAX_ACTIVE_THREADS, REVEAL_STEPS, THREAD_TTL_SECONDS } from "@weave/contracts";
+import {
+  MAX_OPEN_PLANS,
+  PLAN_CATEGORIES,
+  PLAN_CATEGORY_LABELS,
+  REQUESTS_PER_DAY_FLOOR,
+  REQUEST_MIN_CHARS,
+} from "@weave/contracts";
 import { Carte, filVar, Section, type Fil } from "../composants.tsx";
 
 const PILIERS = [
   {
-    titre: `${MAX_ACTIVE_THREADS} fils, jamais plus`,
-    texte:
-      "Le plafond est le même pour tout le monde, quel que soit l'abonnement. Aucune offre ne le relève : ce serait vendre exactement ce que Weave cherche à éviter.",
+    titre: "On ne peut pas arroser",
+    texte: `Le nombre de demandes qu'on peut envoyer dans une journée est borné — au minimum ${REQUESTS_PER_DAY_FLOOR}, à toutes les offres, socle gratuit compris. Quand une demande coûte quelque chose, on la choisit.`,
   },
   {
-    titre: "En mémoire, pas en base",
+    titre: "On ne peut pas acheter de visibilité",
     texte:
-      "Les profils qui vous sont proposés n'existent que dans le cache du service, avec une durée de vie. Nous ne constituons pas de collection de profils consultés.",
+      "Le fil est trié par imminence puis par proximité. Aucun abonnement, aucun achat ne place un plan devant celui de quelqu'un d'autre. C'est la règle que Weave ne changera pas.",
   },
   {
-    titre: "On engage en écrivant",
-    texte:
-      "Il n'y a pas de geste pour dire oui ou non. Un fil s'engage par une réponse à un fragment ; l'autre personne voit ce que vous avez écrit, pas un signal.",
+    titre: "On demande en écrivant",
+    texte: `Il n'existe aucun geste pour dire « je viens ». On écrit au moins ${REQUEST_MIN_CHARS} caractères qui disent pourquoi. C'est ce qui distingue une demande d'un réflexe.`,
   },
   {
-    titre: "Le temps fait le tri",
-    texte: `Un fil non engagé se dénoue après ${THREAD_TTL_SECONDS / 3600} heures et disparaît. Il n'y a pas de file d'attente qui grossit, pas de retour en arrière payant.`,
+    titre: "Un plan a une date, donc une fin",
+    texte: `Passé le rendez-vous, le plan disparaît du fil. Rien ne s'accumule, rien ne traîne. Et vous n'en gardez que ${MAX_OPEN_PLANS} ouverts à la fois : ce que vous comptez vraiment faire.`,
   },
 ] as const;
 
 const ABSENTS = [
   "Pile de cartes à balayer",
-  "Liste des personnes qui vous ont aimé",
-  "Mise en avant payante dans le vivier",
+  "Liste des personnes qui vous ont remarqué",
+  "Mise en avant payante dans le fil",
   "Compteur de « vues » de votre profil",
   "Publicité et revente de données",
-  "Relance automatique pour vous faire revenir",
+  "Notification inventée pour vous faire revenir",
 ] as const;
 
 export function Principe() {
@@ -38,7 +42,7 @@ export function Principe() {
       id="principe"
       fil={4}
       titre="Le principe"
-      chapeau="Weave part d'une contrainte assumée : moins de profils, plus d'attention. Tout le reste en découle."
+      chapeau="Une fiche dit qui on prétend être. Un plan dit ce qu'on fait jeudi. Weave ne garde que le second."
       alterne
     >
       <div className="grid gap-4 sm:grid-cols-2">
@@ -87,40 +91,26 @@ export function Principe() {
 
         <div>
           <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-titre)" }}>
-            La révélation progressive
+            Ce qu'on y publie
           </h3>
           <p className="mt-4 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-            La photo n'ouvre pas la rencontre, elle l'accompagne. À chaque échange abouti — une
-            réponse de chaque côté — elle se précise d'un cran.
+            Rien de spectaculaire, et c'est voulu : ce qu'on allait faire de toute façon. Un plan
+            réussi, c'est un samedi qu'on n'a pas passé seul.
           </p>
-          <ol className="mt-5 space-y-3">
-            {REVEAL_STEPS.map((etape, index) => (
-              <li key={etape} className="flex items-center gap-4">
-                <span
-                  className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums"
-                  style={{ color: filVar(6) }}
-                >
-                  {etape} %
-                </span>
-                <span
-                  className="h-2 flex-1 rounded-full"
-                  aria-hidden="true"
-                  style={{ background: "var(--bordure)" }}
-                >
-                  <span
-                    className="block h-2 rounded-full"
-                    style={{
-                      width: `${etape}%`,
-                      background: `linear-gradient(90deg, ${filVar(1)}, ${filVar(4)}, ${filVar(6)})`,
-                    }}
-                  />
-                </span>
-                <span className="w-28 shrink-0 text-sm" style={{ color: "var(--texte-doux)" }}>
-                  {index === 0 ? "au tissage" : `${index} échange${index > 1 ? "s" : ""}`}
-                </span>
+          <ul className="mt-5 flex flex-wrap gap-2">
+            {PLAN_CATEGORIES.map((categorie, index) => (
+              <li
+                key={categorie}
+                className="rounded-full px-4 py-2 text-sm font-bold"
+                style={{
+                  background: `color-mix(in oklab, ${filVar(((index % 6) + 1) as Fil)} 16%, var(--fond))`,
+                  color: filVar(((index % 6) + 1) as Fil),
+                }}
+              >
+                {PLAN_CATEGORY_LABELS[categorie]}
               </li>
             ))}
-          </ol>
+          </ul>
         </div>
       </div>
     </Section>

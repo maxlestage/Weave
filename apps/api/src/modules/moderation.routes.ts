@@ -1,17 +1,18 @@
 /**
  * Sécurité des personnes : blocage et signalement.
  *
- * Un blocage est immédiat et réciproque dans ses effets : les deux comptes
- * cessent d'être proposables l'un à l'autre, et le fil éventuellement en cours
- * disparaît du cache sans notification.
+ * Un blocage est immédiat et réciproque dans ses effets : les plans de chacun
+ * disparaissent du fil de l'autre, les demandes en attente sont closes et la
+ * conversation éventuelle est fermée — sans notification à la personne bloquée.
  */
 import { Elysia, t } from "elysia";
-import { clearLoom, readLoom, removeThread } from "../lib/cache.ts";
+import { MESSAGE_RETENTION_DAYS } from "@weave/contracts";
+import { invalidateFeed } from "../lib/cache.ts";
 import { invalid } from "../lib/errors.ts";
 import { prisma } from "../lib/prisma.ts";
-import { authPlugin } from "../plugins/auth.ts";
+import { authPlugin, invalidateAccountCache } from "../plugins/auth.ts";
 import { consume, RULES } from "../plugins/rate-limit.ts";
-import { invalidatePool } from "./loom.service.ts";
+import { publishLiveActivityState } from "./live-activity.service.ts";
 
 const REASONS = [
   "propos_deplaces",
@@ -23,21 +24,55 @@ const REASONS = [
   "autre",
 ] as const;
 
-/** Retire du cache tout fil liant deux comptes, dans les deux sens. */
-async function unravelBetween(a: string, b: string): Promise<void> {
-  const ledgers = await prisma.threadLedger.findMany({
-    where: {
-      OR: [
-        { viewerId: a, candidateId: b },
-        { viewerId: b, candidateId: a },
-      ],
-    },
-    select: { viewerId: true, cacheKey: true },
+/**
+ * Défait tout ce qui liait deux comptes : demandes en attente closes,
+ * conversations fermées, fils invalidés dans les deux sens.
+ *
+ * Rien n'est supprimé de force — les messages déjà échangés restent lisibles
+ * par celui qui bloque jusqu'à la purge, et une suppression immédiate
+ * effacerait aussi les preuves d'un comportement qu'on vient de signaler.
+ */
+async function couperEntre(a: string, b: string): Promise<void> {
+  const maintenant = new Date();
+  const purge = new Date(maintenant.getTime() + MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.joinRequest.updateMany({
+      where: {
+        state: "envoyee",
+        OR: [
+          { authorId: a, plan: { authorId: b } },
+          { authorId: b, plan: { authorId: a } },
+        ],
+      },
+      data: { state: "expiree", decidedAt: maintenant },
+    });
+
+    const conversations = await tx.conversation.findMany({
+      where: {
+        closedAt: null,
+        OR: [
+          { hostId: a, guestId: b },
+          { hostId: b, guestId: a },
+        ],
+      },
+      select: { id: true },
+    });
+    if (conversations.length === 0) return;
+
+    const ids = conversations.map((c) => c.id);
+    await tx.conversation.updateMany({
+      where: { id: { in: ids } },
+      data: { closedAt: maintenant, closedBy: a },
+    });
+    await tx.message.updateMany({
+      where: { conversationId: { in: ids } },
+      data: { purgeAfter: purge },
+    });
   });
 
-  for (const ledger of ledgers) {
-    await removeThread(ledger.viewerId, ledger.cacheKey);
-  }
+  await Promise.all([invalidateFeed(a), invalidateFeed(b)]);
+  await Promise.all([publishLiveActivityState(a), publishLiveActivityState(b)]);
 }
 
 export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"] })
@@ -56,9 +91,7 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
         update: {},
       });
 
-      await unravelBetween(account.id, body.accountId);
-      await invalidatePool(account.id);
-      await invalidatePool(body.accountId);
+      await couperEntre(account.id, body.accountId);
 
       return { ok: true };
     },
@@ -75,7 +108,7 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
       await prisma.block.deleteMany({
         where: { authorId: account.id, targetId: params.accountId },
       });
-      await invalidatePool(account.id);
+      await invalidateFeed(account.id);
       return { ok: true };
     },
     {
@@ -99,15 +132,14 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
         },
       });
 
-      // Un signalement bloque d'office : la personne n'a pas à revoir le profil
-      // qu'elle vient de signaler pendant que l'équipe examine le dossier.
+      // Un signalement bloque d'office : la personne n'a pas à revoir les plans
+      // de qui elle vient de signaler pendant que l'équipe examine le dossier.
       await prisma.block.upsert({
         where: { authorId_targetId: { authorId: account.id, targetId: body.accountId } },
         create: { authorId: account.id, targetId: body.accountId },
         update: {},
       });
-      await unravelBetween(account.id, body.accountId);
-      await invalidatePool(account.id);
+      await couperEntre(account.id, body.accountId);
 
       return { ok: true };
     },
@@ -136,23 +168,31 @@ export const moderationRoutes = new Elysia({ prefix: "/v1", tags: ["Sécurité"]
         data: { status: paused ? "paused" : "active" },
       });
 
-      // En pause, on ne propose plus et on n'est plus proposé : le métier est vidé.
-      if (paused) await clearLoom(account.id);
+      // En pause, ses plans ouverts sortent du fil des autres : rien ne sert de
+      // laisser visible un rendez-vous auquel on ne répondra pas.
+      if (paused) {
+        await prisma.plan.updateMany({
+          where: { authorId: account.id, state: "ouvert" },
+          data: { state: "annule", cancelledAt: new Date() },
+        });
+        await prisma.joinRequest.updateMany({
+          where: { state: "envoyee", plan: { authorId: account.id } },
+          data: { state: "expiree", decidedAt: new Date() },
+        });
+      }
 
-      const { invalidateAccountCache } = await import("../plugins/auth.ts");
       await invalidateAccountCache(account.id);
+      await invalidateFeed(account.id);
+      await publishLiveActivityState(account.id);
 
-      return {
-        ok: true,
-        status: paused ? "paused" : "active",
-        threads: await readLoom(account.id),
-      };
+      return { ok: true, status: paused ? "paused" : "active" };
     },
     {
       body: t.Object({ paused: t.Boolean() }),
       detail: {
         summary: "Mettre son compte en pause",
-        description: "En pause, vous ne recevez plus de fils et n'êtes plus proposé.",
+        description:
+          "En pause, vos plans ouverts sont retirés et vous n'apparaissez plus dans le fil.",
       },
     },
   );

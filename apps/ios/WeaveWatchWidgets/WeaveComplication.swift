@@ -2,17 +2,16 @@ import SwiftUI
 import WeaveKit
 import WidgetKit
 
-/// Complication de cadran : le nombre de fils en attente, et le temps qu'il
-/// reste au plus pressé. Rien d'autre ne tient — ni ne devrait tenir — sur un
-/// cadran de montre.
+/// Complication de cadran : le prochain plan, et ce qui attend une réponse.
+/// Rien d'autre ne tient — ni ne devrait tenir — sur un cadran de montre.
 struct WeaveComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "app.weave.complication", provider: Fournisseur()) { entree in
             ComplicationVue(resume: entree.resume)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName("Métier")
-        .description("Vos fils en cours et le temps qu'il leur reste.")
+        .configurationDisplayName("Prochain plan")
+        .description("Votre prochain rendez-vous, et les demandes à traiter.")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryCorner,
@@ -29,7 +28,7 @@ struct Entree: TimelineEntry {
 
 /// Le résumé est déposé par l'application dans les préférences partagées du
 /// groupe. La complication ne fait pas d'appel réseau : elle serait réveillée
-/// bien trop souvent, pour une donnée qui change à l'heure de tissage.
+/// bien trop souvent, pour une donnée qui bouge quelques fois par jour.
 struct Fournisseur: TimelineProvider {
     func placeholder(in context: Context) -> Entree {
         Entree(date: .now, resume: .empty)
@@ -41,8 +40,8 @@ struct Fournisseur: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entree>) -> Void) {
         let resume = Self.lire()
-        // Prochaine relève : à la première échéance connue, ou dans une heure.
-        let prochaine = resume.soonestExpiryAt ?? Date.now.addingTimeInterval(3600)
+        // Prochaine relève : à l'heure du prochain plan, ou dans une heure.
+        let prochaine = resume.nextPlan?.startsAt ?? Date.now.addingTimeInterval(3600)
         completion(
             Timeline(
                 entries: [Entree(date: .now, resume: resume)],
@@ -66,35 +65,47 @@ private struct ComplicationVue: View {
     @Environment(\.widgetFamily) private var famille
     let resume: WatchSummary
 
+    /// Une ligne, la même partout : ce qui attend une action d'abord.
+    private var ligne: String {
+        if resume.pendingRequests > 0 {
+            return resume.pendingRequests > 1
+                ? "\(resume.pendingRequests) veulent venir"
+                : "Quelqu'un veut venir"
+        }
+        if let plan = resume.nextPlan { return plan.city }
+        if resume.awaitingReply > 0 { return "\(resume.awaitingReply) en attente" }
+        return "Rien de prévu"
+    }
+
     var body: some View {
         switch famille {
         case .accessoryInline:
-            Text(resume.awaitingYou > 0 ? "\(resume.awaitingYou) à répondre" : "\(resume.activeThreads) fils")
+            Text(ligne)
 
         case .accessoryCircular:
-            Gauge(value: Double(resume.activeThreads), in: 0...Double(Loom.maxActiveThreads)) {
-                Image(systemName: "square.stack.3d.up")
-            } currentValueLabel: {
-                Text("\(resume.activeThreads)")
+            VStack(spacing: 0) {
+                Image(systemName: resume.pendingRequests > 0 ? "envelope.fill" : "calendar")
+                    .font(.caption)
+                if resume.pendingRequests > 0 {
+                    Text("\(resume.pendingRequests)").font(.caption2.monospacedDigit())
+                }
             }
-            .gaugeStyle(.accessoryCircular)
 
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 2) {
-                Text("Métier").font(.headline)
-                Text(resume.awaitingYou > 0
-                     ? "\(resume.awaitingYou) fil\(resume.awaitingYou > 1 ? "s" : "") en attente"
-                     : "\(resume.activeThreads) fil\(resume.activeThreads > 1 ? "s" : "") en cours")
-                    .font(.caption)
-                if let echeance = resume.soonestExpiryAt, echeance > .now {
-                    Text(timerInterval: Date.now...echeance, countsDown: true)
+                Text(resume.nextPlan?.title ?? "Aucun plan")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(ligne).font(.caption)
+                if let depart = resume.nextPlan?.startsAt, depart > .now {
+                    Text(timerInterval: Date.now...depart, countsDown: true)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
 
         default:
-            Text("\(resume.activeThreads)")
+            Image(systemName: resume.pendingRequests > 0 ? "envelope.fill" : "calendar")
         }
     }
 }

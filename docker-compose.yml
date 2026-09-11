@@ -16,7 +16,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # PostgreSQL 18+ range ses données dans un sous-dossier propre à la
+      # version majeure : le point de montage est le dossier parent, pas
+      # `/data`. Monter `/data` fait refuser le démarrage à l'image officielle.
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U weave -d weave"]
       interval: 5s
@@ -33,7 +36,7 @@ services:
       - "10"
       - --appendonly
       - "no"
-      # Les fils portent tous un TTL : en cas de pression mémoire, on évince
+      # Toute clé porte un TTL : en cas de pression mémoire, on évince
       # d'abord ceux qui expirent le plus tôt, jamais une clé sans expiration.
       - --maxmemory-policy
       - volatile-ttl

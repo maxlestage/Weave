@@ -4,13 +4,13 @@ import ActivityKit
 import Foundation
 import Observation
 
-/// Pilote la Live Activity « Métier ».
+/// Pilote la Live Activity « Prochain plan ».
 ///
 /// Deux jetons entrent en jeu, et il faut les distinguer :
 ///
 ///  • le jeton « push-to-start », propre à l'appareil, permet au serveur de
 ///    DÉMARRER une activité à distance — c'est lui qui fait apparaître la
-///    bannière à l'heure de tissage, application fermée ;
+///    bannière quand quelqu'un demande à venir, application fermée ;
 ///  • le jeton de mise à jour, propre à une activité en cours, permet d'en
 ///    modifier le contenu.
 ///
@@ -55,15 +55,15 @@ public final class ActivityController {
         })
     }
 
-    /// Démarre l'activité localement — au retour au premier plan, quand des
-    /// fils sont présents mais qu'aucune bannière n'est affichée.
+    /// Démarre l'activité localement — au retour au premier plan, quand il y a
+    /// un plan à venir mais qu'aucune bannière n'est affichée.
     public func startLocally(handle: String, state: WeaveActivityAttributes.ContentState) async {
-        guard isEnabled, !isRunning, state.activeThreads > 0 else { return }
+        guard isEnabled, !isRunning, !state.isIdle else { return }
 
         do {
             let activity = try Activity.request(
                 attributes: WeaveActivityAttributes(accountHandle: handle),
-                content: .init(state: state, staleDate: state.soonestExpiryAt),
+                content: .init(state: state, staleDate: state.planStartsAt),
                 pushType: .token
             )
             isRunning = true

@@ -8,10 +8,15 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
     case notFound
     case validation(String)
     case rateLimited(String)
-    /// Le métier a déjà atteint son plafond de fils.
-    case loomFull
-    /// Le fil n'existe plus : il s'est dénoué.
-    case threadGone
+    /// Le quota de demandes du jour est épuisé. C'est l'invariant central :
+    /// on ne peut pas arroser, et aucun achat ne lève cette limite du jour.
+    case noRequestsLeft(String)
+    /// On a déjà le maximum de plans ouverts.
+    case tooManyPlans(String)
+    /// Le plan n'accepte plus de demandes : complet, annulé ou passé.
+    case planClosed(String)
+    /// On a déjà demandé à venir. On ne redemande pas deux fois.
+    case alreadyRequested
     /// Il manque un crédit ou un palier. Porte de quoi proposer l'achat.
     case entitlementRequired(sku: String?, productID: String?)
     case server(status: Int, message: String)
@@ -24,8 +29,10 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
         case .notFound: "Introuvable."
         case .validation(let message): message
         case .rateLimited(let message): message
-        case .loomFull: "Votre métier est complet. Dénouez un fil pour faire de la place."
-        case .threadGone: "Ce fil s'est dénoué."
+        case .noRequestsLeft(let message): message
+        case .tooManyPlans(let message): message
+        case .planClosed(let message): message
+        case .alreadyRequested: "Vous avez déjà demandé à venir."
         case .entitlementRequired: "Cette action demande un crédit."
         case .server(_, let message): message
         case .transport: "Connexion impossible. Réessayez."
@@ -84,37 +91,83 @@ public actor WeaveAPI {
         self.session = session
     }
 
-    // MARK: - Le métier
+    // MARK: - Les plans
 
-    public func loom() async throws -> Loom {
-        try await request(.get, "/v1/loom")
+    /// Le fil : les plans à venir autour de soi, du plus imminent au plus
+    /// lointain. L'ordre vient du serveur et n'est jamais retouché ici.
+    public func feed() async throws -> Feed {
+        try await request(.get, "/v1/plans")
     }
 
-    public func respond(threadID: String, fragmentID: String, body: String) async throws -> RespondResult {
-        try await request(
-            .post,
-            "/v1/loom/threads/\(threadID)/respond",
-            body: ["fragmentId": fragmentID, "body": body]
-        )
+    public func publish(_ plan: PlanDraft) async throws -> PublishedPlan {
+        try await request(.post, "/v1/plans", encodable: plan)
     }
 
-    public func release(threadID: String, reason: String?) async throws {
-        let _: EmptyResponse = try await request(
-            .post,
-            "/v1/loom/threads/\(threadID)/release",
-            body: reason.map { ["reason": $0] } ?? [:]
-        )
+    public func myPlans() async throws -> [MyPlan] {
+        try await request(.get, "/v1/plans/mine")
     }
 
-    public func extend(threadID: String) async throws -> Date {
-        struct Result: Decodable { let expiresAt: Date }
-        let result: Result = try await request(.post, "/v1/loom/threads/\(threadID)/extend")
-        return result.expiresAt
+    /// Les demandes reçues sur un de ses plans. Seul l'auteur peut les lire.
+    public func incomingRequests(planID: String) async throws -> [IncomingRequest] {
+        try await request(.get, "/v1/plans/\(planID)/requests")
     }
 
-    /// Regarnit immédiatement une place libre. N'augmente jamais le plafond.
-    public func relais() async throws -> Loom {
-        try await request(.post, "/v1/loom/relais")
+    public func cancelPlan(id: String) async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/plans/\(id)")
+    }
+
+    // MARK: - Les demandes
+
+    /// Demande à venir. Le message est obligatoire : c'est l'écriture qui
+    /// engage. Chaque envoi consomme une unité du quota du jour.
+    public func join(planID: String, message: String) async throws -> SentRequest {
+        try await request(.post, "/v1/requests", body: ["planId": planID, "message": message])
+    }
+
+    public func sentRequests() async throws -> SentRequests {
+        try await request(.get, "/v1/requests/sent")
+    }
+
+    /// Retire une demande. L'unité de quota est rendue si elle n'a pas été lue.
+    public func withdraw(requestID: String) async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/requests/\(requestID)")
+    }
+
+    public func accept(requestID: String) async throws -> String {
+        struct Result: Decodable { let conversationId: String }
+        let result: Result = try await request(.post, "/v1/requests/\(requestID)/accept")
+        return result.conversationId
+    }
+
+    public func decline(requestID: String) async throws {
+        let _: EmptyResponse = try await request(.post, "/v1/requests/\(requestID)/decline")
+    }
+
+    /// Applique un « Renfort » : quelques demandes de plus pour la journée en
+    /// cours. Le nombre de renforts applicables dans une journée est lui-même
+    /// borné — l'argent ne lève pas l'invariant, il l'assouplit une fois ou deux.
+    public func applyRenfort() async throws -> RenfortResult {
+        try await request(.post, "/v1/requests/renfort")
+    }
+
+    // MARK: - Conversations
+
+    public func conversations() async throws -> [Conversation] {
+        try await request(.get, "/v1/conversations")
+    }
+
+    public func messages(conversationID: String) async throws -> [Message] {
+        struct Page: Decodable { let messages: [Message] }
+        let page: Page = try await request(.get, "/v1/conversations/\(conversationID)/messages")
+        return page.messages
+    }
+
+    public func send(conversationID: String, body: String) async throws -> Message {
+        try await request(.post, "/v1/conversations/\(conversationID)/messages", body: ["body": body])
+    }
+
+    public func close(conversationID: String) async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/conversations/\(conversationID)")
     }
 
     // MARK: - Compte
@@ -123,9 +176,8 @@ public actor WeaveAPI {
         try await request(.get, "/v1/me")
     }
 
-    public func updateWeavingHour(_ hour: Int) async throws {
-        struct Corps: Encodable { let weavingHour: Int }
-        let _: EmptyResponse = try await request(.patch, "/v1/me", encodable: Corps(weavingHour: hour))
+    public func updatePreferences(_ preferences: PreferencesPatch) async throws {
+        let _: EmptyResponse = try await request(.patch, "/v1/me/preferences", encodable: preferences)
     }
 
     public func entitlement() async throws -> Entitlement {
@@ -310,8 +362,10 @@ public actor WeaveAPI {
         case "not_found": .notFound
         case "validation": .validation(body.message)
         case "rate_limited": .rateLimited(body.message)
-        case "loom_full": .loomFull
-        case "thread_gone": .threadGone
+        case "no_requests_left": .noRequestsLeft(body.message)
+        case "too_many_plans": .tooManyPlans(body.message)
+        case "plan_closed": .planClosed(body.message)
+        case "already_requested": .alreadyRequested
         case "entitlement_required":
             .entitlementRequired(sku: body.details?.sku, productID: body.details?.unitProductId)
         default: .server(status: status, message: body.message)
@@ -382,9 +436,77 @@ public struct VerifyResult: Decodable, Sendable {
     public let created: Bool
 }
 
-public struct RespondResult: Decodable, Sendable {
-    public let thread: ThreadCard
-    public let conversationId: String?
+/// Un plan à publier.
+public struct PlanDraft: Encodable, Sendable {
+    public let title: String
+    public let note: String?
+    public let category: PlanCategory
+    /// Date et heure du rendez-vous, ISO 8601.
+    public let startsAt: String
+    public let city: String?
+    /// Personnes attendues en plus de soi. Au-delà d'une, il faut le droit aux
+    /// plans de groupe — par le palier ou par un crédit « Tablée ».
+    public let capacity: Int?
+
+    public init(
+        title: String,
+        note: String? = nil,
+        category: PlanCategory,
+        startsAt: Date,
+        city: String? = nil,
+        capacity: Int? = nil
+    ) {
+        self.title = title
+        self.note = note
+        self.category = category
+        self.startsAt = ISO8601DateFormatter.weave.string(from: startsAt)
+        self.city = city
+        self.capacity = capacity
+    }
+}
+
+public struct PublishedPlan: Decodable, Sendable {
+    public let id: String
+    public let title: String
+    public let startsAt: Date
+}
+
+public struct SentRequest: Decodable, Sendable {
+    public let id: String
+    public let sentAt: Date
+    /// Ce qu'il reste après cet envoi : affiché tout de suite, sans second appel.
+    public let requestsLeftToday: Int
+}
+
+public struct RenfortResult: Decodable, Sendable {
+    public let granted: Int
+    public let requestsLeftToday: Int
+}
+
+public struct SentRequests: Decodable, Sendable {
+    public let requests: [JoinRequest]
+    public let requestsLeftToday: Int
+}
+
+/// Critères du fil. Tous les champs sont facultatifs : on n'envoie que ce qui
+/// change.
+public struct PreferencesPatch: Encodable, Sendable {
+    public let minAge: Int?
+    public let maxAge: Int?
+    public let maxDistanceKm: Int?
+    public let categories: [PlanCategory]?
+
+    public init(
+        minAge: Int? = nil,
+        maxAge: Int? = nil,
+        maxDistanceKm: Int? = nil,
+        categories: [PlanCategory]? = nil
+    ) {
+        self.minAge = minAge
+        self.maxAge = maxAge
+        self.maxDistanceKm = maxDistanceKm
+        self.categories = categories
+    }
 }
 
 public struct DeviceRegistration: Encodable, Sendable {
@@ -395,7 +517,7 @@ public struct DeviceRegistration: Encodable, Sendable {
     public let appVersion: String?
     public let apnsToken: String?
     /// Jeton « push-to-start » ActivityKit : autorise le serveur à démarrer la
-    /// Live Activity à l'heure de tissage, application fermée.
+    /// Live Activity quand quelqu'un demande à venir, application fermée.
     public let pushToStartToken: String?
     public let apnsEnvironment: String
 

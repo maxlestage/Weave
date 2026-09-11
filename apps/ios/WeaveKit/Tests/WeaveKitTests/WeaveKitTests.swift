@@ -2,50 +2,30 @@ import Foundation
 import Testing
 @testable import WeaveKit
 
-// MARK: - Invariant du plafond de fils
+// MARK: - Le fil
 
-@Suite("Le métier")
-struct LoomTests {
-    @Test("Le plafond est appliqué même si l'API renvoie davantage de fils")
-    func plafond() {
-        let loom = Loom(
-            threads: (0..<(Loom.maxActiveThreads + 4)).map { fil(id: "\($0)") },
-            nextWeavingAt: .now,
-            freeSlots: 0,
-            nextRefillAt: nil,
-            fromCache: true
-        )
-        #expect(loom.threads.count == Loom.maxActiveThreads)
+@Suite("Le fil")
+struct FeedTests {
+    @Test("L'ordre reçu du serveur est conservé tel quel")
+    func ordreIntact() {
+        // Imminence puis proximité, décidées par le serveur. Un tri local, même
+        // « utile », introduirait un classement que personne n'a annoncé.
+        let plans = [
+            plan(id: "a", debut: .now.addingTimeInterval(7200), distance: 30),
+            plan(id: "b", debut: .now.addingTimeInterval(3600), distance: 2),
+            plan(id: "c", debut: .now.addingTimeInterval(10800), distance: 1),
+        ]
+        let fil = Feed(plans: plans, requestsLeftToday: 5, fromCache: false, generatedAt: .now)
+        #expect(fil.plans.map(\.id) == ["a", "b", "c"])
+        #expect(fil.soonest?.id == "a")
     }
 
-    @Test("Le fil le plus proche du dénouage est celui mis en avant")
-    func plusPresse() {
-        let loom = Loom(
-            threads: [
-                fil(id: "a", expire: .now.addingTimeInterval(3600)),
-                fil(id: "b", expire: .now.addingTimeInterval(600)),
-                fil(id: "c", expire: .now.addingTimeInterval(7200)),
-            ],
-            nextWeavingAt: .now,
-            freeSlots: 0,
-            nextRefillAt: nil,
-            fromCache: true
-        )
-        #expect(loom.soonest?.id == "b")
-    }
-
-    @Test("Un fil échu est signalé comme tel")
-    func echu() {
-        #expect(fil(id: "a", expire: .now.addingTimeInterval(-1)).isExpired)
-        #expect(!fil(id: "a", expire: .now.addingTimeInterval(60)).isExpired)
-    }
-
-    @Test("Le flou local suit le niveau de révélation", arguments: [
-        (0, 18.0), (33, 12.06), (66, 6.12), (100, 0.0),
-    ])
-    func flou(pourcentage: Int, attendu: Double) {
-        let valeur = fil(id: "a", reveal: pourcentage).blurRadius
-        #expect(abs(valeur - attendu) < 0.01)
+    @Test("Un plan complet, déjà demandé ou passé ne se rejoint plus")
+    func rejoignable() {
+        #expect(plan(id: "a").isJoinable)
+        #expect(!plan(id: "a", places: 0).isJoinable)
+        #expect(!plan(id: "a", demande: true).isJoinable)
+        #expect(!plan(id: "a", debut: .now.addingTimeInterval(-60)).isJoinable)
     }
 }
 
@@ -53,44 +33,59 @@ struct LoomTests {
 
 @Suite("Décodage des charges utiles")
 struct DecodingTests {
-    @Test("Un fil renvoyé par l'API se décode entièrement")
-    func filComplet() throws {
+    @Test("Un plan renvoyé par l'API se décode entièrement")
+    func planComplet() throws {
         let json = """
         {
           "id": "abc",
-          "state": "propose",
-          "displayName": "Théo",
-          "age": 31,
-          "distanceKm": 6,
+          "author": {
+            "id": "u1",
+            "displayName": "Théo",
+            "age": 23,
+            "photoUrl": "https://media.weave.app/x.jpg?sig=abc",
+            "verified": true
+          },
+          "title": "Bloc au mur de 19 h, niveau débutant",
+          "note": "Je grimpe depuis six mois, très mal.",
+          "category": "sport",
+          "startsAt": "2026-09-11T19:00:00.000Z",
           "city": "Paris",
-          "motif": ["photo", "voile"],
-          "fragments": [
-            { "id": "f1", "kind": "question", "prompt": "Un dimanche ?", "body": "Tôt." }
-          ],
-          "revealPercent": 0,
-          "photoUrl": "https://media.weave.app/x.jpg?sig=abc",
-          "expiresAt": "2026-09-11T21:35:25.942Z",
-          "exchanges": 0,
-          "awaitingYou": true
+          "distanceKm": 2,
+          "capacity": 1,
+          "seatsLeft": 1,
+          "state": "ouvert",
+          "requested": false,
+          "createdAt": "2026-09-10T08:12:00.000Z"
         }
         """
-        let carte = try decodeur.decode(ThreadCard.self, from: Data(json.utf8))
-        #expect(carte.displayName == "Théo")
-        #expect(carte.state == .propose)
-        #expect(carte.fragments.first?.kind == .question)
-        #expect(carte.photoURL?.host() == "media.weave.app")
+        let plan = try decodeur.decode(Plan.self, from: Data(json.utf8))
+        #expect(plan.author.displayName == "Théo")
+        #expect(plan.category == .sport)
+        #expect(plan.state == .ouvert)
+        #expect(plan.author.photoURL?.host() == "media.weave.app")
     }
 
     @Test("Les dates avec et sans millisecondes sont acceptées")
     func dates() throws {
         for texte in ["2026-09-11T21:35:25.942Z", "2026-09-11T21:35:25Z"] {
-            let json = #"{"activeThreads":1,"awaitingYou":0,"soonestExpiryAt":"\#(texte)","soonestName":"A","nextRefillAt":null,"updatedAt":"\#(texte)"}"#
+            let json = #"{"planTitle":"Brunch","planStartsAt":"\#(texte)","pendingRequests":1,"awaitingReply":0,"updatedAt":"\#(texte)"}"#
             let etat = try decodeur.decode(
                 WeaveActivityAttributes.ContentState.self,
                 from: Data(json.utf8)
             )
-            #expect(etat.soonestExpiryAt != nil)
+            #expect(etat.planStartsAt != nil)
         }
+    }
+
+    @Test("Toutes les catégories du serveur sont connues du client")
+    func categories() throws {
+        // Si le serveur en ajoute une, ce test tombe avant que l'application
+        // n'échoue silencieusement à décoder un fil entier.
+        let attendues = [
+            "sortie", "sport", "culture", "repas",
+            "musique", "jeux", "balade", "benevolat",
+        ]
+        #expect(Set(PlanCategory.allCases.map(\.rawValue)) == Set(attendues))
     }
 }
 
@@ -98,37 +93,47 @@ struct DecodingTests {
 
 @Suite("Live Activity")
 struct ActivityStateTests {
-    @Test("Le résumé s'adapte au nombre de fils en attente")
-    func resume() {
-        #expect(etat(total: 0, attente: 0).summary == "Aucun fil sur le métier")
-        #expect(etat(total: 3, attente: 0).summary == "3 fils en cours")
-        #expect(etat(total: 3, attente: 1).summary == "1 fil attend votre réponse")
-        #expect(etat(total: 3, attente: 2).summary == "2 fils attendent votre réponse")
+    @Test("Les demandes reçues passent devant le rendez-vous")
+    func priorite() {
+        // C'est la seule chose qui attend une action de sa part.
+        #expect(etat(titre: "Brunch", recues: 2).summary == "2 personnes veulent venir")
+        #expect(etat(titre: "Brunch", recues: 1).summary == "Quelqu'un veut venir")
+        #expect(etat(titre: "Brunch").summary == "Brunch")
+        #expect(etat(envoyees: 2).summary == "2 demandes en attente")
+        #expect(etat().summary == "Aucun plan à venir")
     }
 
-    @Test("Le décompte n'est proposé que pour une échéance à venir")
+    @Test("Un état sans rien à montrer est inactif")
+    func inactif() {
+        #expect(etat().isIdle)
+        #expect(WeaveActivityAttributes.ContentState.idle.isIdle)
+        #expect(!etat(titre: "Brunch").isIdle)
+        #expect(!etat(recues: 1).isIdle)
+    }
+
+    @Test("Le décompte n'est proposé que pour un rendez-vous à venir")
     func decompte() {
-        #expect(etat(total: 1, attente: 1, expire: .now.addingTimeInterval(600)).countdown != nil)
-        #expect(etat(total: 1, attente: 1, expire: .now.addingTimeInterval(-600)).countdown == nil)
-        #expect(etat(total: 0, attente: 0).countdown == nil)
+        #expect(etat(titre: "A", debut: .now.addingTimeInterval(600)).countdown != nil)
+        #expect(etat(titre: "A", debut: .now.addingTimeInterval(-600)).countdown == nil)
+        #expect(etat().countdown == nil)
     }
 
     private func etat(
-        total: Int,
-        attente: Int,
-        expire: Date? = nil
+        titre: String? = nil,
+        debut: Date? = nil,
+        recues: Int = 0,
+        envoyees: Int = 0
     ) -> WeaveActivityAttributes.ContentState {
         WeaveActivityAttributes.ContentState(
-            activeThreads: total,
-            awaitingYou: attente,
-            soonestExpiryAt: expire,
-            soonestName: nil,
-            nextRefillAt: nil
+            planTitle: titre,
+            planStartsAt: debut,
+            pendingRequests: recues,
+            awaitingReply: envoyees
         )
     }
 }
 
-// MARK: - Session
+// MARK: - Session et catalogue
 
 @Suite("Session")
 struct SessionTests {
@@ -144,7 +149,17 @@ struct SessionTests {
     func identifiants() {
         let identifiants = Set(UnitSku.allCases.map(\.productID))
         #expect(identifiants.count == UnitSku.allCases.count)
-        #expect(UnitSku.echo.productID == "com.weave.app.unit.echo")
+        #expect(UnitSku.renfort.productID == "com.weave.app.unit.renfort")
+    }
+
+    @Test("Aucun produit ne vend de remontée dans le fil")
+    func pasDeVisibilite() {
+        // L'invariant tient d'abord côté serveur ; ce test empêche qu'un tel
+        // produit apparaisse ici sans qu'on s'en aperçoive.
+        let interdits = ["boost", "remontee", "relance", "mise_en_avant", "spotlight"]
+        for sku in UnitSku.allCases {
+            #expect(!interdits.contains(sku.rawValue))
+        }
     }
 }
 
@@ -163,27 +178,35 @@ private let decodeur: JSONDecoder = {
     return decodeur
 }()
 
-private func fil(
+private func plan(
     id: String,
-    expire: Date = .now.addingTimeInterval(3600),
-    reveal: Int = 0
-) -> ThreadCard {
+    debut: Date = .now.addingTimeInterval(3600),
+    distance: Int = 5,
+    places: Int = 1,
+    demande: Bool = false
+) -> Plan {
     let json = """
     {
       "id": "\(id)",
-      "state": "propose",
-      "displayName": "Fil \(id)",
-      "age": 30,
-      "distanceKm": 5,
+      "author": {
+        "id": "u-\(id)",
+        "displayName": "Auteur \(id)",
+        "age": 22,
+        "photoUrl": null,
+        "verified": false
+      },
+      "title": "Un plan de test",
+      "note": "",
+      "category": "sortie",
+      "startsAt": "\(ISO8601DateFormatter.weaveWithFraction.string(from: debut))",
       "city": "Paris",
-      "motif": [],
-      "fragments": [],
-      "revealPercent": \(reveal),
-      "photoUrl": null,
-      "expiresAt": "\(ISO8601DateFormatter.weaveWithFraction.string(from: expire))",
-      "exchanges": 0,
-      "awaitingYou": true
+      "distanceKm": \(distance),
+      "capacity": 1,
+      "seatsLeft": \(places),
+      "state": "ouvert",
+      "requested": \(demande),
+      "createdAt": "\(ISO8601DateFormatter.weaveWithFraction.string(from: .now))"
     }
     """
-    return try! decodeur.decode(ThreadCard.self, from: Data(json.utf8))
+    return try! decodeur.decode(Plan.self, from: Data(json.utf8))
 }

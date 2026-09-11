@@ -3,11 +3,11 @@ import SwiftUI
 import WeaveKit
 import WidgetKit
 
-/// Live Activity « Métier ».
+/// Live Activity « Prochain plan ».
 ///
 /// Règle de conception : ce qui apparaît ici est visible par quiconque regarde
-/// l'écran verrouillé. On n'y met donc jamais de photo, jamais un message,
-/// jamais un nom complet — un prénom, des compteurs, une échéance.
+/// l'écran verrouillé. On n'y met donc jamais de nom, jamais de photo, jamais
+/// un message — un titre de plan, une heure, des compteurs.
 ///
 /// Les décomptes utilisent `Text(timerInterval:)` : le système les anime
 /// lui-même, sans réveiller l'application ni consommer d'envoi APNs.
@@ -20,11 +20,11 @@ struct WeaveLiveActivity: Widget {
         } dynamicIsland: { contexte in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Compteur(valeur: contexte.state.activeThreads, libelle: "fils")
+                    Compteur(valeur: contexte.state.pendingRequests, libelle: "veulent venir")
+                        .foregroundStyle(Color.weaveCuivreActivite)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Compteur(valeur: contexte.state.awaitingYou, libelle: "à répondre")
-                        .foregroundStyle(Color.weaveCuivreActivite)
+                    Compteur(valeur: contexte.state.awaitingReply, libelle: "en attente")
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(contexte.state.summary)
@@ -34,38 +34,34 @@ struct WeaveLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     if let intervalle = contexte.state.countdown {
                         HStack {
-                            Text(contexte.state.soonestName ?? "Premier fil")
+                            Text(contexte.state.planTitle ?? "Prochain plan")
                                 .font(.footnote.weight(.medium))
+                                .lineLimit(1)
                             Spacer()
                             Text(timerInterval: intervalle, countsDown: true)
                                 .font(.footnote.monospacedDigit())
                                 .foregroundStyle(Color.weaveCuivreActivite)
                         }
-                    } else if let regarnissage = contexte.state.nextRefillAt {
-                        Text("Prochaine place garnie \(regarnissage, style: .relative)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
                 }
             } compactLeading: {
-                Image(systemName: "square.stack.3d.up")
+                Image(systemName: "calendar")
                     .foregroundStyle(Color.weaveCuivreActivite)
             } compactTrailing: {
                 if let intervalle = contexte.state.countdown {
                     Text(timerInterval: intervalle, countsDown: true)
                         .monospacedDigit()
                         .frame(maxWidth: 52)
-                } else {
-                    Text("\(contexte.state.activeThreads)")
+                } else if contexte.state.pendingRequests > 0 {
+                    Text("\(contexte.state.pendingRequests)")
                         .monospacedDigit()
                 }
             } minimal: {
-                Text("\(contexte.state.activeThreads)")
-                    .monospacedDigit()
+                Image(systemName: contexte.state.pendingRequests > 0 ? "envelope.fill" : "calendar")
                     .foregroundStyle(Color.weaveCuivreActivite)
             }
             .keylineTint(Color.weaveCuivreActivite)
-            .widgetURL(URL(string: "weave://metier"))
+            .widgetURL(URL(string: "weave://plans"))
         }
     }
 }
@@ -78,11 +74,13 @@ private struct EcranVerrouille: View {
             Motif()
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(etat.activeThreads == 0 ? "Métier vide" : "\(etat.activeThreads) fils sur le métier")
+                Text(etat.planTitle ?? "Aucun plan à venir")
                     .font(.headline)
+                    .lineLimit(2)
                 Text(etat.summary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 8)
@@ -92,14 +90,14 @@ private struct EcranVerrouille: View {
                     Text(timerInterval: intervalle, countsDown: true)
                         .font(.title3.monospacedDigit().weight(.semibold))
                         .foregroundStyle(Color.weaveCuivreActivite)
-                    Text("avant dénouage")
+                    Text("avant le départ")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                } else if let regarnissage = etat.nextRefillAt {
-                    Text(regarnissage, style: .relative)
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text("prochaine place")
+                } else if etat.pendingRequests > 0 {
+                    Text("\(etat.pendingRequests)")
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.weaveCuivreActivite)
+                    Text("à lire")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -139,8 +137,8 @@ private struct Compteur: View {
 }
 
 extension Color {
-    static let weaveCuivreActivite = Color(red: 0.902, green: 0.631, blue: 0.361)
-    static let weaveEncreActivite = Color(red: 0.106, green: 0.090, blue: 0.078)
+    static let weaveCuivreActivite = Color(red: 0.690, green: 0.549, blue: 1.0)
+    static let weaveEncreActivite = Color(red: 0.086, green: 0.071, blue: 0.122)
 }
 
 // MARK: - Aperçus
@@ -149,18 +147,16 @@ extension Color {
     WeaveLiveActivity()
 } contentStates: {
     WeaveActivityAttributes.ContentState(
-        activeThreads: 3,
-        awaitingYou: 1,
-        soonestExpiryAt: .now.addingTimeInterval(4 * 3600 + 12 * 60),
-        soonestName: "Théo",
-        nextRefillAt: nil
+        planTitle: "Marché puis brunch, sans se presser",
+        planStartsAt: .now.addingTimeInterval(36 * 3600),
+        pendingRequests: 2,
+        awaitingReply: 0
     )
     WeaveActivityAttributes.ContentState(
-        activeThreads: 2,
-        awaitingYou: 0,
-        soonestExpiryAt: .now.addingTimeInterval(9 * 3600),
-        soonestName: "Sofia",
-        nextRefillAt: .now.addingTimeInterval(3600)
+        planTitle: "Bloc au mur de 19 h",
+        planStartsAt: .now.addingTimeInterval(3 * 3600),
+        pendingRequests: 0,
+        awaitingReply: 1
     )
     WeaveActivityAttributes.ContentState.idle
 }

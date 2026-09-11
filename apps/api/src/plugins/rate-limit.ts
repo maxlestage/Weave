@@ -51,13 +51,18 @@ export const RULES = {
   /** Vérification du code : ralentit une attaque par force brute. */
   otpVerify: { bucket: "otp-verify", limit: 10, windowSeconds: 15 * 60 },
   /**
-   * Lecture du métier. C'est une lecture de cache, appelée à chaque ouverture
-   * de l'application, au retour d'arrière-plan et par la montre : la limite est
-   * là contre l'emballement d'un client, pas contre l'usage normal. La
-   * composition elle-même est de toute façon bornée par le plafond de trois
-   * fils et par le délai de regarnissage.
+   * Lecture du fil. C'est une lecture de cache, appelée à chaque ouverture de
+   * l'application, au retour d'arrière-plan et par la montre : la limite est là
+   * contre l'emballement d'un client, pas contre l'usage normal.
    */
-  weave: { bucket: "weave", limit: 240, windowSeconds: 60 * 60 },
+  feed: { bucket: "feed", limit: 240, windowSeconds: 60 * 60 },
+  /** Publication d'un plan. Le plafond de plans ouverts fait le vrai travail. */
+  publish: { bucket: "publish", limit: 20, windowSeconds: 60 * 60 },
+  /**
+   * Demandes de participation. Le quota journalier du palier est l'invariant ;
+   * cette règle ne sert qu'à borner les rafales.
+   */
+  join: { bucket: "join", limit: 40, windowSeconds: 60 * 60 },
   /** Envoi de messages : borne haute très large, uniquement anti-abus. */
   message: { bucket: "message", limit: 240, windowSeconds: 60 * 60 },
   /** Signalements : évite le harcèlement par signalement en masse. */
