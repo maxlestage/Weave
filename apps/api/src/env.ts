@@ -189,3 +189,64 @@ if (problemes.length > 0) {
   console.error(lignes.join("\n"));
   process.exit(1);
 }
+
+/**
+ * Avertissements : ce qui n'empêche pas de démarrer, mais se verra aussitôt.
+ *
+ * Ils ne sont émis que sur un dyno Heroku (`DYNO` est posé par la plateforme),
+ * parce que ce sont ses particularités qu'ils décrivent. Ailleurs, exiger ces
+ * réglages serait faux — et dangereux : accepter un certificat non vérifié n'a
+ * de sens que sur un réseau interne d'hébergeur.
+ */
+if (process.env.DYNO !== undefined) {
+  const avertissements: { sujet: string; raison: string; remede: string }[] = [];
+
+  if (!env.db.sslInsecure) {
+    avertissements.push({
+      sujet: "DATABASE_SSL_INSECURE",
+      raison: "la base d'Heroku présente un certificat auto-signé sur son réseau interne",
+      remede: "définir DATABASE_SSL_INSECURE=true, sans quoi la base restera injoignable",
+    });
+  }
+
+  // Uniquement si l'adresse est chiffrée : sur une adresse en clair, la
+  // question ne se pose pas.
+  if (env.redis.url.startsWith("rediss://") && !env.redis.tlsInsecure) {
+    avertissements.push({
+      sujet: "REDIS_TLS_INSECURE",
+      raison: "le magasin clé-valeur d'Heroku présente lui aussi un certificat auto-signé",
+      remede: "définir REDIS_TLS_INSECURE=true, sans quoi le cache restera injoignable",
+    });
+  }
+
+  if (env.webOrigin.includes("localhost")) {
+    avertissements.push({
+      sujet: "PUBLIC_WEB_ORIGIN",
+      raison: "pointe encore sur localhost",
+      remede:
+        "définir l'adresse publique du site, sinon les appels depuis le navigateur seront refusés",
+    });
+  }
+
+  if (env.media.baseUrl.includes("localhost")) {
+    avertissements.push({
+      sujet: "MEDIA_BASE_URL",
+      raison: "pointe encore sur localhost",
+      remede: "définir l'adresse publique des médias, sinon les photos ne s'afficheront pas",
+    });
+  }
+
+  if (avertissements.length > 0) {
+    console.warn(
+      [
+        "",
+        "  Weave démarre, mais la configuration est incomplète :",
+        "",
+        ...avertissements.flatMap((a) => [`  • ${a.sujet} — ${a.raison}`, `      ${a.remede}`]),
+        "",
+        "  Le workflow « Heroku — configurer les variables » pose tout cela.",
+        "",
+      ].join("\n"),
+    );
+  }
+}
