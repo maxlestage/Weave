@@ -1,0 +1,13 @@
+# Dépôt privé où `match` conserve les certificats et profils, chiffrés.
+# À créer une fois (un dépôt GitHub privé vide suffit), puis à renseigner
+# dans la variable de dépôt MATCH_GIT_URL.
+git_url(ENV["MATCH_GIT_URL"])
+storage_mode("git")
+type("appstore")
+
+app_identifier([
+  "com.weave.app",
+  "com.weave.app.activity",
+  "com.weave.app.watchkitapp",
+  "com.weave.app.watchkitapp.widgets",
+])

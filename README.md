@@ -100,7 +100,22 @@ weave/
 | [MONETISATION.md](docs/MONETISATION.md) | Quatre abonnements, et tout à l'unité |
 | [ORIGINALITE.md](docs/ORIGINALITE.md) | Ce qui éloigne Weave des mécaniques existantes |
 | [CONFORMITE.md](docs/CONFORMITE.md) | RGPD, DSA, sécurité des personnes |
+| [DEPLOIEMENT.md](docs/DEPLOIEMENT.md) | Mettre en ligne depuis un téléphone, sans ordinateur |
 | [apps/ios/README.md](apps/ios/README.md) | Générer le projet Xcode, les deux jetons ActivityKit |
+
+## Mettre en ligne
+
+Tout se pilote depuis un navigateur, y compris sur téléphone — aucun ordinateur
+n'est nécessaire.
+
+- **L'API et le site** partent sur Heroku, dans un conteneur bâti sur l'image
+  officielle Bun. Deux workflows GitHub s'en chargent : l'un crée l'application
+  et ses add-ons, l'autre déploie à chaque fusion sur `master`.
+- **L'application iOS** est construite sur un exécuteur macOS loué à la minute
+  par GitHub, signée par `fastlane match`, puis envoyée à TestFlight. Posséder
+  un Mac n'est donc pas nécessaire ; un compte Apple Developer l'est.
+
+La marche à suivre, étape par étape : **[docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md)**.
 
 ## Commandes utiles
 
@@ -128,3 +143,5 @@ comptes tiers, pas du code d'architecture :
 - [ ] Tâche planifiée : heure de tissage, purges RGPD, expiration des Live Activities
 - [ ] Export des données personnelles au format lisible par machine
 - [ ] Revue de marque et de brevets (voir [ORIGINALITE.md](docs/ORIGINALITE.md))
+- [ ] Première exécution de la chaîne iOS, qui n'a pas pu être testée ici
+      (ni macOS, ni compte Apple Developer disponibles)

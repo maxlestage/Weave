@@ -19,7 +19,12 @@ async function createClient(): Promise<PrismaClient> {
   if (env.db.driver === "postgres") {
     const { PrismaClient: PostgresClient } = await import("../generated/prisma/client.ts");
     return new PostgresClient({
-      adapter: new PrismaPg({ connectionString: env.db.postgresUrl! }),
+      adapter: new PrismaPg({
+        connectionString: env.db.postgresUrl!,
+        // Voir `env.db.sslInsecure` : nécessaire chez les hébergeurs dont la
+        // base présente un certificat auto-signé sur leur réseau interne.
+        ...(env.db.sslInsecure ? { ssl: { rejectUnauthorized: false } } : {}),
+      }),
       log: env.isProduction ? ["warn", "error"] : ["query", "warn", "error"],
     });
   }

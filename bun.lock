@@ -18,6 +18,7 @@
         "@elysiajs/jwt": "1.4.2",
         "@elysiajs/openapi": "1.4.16",
         "@elysiajs/server-timing": "1.4.1",
+        "@elysiajs/static": "1.4.10",
         "@prisma/adapter-pg": "7.10.0",
         "@prisma/client": "7.10.0",
         "@weave/contracts": "workspace:*",
@@ -83,6 +84,8 @@
     "@elysiajs/openapi": ["@elysiajs/openapi@1.4.16", "", { "peerDependencies": { "@sinclair/typebox": ">= 0.34.0 < 1", "elysia": ">= 1.4.0", "typescript": ">= 5.0.0" } }, "sha512-kj8RBffE4J6myjm7nPPj6Dw1ujWt45NkdGW5sG9u3T0OfUzKN71s630/LEjajGo5jRZqFF3VHyk40lwXH2AbmQ=="],
 
     "@elysiajs/server-timing": ["@elysiajs/server-timing@1.4.1", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-S87H2Mnd1p2T7fkeiuGy7za0u4Xq5cRnBIQ5q7lIspkROIUsZBwjVIsazW8GvK4h75V39GhzLOcFjjrGEpUPwg=="],
+
+    "@elysiajs/static": ["@elysiajs/static@1.4.10", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-BN/3PZVWjqkL/6TM7RH69Pae89CfU0OqfEYPeBp2hB/GR5Euds39Wy+0ug9Vbvu++GG4tRRANf2QjaLnriJveg=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

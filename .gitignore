@@ -58,3 +58,7 @@ apps/ios/Secrets.xcconfig
 
 # Configuration Xcode locale
 apps/ios/Secrets.xcconfig
+
+# Vérification locale de l'image (généré, jamais versionné)
+Dockerfile.verify
+ca-bundle.crt
