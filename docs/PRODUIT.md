@@ -12,6 +12,23 @@ beaucoup, on lit peu, on écrit encore moins.
 Weave prend le contre-pied par une contrainte : **douze profils à la fois,
 jamais plus, pour personne.** Tout le reste du produit découle de là.
 
+## À qui Weave s'adresse
+
+Aux **jeunes adultes**. Les questions de la bibliothèque, le vocabulaire des
+motifs et le rythme du produit sont écrits pour la tranche 18-30 : le moment où
+l'on change de ville, de travail et de cercle d'amis, et où rencontrer quelqu'un
+suppose autre chose que faire défiler une liste.
+
+Les critères par défaut reflètent ce choix — 18 à 32 ans — et chacun peut les
+élargir.
+
+L'accès est **réservé aux personnes majeures**, sans exception. `MIN_AGE` vaut
+18, la date de naissance est vérifiée côté serveur à l'inscription, et le motif
+de signalement « mineur » déclenche un traitement prioritaire (voir
+[CONFORMITE.md](./CONFORMITE.md)). Une application de rencontre n'a rien à faire
+entre les mains de mineurs : c'est un vecteur connu de mise en relation
+d'adultes avec des enfants, et l'App Store l'interdit par ailleurs.
+
 ## Le vocabulaire
 
 Le produit emprunte son lexique au tissage. Ce n'est pas de l'ornement : chaque

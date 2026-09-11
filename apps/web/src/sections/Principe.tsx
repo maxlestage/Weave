@@ -1,5 +1,5 @@
 import { MAX_ACTIVE_THREADS, REVEAL_STEPS, THREAD_TTL_SECONDS } from "@weave/contracts";
-import { Carte, Section } from "../composants.tsx";
+import { Carte, filVar, Section, type Fil } from "../composants.tsx";
 
 const PILIERS = [
   {
@@ -36,14 +36,18 @@ export function Principe() {
   return (
     <Section
       id="principe"
+      fil={4}
       titre="Le principe"
       chapeau="Weave part d'une contrainte assumée : moins de profils, plus d'attention. Tout le reste en découle."
       alterne
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        {PILIERS.map((pilier) => (
-          <Carte key={pilier.titre}>
-            <h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-titre)" }}>
+        {PILIERS.map((pilier, index) => (
+          <Carte key={pilier.titre} fil={((index % 6) + 1) as Fil}>
+            <h3
+              className="text-xl font-bold"
+              style={{ fontFamily: "var(--font-titre)", color: filVar(((index % 6) + 1) as Fil) }}
+            >
               {pilier.titre}
             </h3>
             <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
@@ -94,7 +98,7 @@ export function Principe() {
               <li key={etape} className="flex items-center gap-4">
                 <span
                   className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums"
-                  style={{ color: "var(--accent)" }}
+                  style={{ color: filVar(6) }}
                 >
                   {etape} %
                 </span>
@@ -105,7 +109,10 @@ export function Principe() {
                 >
                   <span
                     className="block h-2 rounded-full"
-                    style={{ width: `${etape}%`, background: "var(--accent)" }}
+                    style={{
+                      width: `${etape}%`,
+                      background: `linear-gradient(90deg, ${filVar(1)}, ${filVar(4)}, ${filVar(6)})`,
+                    }}
                   />
                 </span>
                 <span className="w-28 shrink-0 text-sm" style={{ color: "var(--texte-doux)" }}>

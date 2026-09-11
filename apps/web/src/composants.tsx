@@ -1,16 +1,28 @@
 /** Briques d'interface partagées par les sections du site. */
 import type { ReactNode } from "react";
 
+/** Les six fils de la palette, adressables par numéro. */
+export type Fil = 1 | 2 | 3 | 4 | 5 | 6;
+
+export const filVar = (fil: Fil) => `var(--fil-${fil})`;
+
+/** Aplat très pâle d'un fil, utilisable derrière du texte courant. */
+export const teinte = (fil: Fil, pourcentage = 8) =>
+  `color-mix(in oklab, ${filVar(fil)} ${pourcentage}%, var(--fond))`;
+
 export function Section({
   id,
   titre,
   chapeau,
+  fil,
   alterne = false,
   children,
 }: {
   id: string;
   titre: string;
   chapeau?: string;
+  /** Couleur de la section : chacune a la sienne. */
+  fil: Fil;
   alterne?: boolean;
   children: ReactNode;
 }) {
@@ -19,16 +31,24 @@ export function Section({
       id={id}
       aria-labelledby={`${id}-titre`}
       className="px-5 py-16 sm:px-8 sm:py-24"
-      style={alterne ? { background: "var(--fond-alterne)" } : undefined}
+      style={alterne ? { background: teinte(fil, 7) } : undefined}
     >
       <div className="mx-auto w-full max-w-5xl">
+        {/* Un court trait de couleur annonce la section. */}
+        <span
+          aria-hidden="true"
+          className="mb-5 block h-1.5 w-16 rounded-full"
+          style={{ background: filVar(fil) }}
+        />
+
         <h2
           id={`${id}-titre`}
-          className="text-3xl leading-tight tracking-tight sm:text-4xl"
+          className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl"
           style={{ fontFamily: "var(--font-titre)" }}
         >
           {titre}
         </h2>
+
         {chapeau !== undefined && (
           <p
             className="mt-4 max-w-2xl text-lg leading-relaxed"
@@ -37,6 +57,7 @@ export function Section({
             {chapeau}
           </p>
         )}
+
         <div className="mt-10">{children}</div>
       </div>
     </section>
@@ -44,20 +65,22 @@ export function Section({
 }
 
 export function Carte({
-  children,
+  fil,
   accentuee = false,
+  children,
 }: {
-  children: ReactNode;
+  fil: Fil;
   accentuee?: boolean;
+  children: ReactNode;
 }) {
   return (
     <div
-      className="rounded-2xl p-6 sm:p-7"
+      className="rounded-3xl p-6 sm:p-7"
       style={{
         background: "var(--carte)",
-        border: `1px solid ${accentuee ? "var(--accent)" : "var(--bordure)"}`,
+        border: `2px solid ${accentuee ? filVar(fil) : "var(--bordure)"}`,
         boxShadow: accentuee
-          ? "0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent)"
+          ? `0 0 0 5px color-mix(in oklab, ${filVar(fil)} 16%, transparent)`
           : undefined,
       }}
     >
@@ -66,14 +89,24 @@ export function Carte({
   );
 }
 
-export function Etiquette({ children }: { children: ReactNode }) {
+export function Etiquette({ fil, children }: { fil: Fil; children: ReactNode }) {
   return (
     <span
-      className="inline-block rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase"
-      style={{
-        background: "color-mix(in oklab, var(--accent) 16%, transparent)",
-        color: "var(--accent)",
-      }}
+      className="inline-block rounded-full px-3.5 py-1.5 text-xs font-bold tracking-wide uppercase"
+      style={{ background: filVar(fil), color: "var(--sur-accent)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Pastille numérotée, pour les listes ordonnées. */
+export function Pastille({ fil, children }: { fil: Fil; children: ReactNode }) {
+  return (
+    <span
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base font-bold tabular-nums"
+      style={{ background: filVar(fil), color: "var(--sur-accent)" }}
+      aria-hidden="true"
     >
       {children}
     </span>

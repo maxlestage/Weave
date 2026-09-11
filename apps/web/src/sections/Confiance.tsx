@@ -1,5 +1,5 @@
 import { ACCOUNT_PURGE_DAYS, MESSAGE_RETENTION_DAYS, MIN_AGE } from "@weave/contracts";
-import { Carte, Section } from "../composants.tsx";
+import { Carte, filVar, Section, type Fil } from "../composants.tsx";
 
 const ENGAGEMENTS = [
   {
@@ -28,14 +28,17 @@ export function Confiance() {
   return (
     <Section
       id="confiance"
+      fil={1}
       titre="Ce à quoi nous nous engageons"
       chapeau="Une application de rencontre manipule ce qu'il y a de plus intime. Voici ce que nous nous interdisons."
       alterne
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        {ENGAGEMENTS.map((engagement) => (
-          <Carte key={engagement.titre}>
-            <h3 className="text-lg font-semibold">{engagement.titre}</h3>
+        {ENGAGEMENTS.map((engagement, index) => (
+          <Carte key={engagement.titre} fil={((index % 6) + 1) as Fil}>
+            <h3 className="text-lg font-bold" style={{ color: filVar(((index % 6) + 1) as Fil) }}>
+              {engagement.titre}
+            </h3>
             <p className="mt-2.5 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
               {engagement.texte}
             </p>
