@@ -23,7 +23,7 @@ struct ConnexionView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Weave")
                     .font(.system(size: 44, weight: .semibold, design: .serif))
-                Text("Trois fils par jour. Rien de plus.")
+                Text("\(Loom.maxActiveThreads) fils par jour. Pas un de plus.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }

@@ -12,7 +12,7 @@ fois.
 
 > **Aucun palier n'augmente le nombre de fils.**
 
-Trois pour tout le monde, du gratuit au plus cher. Ce qui se vend :
+Douze pour tout le monde, du gratuit au plus cher. Ce qui se vend :
 
 - la **vitesse de regarnissage** d'une place libérée ;
 - la **finesse des critères** de composition ;

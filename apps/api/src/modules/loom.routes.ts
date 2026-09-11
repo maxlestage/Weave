@@ -1,5 +1,5 @@
 /**
- * Le métier : lire ses trois fils, y répondre, en dénouer un, le prolonger.
+ * Le métier : lire ses fils du jour, y répondre, en dénouer un, le prolonger.
  *
  * Il n'existe volontairement aucune route pour « aimer », « passer » ou
  * « rembobiner ». Un fil s'engage en répondant à un fragment ; il se dénoue en
@@ -46,7 +46,7 @@ export const loomRoutes = new Elysia({ prefix: "/v1/loom", tags: ["Métier"] })
       detail: {
         summary: "Lire ses fils",
         description:
-          "Renvoie au plus trois fils, lus depuis le cache. Si une place est libre et que le délai de regarnissage est écoulé, un nouveau fil est tissé à cette occasion.",
+          "Renvoie au plus MAX_ACTIVE_THREADS fils, lus depuis le cache. Si une place est libre et que le délai de regarnissage est écoulé, un nouveau fil est tissé à cette occasion.",
       },
     },
   )
@@ -190,8 +190,8 @@ export const loomRoutes = new Elysia({ prefix: "/v1/loom", tags: ["Métier"] })
       const account = requireAccount();
       await requireCredit(account.id, "relais");
 
-      // Le « Relais » supprime l'attente, jamais le plafond : si les trois fils
-      // sont déjà là, il n'y a rien à regarnir.
+      // Le « Relais » supprime l'attente, jamais le plafond : si le métier est
+      // déjà complet, il n'y a rien à regarnir.
       await clearRefill(account.id);
       const loom = await getLoom(account);
       await publishLiveActivityState(account.id, loom);

@@ -82,7 +82,7 @@ cd apps/ios/WeaveKit
 swift test
 ```
 
-Les tests couvrent le plafond des trois fils, le décodage des charges utiles de
+Les tests couvrent le plafond de fils, le décodage des charges utiles de
 l'API, les états de la Live Activity et la logique de renouvellement de session.
 Ils utilisent `swift-testing`, pas XCTest.
 

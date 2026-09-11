@@ -18,18 +18,19 @@ export function Ouverture() {
           className="mt-6 text-[2.6rem] leading-[1.05] tracking-tight sm:text-6xl"
           style={{ fontFamily: "var(--font-titre)" }}
         >
-          Trois fils par jour.
+          {MAX_ACTIVE_THREADS} fils par jour.
           <br />
-          <span style={{ color: "var(--accent)" }}>Rien de plus.</span>
+          <span style={{ color: "var(--accent)" }}>Pas un de plus.</span>
         </h1>
 
         <p
           className="mt-6 max-w-xl text-lg leading-relaxed sm:text-xl"
           style={{ color: "var(--texte-doux)" }}
         >
-          Weave ne vous donne pas une pile de profils à faire défiler. Il vous en propose{" "}
-          {MAX_ACTIVE_THREADS}, à l'heure que vous avez choisie. Ils vivent {HEURES} heures, puis se
-          dénouent. Pour en engager un, il faut écrire une réponse — pas faire un geste.
+          Weave ne vous donne pas une pile sans fin à faire défiler. Il vous en propose{" "}
+          {MAX_ACTIVE_THREADS}, à l'heure que vous avez choisie, et s'arrête là. Ils vivent {HEURES}{" "}
+          heures, puis se dénouent. Pour en engager un, il faut écrire une réponse — pas faire un
+          geste.
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -60,7 +61,7 @@ export function Ouverture() {
 }
 
 /**
- * Représentation du métier à tisser : trois fils, dont un déjà engagé.
+ * Représentation du métier : trois fils parmi ceux du jour, dont un déjà engagé.
  * C'est une illustration, pas une capture — aucune donnée réelle n'y figure.
  */
 function Metier() {
@@ -76,7 +77,11 @@ function Metier() {
   ];
 
   return (
-    <div className="mt-14" aria-label="Illustration du métier : trois fils actifs" role="img">
+    <div
+      className="mt-14"
+      aria-label={`Illustration du métier : trois fils parmi les ${MAX_ACTIVE_THREADS} du jour`}
+      role="img"
+    >
       <div className="grid gap-3 sm:grid-cols-3">
         {fils.map((fil) => (
           <article
@@ -115,7 +120,8 @@ function Metier() {
         ))}
       </div>
       <p className="mt-4 text-sm" style={{ color: "var(--texte-doux)" }}>
-        La photo reste floue au premier contact. Elle se dévoile au fil des échanges.
+        Trois de vos {MAX_ACTIVE_THREADS} fils du jour. La photo reste floue au premier contact ;
+        elle se dévoile au fil des échanges.
       </p>
     </div>
   );

@@ -11,7 +11,7 @@
 
 Plutôt que de reprendre une mécanique connue en la renommant — ce qui protège
 peu, puisqu'un brevet porte sur une fonction et non sur un nom — Weave part
-d'une **contrainte différente** : trois profils simultanés, en cache, engagés
+d'une **contrainte différente** : un nombre fixe et fini de profils simultanés, en cache, engagés
 par une réponse écrite. Les mécaniques usuelles n'y ont pas leur place, non par
 prudence, mais parce qu'elles n'ont plus de sens dans ce cadre.
 
@@ -33,7 +33,7 @@ contrefaire.
 
 Ces éléments constituent l'identité du produit et sont ceux à protéger :
 
-1. **Le plafond de trois fils simultanés**, identique pour tous les paliers, y
+1. **Le plafond fixe de fils simultanés** (douze), identique pour tous les paliers, y
    compris payants.
 2. **La proposition en cache uniquement**, sans archivage des profils vus.
 3. **L'engagement par réponse écrite à un fragment**, à l'exclusion de tout
