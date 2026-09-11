@@ -16,6 +16,17 @@ fi
 
 echo "  • application des migrations"
 cd apps/api
-WEAVE_DB=postgres bunx prisma migrate deploy
+
+# Le binaire local est préféré à `bunx`, qui peut tenter d'aller chercher le
+# paquet sur le réseau — au moment précis où l'on veut le moins en dépendre.
+if [ -x ./node_modules/.bin/prisma ]; then
+  prisma_bin=./node_modules/.bin/prisma
+elif [ -x ../../node_modules/.bin/prisma ]; then
+  prisma_bin=../../node_modules/.bin/prisma
+else
+  prisma_bin="bunx prisma"
+fi
+
+WEAVE_DB=postgres $prisma_bin migrate deploy
 
 echo "  • terminé"

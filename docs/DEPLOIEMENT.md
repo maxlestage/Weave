@@ -73,25 +73,46 @@ Sans elle, le workflow de déploiement automatique s'arrête proprement sans rie
 faire ; relancez simplement « Heroku — mettre en ligne » quand vous voulez
 publier.
 
-### N'utilisez pas les déploiements du tableau de bord
+### Variante : déployer depuis le tableau de bord Heroku
 
-Dans l'onglet *Deploy* du tableau de bord Heroku, **« Connect to GitHub » et
-« Enable Automatic Deploys » ne fonctionnent pas pour ce projet.** Ce chemin
-construit avec des *buildpacks* : il ignore le `Dockerfile`, croit à une
-application Node.js, et échoue ainsi —
+Si vous préférez le tableau de bord et ses déploiements automatiques depuis
+GitHub, c'est possible — mais pas avec le buildpack Node.js, qui appelle `npm`
+et bute aussitôt :
 
 ```
 -----> Using buildpack: heroku/nodejs
        npm error Unsupported URL Type "workspace:": workspace:*
 ```
 
-Weave tourne sous Bun, qui n'a pas de buildpack Heroku — ni officiel, ni
-maintenu par Heroku. Ce chemin ne peut pas fonctionner, quel que soit le
-réglage de la pile.
+Heroku ne fournit aucun buildpack Bun. Weave embarque donc **le sien**, dans
+`bin/detect`, `bin/compile` et `bin/release`, exécuté par le buildpack officiel
+`heroku-community/inline` — dont le rôle est précisément de lancer un buildpack
+contenu dans le dépôt de l'application. Aucun code tiers n'intervient.
 
-**Si vous les avez activés, désactivez-les.** Ils n'empêchent pas le workflow
-de fonctionner, mais ils échoueront à chaque poussée et encombreront vos
-notifications.
+**Une seule action :** tableau de bord → **Settings → Buildpacks** → retirer
+`heroku/nodejs`, puis **Add buildpack** → `heroku-community/inline`.
+
+Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
+
+Le buildpack installe Bun à la version indiquée par `packageManager`, construit
+les clients Prisma et le site, puis élague les dépendances de développement. Le
+`Procfile` applique les migrations en phase de publication, puis démarre l'API.
+
+#### Ce que cette variante coûte
+
+Le slug Heroku est plafonné à **500 Mo**, et cette voie en consomme **environ
+422 Mo** — dont 95 Mo pour Bun lui-même et 323 Mo de dépendances après élagage.
+La marge est donc d'environ 80 Mo. `bin/compile` mesure le slug à chaque
+construction, prévient au-delà de 450 Mo et **interrompt la construction
+au-delà de 500 Mo**, plutôt que de laisser Heroku la rejeter avec un message
+obscur.
+
+L'élagage a été établi par essais, pas par supposition : `@prisma/studio-core`
+et `effect` semblent superflus mais sont requis par le CLI Prisma, même pour
+`migrate deploy`. Les retirer casse la phase de publication.
+
+La voie conteneur (section A2) n'a pas cette contrainte. Si les dépendances
+grossissent, c'est vers elle qu'il faudra revenir.
 
 ### Ce que ça coûte
 
@@ -252,7 +273,8 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 
 | Symptôme | Piste |
 | --- | --- |
-| `Node.js app detected` ou `Using buildpack: heroku/nodejs`, puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | Ce build ne vient pas du workflow : c'est le tableau de bord Heroku. Lancez « Heroku — mettre en ligne » (A2), et désactivez les déploiements automatiques du tableau de bord |
+| `Using buildpack: heroku/nodejs`, puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | Le buildpack Node.js ne sait pas lire `workspace:*`. Deux issues : lancer « Heroku — mettre en ligne » (A2, voie conteneur), ou remplacer le buildpack par `heroku-community/inline` (variante ci-dessus) |
+| `Slug de … Mo : au-delà de la limite de 500 Mo` | La variante buildpack a dépassé le plafond. Passez à la voie conteneur (A2), qui n'a pas cette contrainte |
 | « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée avant la poussée. Même correction |
 | « Déploiement ignoré : configuration Heroku absente » | C'est le workflow de déploiement *automatique*, qui exige la variable `HEROKU_APP_NAME` (étape A4). Pour publier tout de suite, lancez « Heroku — mettre en ligne » |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |
