@@ -65,15 +65,28 @@ jobs:
           fi
 
       - name: Forcer la pile « container »
-        # Indispensable : sans elle, Heroku ignore heroku.yml et cherche un
-        # buildpack, qui n'existe pas pour Bun.
+        # Étape décisive. Sans elle, Heroku ignore heroku.yml, croit à une
+        # application Node.js et lance `npm install` — qui échoue aussitôt,
+        # `workspace:*` étant une syntaxe que seul Bun comprend.
+        #
+        # La réponse est relue : annoncer « container » sans vérifier laisserait
+        # passer exactement le problème que cette étape doit empêcher.
         run: |
           curl -sS -X PATCH "https://api.heroku.com/apps/$APP" \
             -H "Accept: $ACCEPT" \
             -H "Authorization: Bearer $HEROKU_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"build_stack":"container"}' > /dev/null
-          echo "Pile : container"
+            -d '{"build_stack":"container"}' > /tmp/app.json
+
+          pile=$(python3 -c "import json;print(json.load(open('/tmp/app.json')).get('build_stack',{}).get('name',''))")
+
+          if [ "$pile" != "container" ]; then
+            echo "::error::La pile de construction vaut « $pile » au lieu de « container »."
+            echo "Réponse de l'API :"
+            cat /tmp/app.json
+            exit 1
+          fi
+          echo "Pile de construction : container"
 
       - name: Brancher PostgreSQL et le magasin clé-valeur
         run: |
