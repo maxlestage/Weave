@@ -8,6 +8,7 @@ import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { serverTiming } from "@elysiajs/server-timing";
+import { staticPlugin } from "@elysiajs/static";
 import { MAX_ACTIVE_THREADS } from "@weave/contracts";
 import { env } from "./env.ts";
 import { AppError } from "./lib/errors.ts";
@@ -23,6 +24,32 @@ import { meRoutes } from "./modules/me.routes.ts";
 import { moderationRoutes } from "./modules/moderation.routes.ts";
 import { promptRoutes } from "./modules/prompts.routes.ts";
 import { threadRoutes } from "./modules/threads.routes.ts";
+
+/**
+ * Site vitrine compilé, servi par le même processus que l'API.
+ *
+ * Le site est statique et peu visité : lui dédier un second processus
+ * doublerait le coût d'hébergement sans rien apporter. En développement,
+ * `WEB_DIST_PATH` n'est pas défini — Vite s'en charge — et ce greffon
+ * n'enregistre alors aucune route.
+ */
+const vitrine =
+  env.webDist === undefined
+    ? new Elysia({ name: "weave/vitrine-absente" })
+    : new Elysia({ name: "weave/vitrine" })
+        .use(
+          await staticPlugin({
+            assets: env.webDist,
+            prefix: "/",
+            indexHTML: true,
+            maxAge: 3600,
+          }),
+        )
+        // `indexHTML` ne couvre pas la racine elle-même : sans cette route,
+        // ouvrir l'adresse du service renvoie une 404.
+        .get("/", () => Bun.file(`${env.webDist}/index.html`), {
+          detail: { summary: "Site vitrine", tags: ["Service"] },
+        });
 
 export const app = new Elysia()
   .use(
@@ -119,7 +146,8 @@ export const app = new Elysia()
   .use(billingRoutes)
   .use(moderationRoutes)
   .use(promptRoutes)
-  .use(mediaRoutes);
+  .use(mediaRoutes)
+  .use(vitrine);
 
 export type WeaveApp = typeof app;
 

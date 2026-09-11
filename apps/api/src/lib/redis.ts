@@ -14,6 +14,9 @@ export const redis = new RedisClient(env.redis.url, {
   idleTimeout: 0,
   autoReconnect: true,
   maxRetries: 10,
+  // Voir `env.redis.tlsInsecure` : certains hébergeurs présentent un
+  // certificat auto-signé sur leur réseau interne.
+  ...(env.redis.tlsInsecure ? { tls: { rejectUnauthorized: false } } : {}),
 });
 
 let ready = false;

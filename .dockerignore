@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+apps/api/src/generated
+apps/api/prisma/dev.db*
+apps/api/prisma/schema.sqlite.prisma
+apps/api/.env
+.git
+.github
+docs
+apps/ios
+*.log

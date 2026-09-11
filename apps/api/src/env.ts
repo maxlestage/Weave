@@ -58,15 +58,40 @@ export const env = {
   isProduction: mode === "production",
   port: int("PORT", 3000),
   webOrigin: process.env.PUBLIC_WEB_ORIGIN ?? "http://localhost:5173",
+  /**
+   * Répertoire du site vitrine compilé. Quand il est présent, l'API le sert
+   * elle-même : un seul processus, donc un seul dyno à payer. En développement
+   * le site est servi par Vite et cette variable reste vide.
+   */
+  webDist: optional("WEB_DIST_PATH"),
 
   db: {
     driver: driver as "postgres" | "sqlite",
     postgresUrl: driver === "postgres" ? required("DATABASE_URL") : optional("DATABASE_URL"),
     sqliteUrl: resolveSqliteUrl(process.env.DATABASE_URL_SQLITE ?? "file:./prisma/dev.db"),
+    /**
+     * Même compromis que pour Redis : Heroku Postgres présente un certificat
+     * auto-signé. La connexion reste chiffrée, l'identité du serveur n'est pas
+     * vérifiée. Réservé aux bases jointes par le réseau interne de l'hébergeur.
+     */
+    sslInsecure: process.env.DATABASE_SSL_INSECURE === "true",
   },
 
   redis: {
-    url: process.env.REDIS_URL ?? "redis://localhost:6379",
+    // Heroku Key-Value Store expose deux adresses : `REDIS_TLS_URL` (chiffrée,
+    // obligatoire sur les petits plans) et `REDIS_URL`. On préfère la première
+    // quand elle existe.
+    url: process.env.REDIS_TLS_URL ?? process.env.REDIS_URL ?? "redis://localhost:6379",
+    /**
+     * Accepte un certificat serveur non vérifiable.
+     *
+     * Nécessaire chez Heroku, dont le magasin clé-valeur présente un certificat
+     * auto-signé : sans cela la connexion échoue. Le trafic reste chiffré, mais
+     * l'identité du serveur n'est pas vérifiée — à n'activer que sur un réseau
+     * interne d'hébergeur, jamais pour joindre un cache à travers l'internet
+     * public.
+     */
+    tlsInsecure: process.env.REDIS_TLS_INSECURE === "true",
   },
 
   auth: {

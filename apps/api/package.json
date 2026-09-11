@@ -23,6 +23,7 @@
     "@elysiajs/jwt": "1.4.2",
     "@elysiajs/openapi": "1.4.16",
     "@elysiajs/server-timing": "1.4.1",
+    "@elysiajs/static": "1.4.10",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@weave/contracts": "workspace:*",
