@@ -35,6 +35,12 @@ rien apporter.
 
 ### A3. Créer l'application
 
+> **Si vous avez déjà créé l'application depuis le tableau de bord Heroku**,
+> faites quand même cette étape en indiquant **le nom existant**. Le workflow
+> détectera que l'application est déjà là et se contentera de corriger la pile
+> de construction — ce qui est justement le réglage que le tableau de bord ne
+> pose pas. Voir « Pourquoi la pile compte » plus bas.
+
 1. Onglet **Actions** du dépôt
 2. Workflow **« Heroku — créer l'application »** → **Run workflow**
 3. Renseignez un nom (minuscules, chiffres et tirets — il doit être unique sur
@@ -65,6 +71,42 @@ migrations de base, puis met la nouvelle version en ligne. Il interroge enfin
 
 **À partir de là, tout ce qui est fusionné sur `master` est déployé
 automatiquement.** Vous n'avez plus rien à lancer à la main.
+
+### Pourquoi la pile de construction est décisive
+
+Weave tourne sous **Bun**, pour lequel il n'existe aucun buildpack Heroku. Le
+déploiement passe donc par le `Dockerfile` décrit dans `heroku.yml` — et Heroku
+ne lit `heroku.yml` **que si l'application est sur la pile `container`**.
+
+Une application créée depuis le tableau de bord est sur la pile `heroku-24` par
+défaut. Dans ce cas, Heroku ignore le `Dockerfile`, croit à une application
+Node.js, et le build échoue ainsi :
+
+```
+-----> Node.js app detected
+       npm error code EUNSUPPORTEDPROTOCOL
+       npm error Unsupported URL Type "workspace:": workspace:*
+```
+
+Ce message ne parle pas de la vraie cause. `workspace:*` désigne les paquets
+internes du dépôt ; c'est une syntaxe que Bun comprend et que npm ne
+comprendra jamais. Le problème n'est pas cette ligne : c'est que npm n'aurait
+jamais dû être appelé.
+
+**Correction** : lancez le workflow de l'étape A3 avec le nom de votre
+application, puis redéployez. Le workflow de déploiement vérifie désormais la
+pile avant de pousser quoi que ce soit, et s'arrête en nommant la cause si elle
+n'est pas la bonne.
+
+### Déployer par le workflow, pas par le tableau de bord
+
+Si vous avez activé les **déploiements automatiques depuis GitHub** dans
+l'onglet *Deploy* du tableau de bord Heroku, désactivez-les : utilisez le
+workflow **« Heroku — déployer »**, qui pousse vers le dépôt git d'Heroku et
+déclenche bien une construction du `Dockerfile`.
+
+Deux mécanismes de déploiement concurrents sur la même application, c'est la
+garantie de ne plus savoir lequel a produit la version en ligne.
 
 ### A6. Vérifier
 
@@ -205,6 +247,8 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 
 | Symptôme | Piste |
 | --- | --- |
+| `Node.js app detected` puis `EUNSUPPORTEDPROTOCOL` / `workspace:*` | L'application n'est pas sur la pile `container` : Heroku ignore le `Dockerfile`. Relancez l'étape A3 avec le nom existant, puis redéployez |
+| « Pile « heroku-24 » au lieu de « container » » | Même cause, détectée cette fois avant la poussée. Même correction |
 | « Déploiement ignoré : configuration Heroku absente » | Le secret `HEROKU_API_KEY` ou la variable `HEROKU_APP_NAME` manque — étapes A2 et A4 |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |
 | `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, il n'y a pas de fils : c'est une dépendance dure, pas un confort |
