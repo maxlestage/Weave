@@ -1,4 +1,3 @@
-import { MAX_ACTIVE_THREADS } from "@weave/contracts";
 import { Carte, filVar, Section } from "../composants.tsx";
 
 export function Appareils() {
@@ -19,10 +18,10 @@ export function Appareils() {
             Live Activity
           </h3>
           <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-            À votre heure de tissage, une bannière apparaît d'elle-même sur l'écran verrouillé et
-            dans l'île dynamique. Elle affiche le nombre de fils, le temps qu'il reste au plus
-            pressé, et rien d'autre : ce qui est visible sur un écran verrouillé doit pouvoir être
-            lu par quelqu'un d'autre.
+            Votre prochain plan sur l'écran verrouillé, avec le compte à rebours. Quand quelqu'un
+            demande à venir, la bannière apparaît d'elle-même — c'est le seul moment où Weave se
+            manifeste sans qu'on l'ait ouvert. Elle n'affiche ni nom, ni photo, ni message : ce qui
+            est visible sur un écran verrouillé doit pouvoir être lu par quelqu'un d'autre.
           </p>
           <ApercuActivite />
         </Carte>
@@ -35,11 +34,11 @@ export function Appareils() {
             Apple Watch
           </h3>
           <p className="mt-3 leading-relaxed" style={{ color: "var(--texte-doux)" }}>
-            Une complication sur le cadran, la liste des fils et leur échéance, et de quoi répondre
-            à la voix ou par dictée. La montre reçoit un résumé compact : ni photo, ni fragment.
+            Une complication sur le cadran : le prochain plan et ce qui attend une réponse. De quoi
+            accepter une demande à la volée, ou dicter deux phrases avant de repartir.
           </p>
           <ul className="mt-5 space-y-2.5 text-sm" style={{ color: "var(--texte-doux)" }}>
-            <li>• Complication : fils en attente et compte à rebours</li>
+            <li>• Complication : prochain plan et demandes à traiter</li>
             <li>• Réponse par dictée ou saisie manuscrite</li>
             <li>• Synchronisation par WatchConnectivity, et repli sur le réseau</li>
           </ul>
@@ -59,39 +58,34 @@ function ApercuActivite() {
     <div
       className="mt-6 rounded-2xl p-4"
       role="img"
-      aria-label={`Aperçu de la Live Activity : ${MAX_ACTIVE_THREADS} fils, 1 en attente, 4 h 12 restantes`}
+      aria-label="Aperçu de la Live Activity : prochain plan samedi 10 h, 2 personnes veulent venir"
       style={{ background: "var(--color-encre)", color: "#f4efe7" }}
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
-            <g
-              stroke="var(--color-cuivre-clair)"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              fill="none"
-            >
-              <path d="M8 6v20" />
-              <path d="M16 6v20" />
-              <path d="M24 6v20" />
+            <g strokeWidth="2.4" strokeLinecap="round" fill="none">
+              <path d="M8 6v20" stroke="var(--color-framboise-nuit)" />
+              <path d="M16 6v20" stroke="var(--color-menthe-nuit)" />
+              <path d="M24 6v20" stroke="var(--color-iris-nuit)" />
             </g>
           </svg>
           <div>
-            <p className="text-sm font-semibold">{MAX_ACTIVE_THREADS} fils sur le métier</p>
+            <p className="text-sm font-semibold">Marché puis brunch</p>
             <p className="text-xs" style={{ color: "#b6aa9c" }}>
-              1 attend votre réponse
+              2 personnes veulent venir
             </p>
           </div>
         </div>
         <div className="text-right">
           <p
             className="text-lg font-semibold tabular-nums"
-            style={{ color: "var(--color-cuivre-clair)" }}
+            style={{ color: "var(--color-safran-nuit)" }}
           >
-            4 h 12
+            Sam. 10 h
           </p>
           <p className="text-xs" style={{ color: "#b6aa9c" }}>
-            avant dénouage
+            dans 2 jours
           </p>
         </div>
       </div>

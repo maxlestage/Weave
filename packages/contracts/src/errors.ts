@@ -5,14 +5,16 @@ export const ERROR_CODES = {
   NOT_FOUND: "not_found",
   VALIDATION: "validation",
   RATE_LIMITED: "rate_limited",
-  /** Le métier est plein : trois fils sont déjà actifs. */
-  LOOM_FULL: "loom_full",
-  /** Le fil est dénoué : il n'existe plus en cache. */
-  THREAD_GONE: "thread_gone",
+  /** Le quota de demandes du jour est épuisé. */
+  NO_REQUESTS_LEFT: "no_requests_left",
+  /** Trois plans sont déjà ouverts. */
+  TOO_MANY_PLANS: "too_many_plans",
+  /** Le plan est complet, passé ou annulé. */
+  PLAN_CLOSED: "plan_closed",
+  /** Une demande a déjà été envoyée pour ce plan. */
+  ALREADY_REQUESTED: "already_requested",
   /** Le palier ou les crédits ne permettent pas cette action. */
   ENTITLEMENT_REQUIRED: "entitlement_required",
-  /** Prolonge déjà utilisée sur ce fil. */
-  ALREADY_EXTENDED: "already_extended",
   UPSTREAM: "upstream_unavailable",
   INTERNAL: "internal",
 } as const;

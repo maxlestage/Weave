@@ -9,14 +9,16 @@
 
 Une application de rencontre traite des données qui relèvent de l'article 9 du
 RGPD — l'orientation sexuelle se déduit des critères de recherche, et la
-localisation trace les déplacements. Ce n'est pas un domaine où l'on ajoute la
-conformité après coup.
+localisation trace les déplacements. Weave en ajoute une couche : **un plan dit
+où l'on sera, et quand.** C'est une donnée de déplacement future, plus sensible
+qu'une position passée. Ce n'est pas un domaine où l'on ajoute la conformité
+après coup.
 
 ## Ce que l'architecture apporte d'elle-même
 
 | Principe RGPD | Ce qui le sert, concrètement |
 | --- | --- |
-| Minimisation | Les profils proposés ne sont jamais archivés : seul un registre d'identifiants subsiste |
+| Minimisation | Le profil est réduit à une ville, un genre et une phrase ; le fil consulté n'est jamais archivé ; un plan passé sort du fil |
 | Limitation de la conservation | Toute entrée de cache porte un TTL ; les messages sont purgés 90 jours après clôture ; un compte supprimé est purgé sous 30 jours |
 | Exactitude | Les coordonnées sont arrondies au dépôt : on ne stocke jamais mieux que ~1 km |
 | Intégrité et confidentialité | Codes hachés en Argon2id, jetons de rafraîchissement hachés et rotatifs, médias sous URL signée à durée limitée |
@@ -37,26 +39,36 @@ par une case unique valant acceptation de tout.
 
 | Droit | Où c'est traité |
 | --- | --- |
-| Accès et portabilité | Export à construire à partir de `Account`, `Profile`, `ProfileFragment`, `MotifTag`, `WovenThread`, `Message` — le cache n'a rien à exporter, il est vide de données durables |
-| Rectification | `PATCH /v1/me`, `PUT /v1/me/profile`, `PUT /v1/me/motif` |
-| Effacement | `DELETE /v1/auth/account` : sortie immédiate de la composition, purge sous 30 jours |
-| Opposition | `POST /v1/me/pause` : le compte cesse d'être proposé et de recevoir des fils |
-| Limitation | La mise en pause vide le métier sans supprimer le compte |
+| Accès et portabilité | Export à construire à partir de `Account`, `Profile`, `Preference`, `Plan`, `JoinRequest`, `Conversation`, `Message` — le cache n'a rien à exporter, il est vide de données durables |
+| Rectification | `PATCH /v1/me`, `PUT /v1/me/profile`, `PATCH /v1/me/preferences` |
+| Effacement | `DELETE /v1/auth/account` : les plans ouverts sont retirés du fil immédiatement, purge sous 30 jours |
+| Opposition | `POST /v1/me/pause` : les plans ouverts sont annulés, le compte n'apparaît plus dans le fil |
+| Limitation | La mise en pause retire du fil sans supprimer le compte |
 
 **À construire avant le lancement** : la route d'export au format lisible par
 machine, et la tâche planifiée qui exécute réellement les purges (la structure
-est en place — `deletionRequestedAt`, `purgeAfter` — l'exécution périodique
-reste à brancher).
+est en place — `deletionRequestedAt`, `purgeAfter`, `Plan.state` — l'exécution
+périodique reste à brancher).
 
 ## Sécurité des personnes
 
-- Le **blocage** est immédiat et retire le fil des deux côtés, sans notification
-  à l'autre partie.
-- Un **signalement entraîne toujours un blocage** : personne n'a à revoir un
-  profil qu'il vient de signaler pendant l'examen du dossier.
-- La **position n'est jamais exposée** : seule une distance arrondie l'est.
+- Le **blocage** est immédiat et coupe tout des deux côtés : demandes en attente
+  closes, conversation fermée, plans retirés du fil de l'autre — sans
+  notification à la personne bloquée.
+- Un **signalement entraîne toujours un blocage** : personne n'a à revoir les
+  plans de qui il vient de signaler pendant l'examen du dossier.
+- La **position n'est jamais exposée** : un plan affiche une ville et une
+  distance arrondie, jamais une adresse. **L'endroit exact se dit dans la
+  conversation**, à qui l'on a accepté — c'est la règle la plus importante de
+  cette page, parce qu'un lieu et une heure publiés largement sont ce qu'une
+  application comme celle-ci peut faire de plus dangereux.
 - Aucun **contenu de conversation** ne transite par APNs ni ne s'affiche sur
-  l'écran verrouillé — un prénom et un décompte, rien de plus.
+  l'écran verrouillé — un titre de plan et deux compteurs, rien de plus. Pas
+  même un prénom.
+- **Les messages échangés ne sont pas supprimés au blocage** : ils restent
+  lisibles par la personne qui a bloqué jusqu'à la purge. Une suppression
+  immédiate effacerait aussi les preuves d'un comportement qu'on vient de
+  signaler.
 
 ## Modération
 

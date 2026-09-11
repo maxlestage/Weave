@@ -5,9 +5,9 @@
  * tentatives. Il n'y a pas de mot de passe à voler, à réutiliser ou à oublier.
  */
 import { Elysia, t } from "elysia";
-import { MIN_AGE, WEAVING_HOURS } from "@weave/contracts";
+import { ACCOUNT_PURGE_DAYS, MIN_AGE } from "@weave/contracts";
 import { env } from "../env.ts";
-import { clearLoom } from "../lib/cache.ts";
+import { invalidateFeed } from "../lib/cache.ts";
 import {
   emailHash,
   hashSecret,
@@ -173,7 +173,7 @@ export const authRoutes = new Elysia({ prefix: "/v1/auth", tags: ["Authentificat
             birthDate,
             timezone: body.timezone ?? "Europe/Paris",
             preference: { create: {} },
-            subscription: { create: { tier: "fil" } },
+            subscription: { create: { tier: "depart" } },
           },
         });
         created = true;
@@ -273,18 +273,25 @@ export const authRoutes = new Elysia({ prefix: "/v1/auth", tags: ["Authentificat
         where: { accountId: account.id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      await clearLoom(account.id);
+      // Les plans ouverts disparaissent du fil des autres tout de suite : un
+      // rendez-vous auquel personne ne répondra ne doit plus être proposé.
+      await prisma.plan.updateMany({
+        where: { authorId: account.id, state: "ouvert" },
+        data: { state: "annule", cancelledAt: new Date() },
+      });
+      await prisma.joinRequest.updateMany({
+        where: { state: "envoyee", plan: { authorId: account.id } },
+        data: { state: "expiree", decidedAt: new Date() },
+      });
+      await invalidateFeed(account.id);
       await invalidateAccountCache(account.id);
 
-      return { ok: true, purgeAfterDays: 30 };
+      return { ok: true, purgeAfterDays: ACCOUNT_PURGE_DAYS };
     },
     {
       detail: {
         summary: "Demander la suppression du compte",
-        description:
-          "Le compte est retiré immédiatement de la composition ; les données sont purgées après trente jours.",
+        description: `Le compte est retiré immédiatement du fil ; les données sont purgées après ${ACCOUNT_PURGE_DAYS} jours.`,
       },
     },
   );
-
-export { WEAVING_HOURS };

@@ -1,58 +1,85 @@
 import SwiftUI
 import WeaveKit
 
+/// Ce que la montre montre : le prochain plan, et ce qui attend une réponse.
+///
+/// Elle ne reçoit ni nom, ni photo, ni message — un titre, une heure, deux
+/// compteurs. Le résumé complet fait quelques centaines d'octets.
 struct MontreRacineView: View {
     @Environment(ModeleMontre.self) private var modele
 
     var body: some View {
         NavigationStack {
             List {
-                if modele.resume.entries.isEmpty {
+                if modele.resume.nextPlan == nil, modele.resume.pendingRequests == 0 {
                     VidePlaceholder(chargement: modele.chargement, erreur: modele.erreur)
                 } else {
-                    Section {
-                        ForEach(modele.resume.entries) { entree in
-                            LigneFil(entree: entree)
+                    if let plan = modele.resume.nextPlan {
+                        Section("Prochain plan") {
+                            ProchainPlan(plan: plan)
                         }
-                    } header: {
-                        Text(entete)
+                    }
+
+                    if modele.resume.pendingRequests > 0 || modele.resume.awaitingReply > 0 {
+                        Section("En cours") {
+                            if modele.resume.pendingRequests > 0 {
+                                Compteur(
+                                    valeur: modele.resume.pendingRequests,
+                                    libelle: "veulent venir",
+                                    accentue: true
+                                )
+                            }
+                            if modele.resume.awaitingReply > 0 {
+                                Compteur(
+                                    valeur: modele.resume.awaitingReply,
+                                    libelle: "demandes sans réponse",
+                                    accentue: false
+                                )
+                            }
+                        }
                     }
                 }
             }
-            .navigationTitle("Métier")
+            .navigationTitle("Weave")
             .refreshable { await modele.charger() }
         }
     }
-
-    private var entete: String {
-        let total = modele.resume.activeThreads
-        let attente = modele.resume.awaitingYou
-        return attente > 0 ? "\(total) fils · \(attente) à répondre" : "\(total) fils"
-    }
 }
 
-private struct LigneFil: View {
-    let entree: WatchSummary.Entry
+private struct ProchainPlan: View {
+    let plan: WatchSummary.NextPlan
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(entree.name)
-                    .font(.headline)
-                Spacer()
-                if entree.awaitingYou {
-                    Circle()
-                        .fill(Color.weaveCuivreMontre)
-                        .frame(width: 7, height: 7)
-                        .accessibilityLabel("Attend votre réponse")
-                }
-            }
-
-            Text(timerInterval: Date.now...max(entree.expiresAt, .now), countsDown: true)
-                .font(.caption2.monospacedDigit())
+            Text(plan.title)
+                .font(.headline)
+                .lineLimit(2)
+            Text(plan.city)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
+            Text(timerInterval: Date.now...max(plan.startsAt, .now), countsDown: true)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.weaveCuivreMontre)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct Compteur: View {
+    let valeur: Int
+    let libelle: String
+    let accentue: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("\(valeur)")
+                .font(.title3.monospacedDigit().weight(.semibold))
+                .foregroundStyle(accentue ? Color.weaveCuivreMontre : .primary)
+            Text(libelle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -70,9 +97,9 @@ private struct VidePlaceholder: View {
                     .font(.caption)
                     .multilineTextAlignment(.center)
             } else {
-                Text("Métier vide")
+                Text("Aucun plan à venir")
                     .font(.headline)
-                Text("Vos prochains fils arrivent à votre heure de tissage.")
+                Text("Publiez quelque chose, ou demandez à venir à un plan.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

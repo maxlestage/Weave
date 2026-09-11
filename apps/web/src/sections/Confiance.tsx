@@ -10,17 +10,17 @@ const ENGAGEMENTS = [
   {
     titre: "Localisation au kilomètre",
     texte:
-      "Votre position est arrondie avant d'être enregistrée. Nous ne conservons jamais de coordonnées précises, et une distance affichée reste une distance arrondie.",
+      "Votre position est arrondie avant d'être enregistrée, et un plan n'affiche jamais d'adresse dans le fil : une ville, une distance arrondie. L'endroit exact se dit dans la conversation, à qui vous avez accepté.",
   },
   {
-    titre: "Les profils proposés ne sont pas archivés",
+    titre: "Ce que vous consultez n'est pas archivé",
     texte:
-      "Les fils vivent dans un cache temporaire. Nous ne constituons pas d'historique des profils que vous avez vus, et personne ne peut le consulter.",
+      "Le fil est recomposé à la demande et vit quelques minutes dans un cache. Nous ne constituons pas d'historique des plans que vous avez regardés, et personne ne peut le consulter.",
   },
   {
     titre: "Blocage immédiat",
     texte:
-      "Bloquer ou signaler retire le fil des deux côtés, sans notification à l'autre personne. Un signalement entraîne toujours un blocage.",
+      "Bloquer ou signaler coupe tout des deux côtés — demandes en attente closes, conversation fermée — sans notification à l'autre personne. Un signalement entraîne toujours un blocage.",
   },
 ] as const;
 
@@ -30,7 +30,7 @@ export function Confiance() {
       id="confiance"
       fil={1}
       titre="Ce à quoi nous nous engageons"
-      chapeau="Une application de rencontre manipule ce qu'il y a de plus intime. Voici ce que nous nous interdisons."
+      chapeau="Une application où l'on donne son heure et son lieu manipule ce qu'il y a de plus sensible. Voici ce que nous nous interdisons."
       alterne
     >
       <div className="grid gap-4 sm:grid-cols-2">
