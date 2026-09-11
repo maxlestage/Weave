@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "paths": {
+      "@weave/contracts": ["../../packages/contracts/src/index.ts"],
+      "@weave/contracts/*": ["../../packages/contracts/src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts", "../../packages/contracts/src"]
+}
