@@ -17,19 +17,18 @@ Ce dépôt contient l'API, l'application iOS et watchOS, et le site de présenta
 2. **On ne peut pas acheter de visibilité.** `PAID_VISIBILITY` vaut littéralement
    `false` : le fil est trié par imminence puis par proximité, et par rien
    d'autre. Aucun produit du catalogue ne vend de remontée.
-3. **Bun remplace Node.js de bout en bout**, y compris là où il a fallu écrire
-   l'outillage manquant (voir `packages/prisma-bun-sqlite`).
+3. **L'API est écrite en Rust**, et le site bâti par Bun. Deux chaînes, un seul
+   processus en ligne : le site est statique et peu visité, lui dédier un dyno
+   doublerait la facture sans rien apporter.
 
 ## La pile
 
 | | Choix | Version |
 | --- | --- | --- |
-| Exécution | Bun | 1.3 |
-| Backend | Elysia | 1.4 |
-| ORM | Prisma | 7 |
-| Base | PostgreSQL (production) · SQLite (développement) | — |
-| Cache | Redis, via le client natif de Bun | — |
-| Site | React · Tailwind, bundlés par Bun | 19 · 4 |
+| API | Rust · Axum · SeaORM | 1.94 · 0.8 · 2.0 |
+| Base | PostgreSQL (production) · SQLite (tests) | — |
+| Cache | Redis | — |
+| Site | React · Tailwind, bâtis par Bun | 19 · 4 |
 | Applications | Swift · SwiftUI · ActivityKit · WidgetKit | 6.2 |
 
 Toutes les dépendances viennent de leurs canaux officiels : registre npm pour
@@ -126,8 +125,10 @@ La marche à suivre, étape par étape : **[docs/DEPLOIEMENT.md](docs/DEPLOIEMEN
 
 | Commande | Effet |
 | --- | --- |
-| `bun run dev` | API et site en parallèle |
+| `bun run dev` | le site vitrine |
+| `cargo run --manifest-path apps/api-rs/Cargo.toml` | l'API |
 | `bun run test` | Toute la suite TypeScript |
+| `cargo test --manifest-path apps/api-rs/Cargo.toml` | La suite de l'API (Redis local requis) |
 | `bun run typecheck` | Vérification des types de tous les paquets |
 | `bun run db:sqlite` | Dérive le schéma SQLite depuis le schéma PostgreSQL |
 | `bun run db:generate` | Génère les deux clients Prisma |

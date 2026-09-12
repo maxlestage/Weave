@@ -70,9 +70,8 @@ jobs:
       # ----------------------------------------------------------------
       # L'API, en Rust
       #
-      # Le portage n'est pas encore celui que le dyno exécute — il lui manque
-      # des routes —, mais il se garde dès maintenant : une régression laissée
-      # à découvrir le jour de la bascule serait découverte trop tard.
+      # C'est ce binaire que le dyno exécute : sans ces trois étapes, rien ne
+      # garderait ce qui tourne réellement en production.
       # ----------------------------------------------------------------
       - name: Installer Rust
         uses: dtolnay/rust-toolchain@stable
