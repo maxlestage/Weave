@@ -74,7 +74,7 @@ Ces éléments constituent l'identité du produit et sont ceux à protéger :
 
 Le code de Weave n'incorpore aucune bibliothèque tierce dont la licence
 imposerait la réciprocité (aucune dépendance sous GPL ou AGPL). Les dépendances
-utilisées — Elysia, Prisma, React, Vite, Tailwind — sont sous licence MIT ou
+utilisées — Elysia, Prisma, React, Tailwind — sont sous licence MIT ou
 Apache 2.0. L'adaptateur `@weave/prisma-bun-sqlite` a été écrit pour ce projet ;
 il implémente une interface publique de Prisma et en reproduit la sémantique de
 conversion documentée, ce qui est l'usage prévu de cette interface.
