@@ -14,7 +14,7 @@ export function App() {
       <a
         href="#contenu"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:px-4 focus:py-2"
-        style={{ background: "var(--accent)", color: "var(--color-lin)" }}
+        style={{ background: "var(--accent)", color: "var(--sur-accent)" }}
       >
         Aller au contenu
       </a>

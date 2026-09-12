@@ -61,7 +61,7 @@ seule fois au démarrage.
 
 Côté serveur, le sujet APNs doit porter le suffixe `.push-type.liveactivity` et
 l'en-tête `apns-push-type` valoir `liveactivity` — c'est fait dans
-`apps/api/src/lib/apns.ts`.
+`apps/api-rs/src/apns.rs`.
 
 Le nom du type `WeaveActivityAttributes` est repris tel quel par le serveur dans
 le champ `attributes-type` de la charge utile. **Le renommer casse le démarrage

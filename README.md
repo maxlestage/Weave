@@ -41,23 +41,25 @@ pour PostgreSQL et Redis. Aucun miroir, aucun fork.
 # 1. Redis et PostgreSQL en local (optionnel : SQLite suffit pour développer)
 bun run infra:up
 
-# 2. Dépendances, schéma, base de développement, jeu de données
+# 2. Dépendances
 bun run setup
 
-# 3. L'API et le site, ensemble
+# 3. Le site, et l'API à côté
 bun run dev
+cargo run --manifest-path apps/api-rs/Cargo.toml
 ```
 
 - API : http://localhost:3000 — documentation OpenAPI sur `/openapi`
 - Site : http://localhost:5173
 
-L'API démarre par défaut sur SQLite. Pour PostgreSQL :
+L'API démarre par défaut sur SQLite, et applique ses migrations elle-même.
+Pour PostgreSQL :
 
 ```sh
-cd apps/api
+cd apps/api-rs
 cp .env.example .env          # renseignez DATABASE_URL
-WEAVE_DB=postgres bun run db:deploy
-WEAVE_DB=postgres bun run dev
+WEAVE_DB=postgres cargo run -- migrate
+WEAVE_DB=postgres cargo run
 ```
 
 SQLite est refusé en production par une garde explicite : ce n'est pas une
@@ -66,8 +68,8 @@ convention, c'est une erreur au démarrage.
 ## Tests
 
 ```sh
-bun test                      # API + adaptateur Prisma
-cd apps/ios/WeaveKit && swift test
+cargo test --manifest-path apps/api-rs/Cargo.toml   # l'API
+cd apps/ios/WeaveKit && swift test                  # le client
 ```
 
 Les tests d'intégration de l'API passent par les vraies routes HTTP, le vrai
@@ -80,13 +82,11 @@ ouverts tient, et un « Renfort » acheté reste lui-même borné par jour.
 ```
 weave/
 ├── apps/
-│   ├── api/        Elysia · Prisma · Redis · APNs
+│   ├── api-rs/     Axum · SeaORM · Redis · APNs — le binaire du dyno
 │   ├── web/        Site vitrine, pensé pour le téléphone d'abord
 │   └── ios/        iPhone · Live Activity · Apple Watch
 ├── packages/
-│   ├── contracts/            invariants, catalogue des offres, types partagés
-│   └── prisma-bun-sqlite/    adaptateur Prisma pour bun:sqlite
-├── scripts/
+│   └── contracts/            invariants, catalogue des offres, types partagés
 └── docs/
 ```
 
@@ -127,14 +127,9 @@ La marche à suivre, étape par étape : **[docs/DEPLOIEMENT.md](docs/DEPLOIEMEN
 | --- | --- |
 | `bun run dev` | le site vitrine |
 | `cargo run --manifest-path apps/api-rs/Cargo.toml` | l'API |
-| `bun run test` | Toute la suite TypeScript |
-| `cargo test --manifest-path apps/api-rs/Cargo.toml` | La suite de l'API (Redis local requis) |
-| `bun run typecheck` | Vérification des types de tous les paquets |
-| `bun run db:sqlite` | Dérive le schéma SQLite depuis le schéma PostgreSQL |
-| `bun run db:generate` | Génère les deux clients Prisma |
-| `bun run db:migrate` | Nouvelle migration (développement) |
-| `bun run db:deploy` | Applique les migrations |
-| `bun run db:seed` | Jeu de données de développement |
+| `bun run test` | La suite de l'API (Redis local requis) |
+| `bun run typecheck` | Vérification des types du site et des contrats |
+| `cargo run --manifest-path apps/api-rs/Cargo.toml -- migrate` | Applique les migrations |
 | `bun run format` | Formatage Prettier |
 
 ## Reste à faire avant un lancement
