@@ -156,6 +156,34 @@ mod tests {
         }
     }
 
+    /// Les migrations sont copiées depuis `apps/api/prisma/`, que l'intégration
+    /// continue confronte au schéma Prisma. Tant que les deux dépôts de
+    /// fichiers coexistent, ils doivent dire la même chose : une migration
+    /// ajoutée d'un côté et pas de l'autre ferait diverger la production en
+    /// silence, sans qu'aucun autre test ne s'en aperçoive.
+    ///
+    /// Ce test disparaîtra avec `apps/api`, pas avant.
+    #[test]
+    fn les_migrations_copiees_sont_celles_du_schema() {
+        for (nom, ici, la_bas) in [
+            (
+                "postgres",
+                MIGRATIONS_POSTGRES[0].1,
+                include_str!("../../api/prisma/migrations/0_init/migration.sql"),
+            ),
+            (
+                "sqlite",
+                MIGRATIONS_SQLITE[0].1,
+                include_str!("../../api/prisma/migrations-sqlite/0_init/migration.sql"),
+            ),
+        ] {
+            assert_eq!(
+                ici, la_bas,
+                "{nom} : la copie de apps/api-rs a divergé de apps/api/prisma"
+            );
+        }
+    }
+
     /// Le défaut qui a fait échouer la phase de publication en développement :
     /// le SQL de PostgreSQL servi à SQLite, jusqu'à `near "(": syntax error`.
     #[test]
