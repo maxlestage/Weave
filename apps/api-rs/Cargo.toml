@@ -10,6 +10,7 @@ axum = "0.8.9"
 base64 = "0.23.1"
 chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = "0.10.4"
+cuid2 = "0.1.6"
 dotenvy = "0.15.7"
 hex = "0.4.3"
 hmac = "0.13.0"
