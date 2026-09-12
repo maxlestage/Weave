@@ -296,3 +296,4 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
 mod vitrine;
 mod session;
 mod profil;
+mod demandes;

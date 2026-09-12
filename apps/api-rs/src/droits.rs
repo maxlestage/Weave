@@ -9,12 +9,13 @@ use crate::{
     auth::CompteAuthentifie,
     cache,
     entities::credit_balances,
-    error::AppError,
+    error::{AppError, Code},
     temps::jour_local,
     AppState,
 };
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 /// Ce qu'un « Renfort » ajoute au quota du jour.
@@ -89,6 +90,40 @@ pub async fn credits_pour(
         }
     }
     Ok(credits)
+}
+
+/// Consomme un crédit, ou explique comment l'obtenir — par un palier ou à
+/// l'unité. Le client n'a rien à deviner ni à coder en dur.
+pub async fn exiger_credit(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    nom: &str,
+) -> Result<(), AppError> {
+    use sea_orm::sea_query::ExprTrait;
+
+    // Décrément conditionnel : la clause `balance >= 1` est dans la requête,
+    // sans quoi deux achats simultanés pourraient dépenser le même crédit.
+    let resultat = credit_balances::Entity::update_many()
+        .col_expr(
+            credit_balances::Column::Balance,
+            sea_orm::sea_query::Expr::col(credit_balances::Column::Balance).sub(1),
+        )
+        .filter(credit_balances::Column::AccountId.eq(compte_id))
+        .filter(credit_balances::Column::Sku.eq(sku))
+        .filter(credit_balances::Column::Balance.gte(1))
+        .exec(&state.db)
+        .await?;
+
+    if resultat.rows_affected == 1 {
+        return Ok(());
+    }
+
+    Err(AppError::new(
+        Code::EntitlementRequired,
+        format!("« {nom} » n'est pas compris dans votre offre."),
+    )
+    .avec_details(json!({ "sku": sku })))
 }
 
 #[cfg(test)]

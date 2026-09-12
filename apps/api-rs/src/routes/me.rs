@@ -16,7 +16,7 @@ use crate::{
 };
 use axum::{
     extract::State,
-    routing::{get, patch, put},
+    routing::{get, put},
     Json, Router,
 };
 use chrono::Utc;
