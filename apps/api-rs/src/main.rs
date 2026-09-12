@@ -8,6 +8,7 @@ mod crypto;
 mod db;
 mod droits;
 mod error;
+mod limitation;
 mod routes;
 mod temps;
 mod env;
@@ -66,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .merge(routes::auth::routes())
         .merge(routes::me::routes())
         .layer(CorsLayer::new().allow_origin(origine))
         .with_state(state);
@@ -73,9 +75,15 @@ async fn main() -> anyhow::Result<()> {
     let ecoute = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!(port, database = driver, "API Weave démarrée");
 
-    axum::serve(ecoute, app)
-        .with_graceful_shutdown(arret_demande())
-        .await?;
+    // `into_make_service_with_connect_info` est requis par les routes qui
+    // limitent le débit par adresse : sans lui, l'extracteur `ConnectInfo`
+    // échoue à l'exécution, pas à la compilation.
+    axum::serve(
+        ecoute,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(arret_demande())
+    .await?;
 
     Ok(())
 }
