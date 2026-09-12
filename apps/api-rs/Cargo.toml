@@ -17,7 +17,19 @@ hmac = "0.13.0"
 jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
 password-hash = { version = "0.6.1", features = ["phc", "alloc", "getrandom"] }
 rand = "0.10.2"
-redis = { version = "1.7.0", features = ["tokio-comp", "tokio-rustls-comp", "connection-manager"] }
+# `tls-rustls-insecure` est indispensable, pas optionnel : sans elle, la
+# bibliothèque refuse de se passer de la vérification du certificat, et Heroku
+# Redis en présente un auto-signé. Voir `cache::url_effective`.
+redis = { version = "1.7.0", features = [
+  "tokio-comp",
+  "tokio-rustls-comp",
+  "tls-rustls-insecure",
+  "connection-manager",
+] }
+# Dépendance directe pour une seule raison : installer le fournisseur
+# cryptographique au démarrage. `redis`, `reqwest` et `sqlx` tirent chacun
+# rustls, mais avec des fournisseurs différents — voir `main.rs`.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2", "json"] }
 sea-orm = { version = "2.0.2", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "sqlx-sqlite"] }
 serde = { version = "1.0.229", features = ["derive"] }
