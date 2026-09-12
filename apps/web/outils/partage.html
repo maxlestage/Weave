@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  @page {
+    margin: 0;
+  }
+  * {
+    margin: 0;
+    box-sizing: border-box;
+  }
+  body {
+    width: 1200px;
+    height: 630px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 72px 80px;
+    background: #fffdf9;
+    color: #1a1626;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      sans-serif;
+  }
+  .fils {
+    display: flex;
+    height: 14px;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .fils span {
+    flex: 1;
+  }
+  h1 {
+    font-size: 92px;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+  }
+  p {
+    font-size: 31px;
+    line-height: 1.45;
+    color: #574f63;
+    max-width: 27ch;
+    margin-top: 28px;
+  }
+  .pied {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 26px;
+  }
+  .marque {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-weight: 800;
+    font-size: 34px;
+  }
+  .doux {
+    color: #574f63;
+  }
+</style>
+<div class="fils">
+  <span style="background: #c2405f"></span><span style="background: #d97434"></span>
+  <span style="background: #c9a227"></span><span style="background: #3f8f6b"></span>
+  <span style="background: #2f6f9f"></span><span style="background: #6b4fa8"></span>
+</div>
+<div>
+  <h1>
+    <span style="color: #c2405f">Des</span> <span style="color: #d97434">plans,</span><br />
+    <span style="color: #3f8f6b">pas</span> <span style="color: #2f6f9f">des</span>
+    <span style="color: #6b4fa8">profils.</span>
+  </h1>
+  <p>On publie ce qu'on compte faire. Les autres demandent à venir — en disant pourquoi.</p>
+</div>
+<div class="pied">
+  <span class="marque">
+    <svg width="40" height="40" viewBox="0 0 32 32">
+      <g stroke-width="3" stroke-linecap="round" fill="none">
+        <path d="M7 5v22" stroke="#c2405f" />
+        <path d="M16 5v22" stroke="#3f8f6b" />
+        <path d="M25 5v22" stroke="#6b4fa8" />
+      </g>
+      <g stroke-width="2.4" stroke-linecap="round" fill="none">
+        <path d="M4 12c4 3 8 3 12 0s8-3 12 0" stroke="#d97434" />
+        <path d="M4 21c4 3 8 3 12 0s8-3 12 0" stroke="#2f6f9f" />
+      </g>
+    </svg>
+    Weave
+  </span>
+  <span class="doux">Bientôt sur iPhone et Apple&nbsp;Watch</span>
+</div>
