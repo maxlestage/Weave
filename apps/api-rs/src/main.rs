@@ -12,6 +12,9 @@ mod error;
 mod limitation;
 mod routes;
 mod temps;
+
+#[cfg(test)]
+mod tests;
 mod env;
 
 // Les 18 entités sont engendrées d'un bloc depuis la base ; celles qu'aucune
@@ -66,20 +69,7 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(config),
     };
 
-    let app = Router::new()
-        .route("/health", get(health))
-        .merge(routes::auth::routes())
-        .merge(routes::me::routes())
-        .merge(routes::plans::routes())
-        .merge(routes::requests::routes())
-        .merge(routes::conversations::routes())
-        .merge(routes::moderation::routes())
-        .merge(routes::devices::routes())
-        .merge(routes::media::routes())
-        .merge(routes::fil::routes())
-        .merge(routes::billing::routes())
-        .layer(CorsLayer::new().allow_origin(origine))
-        .with_state(state);
+    let app = construire_routeur(state).layer(CorsLayer::new().allow_origin(origine));
 
     let ecoute = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!(port, database = driver, "API Weave démarrée");
@@ -95,6 +85,27 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+/// Assemble toutes les routes du service.
+///
+/// Extrait de `main` pour que les tests puissent monter le service entier —
+/// et non chaque gestionnaire isolément. Un gestionnaire juste derrière un
+/// routage faux ne rend toujours pas le bon service.
+fn construire_routeur(state: AppState) -> Router {
+    Router::new()
+        .route("/health", get(health))
+        .merge(routes::auth::routes())
+        .merge(routes::me::routes())
+        .merge(routes::plans::routes())
+        .merge(routes::requests::routes())
+        .merge(routes::conversations::routes())
+        .merge(routes::moderation::routes())
+        .merge(routes::devices::routes())
+        .merge(routes::media::routes())
+        .merge(routes::fil::routes())
+        .merge(routes::billing::routes())
+        .with_state(state)
 }
 
 /// Sonde de santé.
