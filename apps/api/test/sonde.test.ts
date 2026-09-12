@@ -6,15 +6,8 @@
  * tuer. Un `PING` adressé à un Redis injoignable n'échoue pourtant pas — avec
  * `autoReconnect`, il est mis en file et attend indéfiniment.
  */
-import { after, describe, test } from "node:test";
-import { expect } from "./expect.ts";
-import { disconnectRedis, PROBE_TIMEOUT_MS, withTimeout } from "../src/lib/redis.ts";
-
-// Importer le module ouvre une connexion : il faut la refermer, sinon le
-// lanceur de tests attend une tâche qui ne finit jamais.
-after(async () => {
-  await disconnectRedis();
-});
+import { describe, expect, test } from "bun:test";
+import { PROBE_TIMEOUT_MS, withTimeout } from "../src/lib/redis.ts";
 
 describe("la borne des sondes", () => {
   test("laisse passer une réponse rapide", async () => {

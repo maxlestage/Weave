@@ -13,7 +13,6 @@
  * Aucune dépendance : le jeton d'autorisation ES256 est signé avec WebCrypto et
  * la requête part par `fetch`, qui négocie HTTP/2 (exigé par Apple) via ALPN.
  */
-import { readFile } from "node:fs/promises";
 import { env } from "../env.ts";
 import { log } from "./log.ts";
 
@@ -42,7 +41,7 @@ function base64url(input: ArrayBuffer | Uint8Array | string): string {
 async function loadSigningKey(): Promise<CryptoKey> {
   if (cachedKey !== null) return cachedKey;
 
-  const pem = await readFile(env.apns.keyPath!, "utf8");
+  const pem = await Bun.file(env.apns.keyPath!).text();
   const body = pem
     .replace(/-----BEGIN PRIVATE KEY-----/, "")
     .replace(/-----END PRIVATE KEY-----/, "")

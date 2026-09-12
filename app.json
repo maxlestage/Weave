@@ -3,7 +3,7 @@
   "description": "Application de rencontre : on publie un plan, les autres demandent à venir. Cette configuration déploie l'API et le site vitrine dans un seul processus.",
   "repository": "https://github.com/maxlestage/Weave",
   "logo": "https://raw.githubusercontent.com/maxlestage/Weave/master/apps/web/public/favicon.svg",
-  "keywords": ["node", "elysia", "prisma", "redis", "rencontre"],
+  "keywords": ["bun", "elysia", "prisma", "redis", "rencontre"],
   "stack": "container",
   "formation": {
     "web": {
@@ -71,7 +71,7 @@
     "test": {
       "addons": ["heroku-redis:mini"],
       "scripts": {
-        "test": "npm run db:sqlite && npm run db:generate && npm test"
+        "test": "bun run db:sqlite && bun run db:generate && bun test"
       }
     }
   }

@@ -1,0 +1,16 @@
+# Weave — configuration Bun
+# Toutes les dépendances proviennent de leurs canaux de distribution officiels.
+
+[install]
+# Registre npm officiel, aucun miroir ni fork.
+registry = "https://registry.npmjs.org"
+exact = true
+peer = true
+# Les binaires natifs (Prisma engines) sont récupérés à l'installation.
+frozenLockfile = false
+
+[install.cache]
+disable = false
+
+[test]
+coverage = false

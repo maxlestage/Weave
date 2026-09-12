@@ -12,6 +12,7 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "esm"
+  runtime      = "bun"
 }
 
 // Prisma 7 : l'URL de connexion ne vit plus dans le schéma. Elle est fournie

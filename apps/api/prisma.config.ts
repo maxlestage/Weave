@@ -32,6 +32,6 @@ export default defineConfig({
   ...(url ? { datasource: { url, ...(shadowDatabaseUrl ? { shadowDatabaseUrl } : {}) } } : {}),
   migrations: {
     path: useSqlite ? "prisma/migrations-sqlite" : "prisma/migrations",
-    seed: "node src/seed.ts",
+    seed: "bun src/seed.ts",
   },
 });
