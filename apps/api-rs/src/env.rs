@@ -122,6 +122,14 @@ pub struct Auth {
 }
 
 #[derive(Debug, Clone)]
+pub struct AppStore {
+    pub environnement: String,
+    /// Sans ces trois valeurs, aucune transaction ne peut être vérifiée
+    /// auprès d'Apple — et en production, aucune ne doit être acceptée.
+    pub configure: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Env {
     pub mode: Mode,
     pub port: u16,
@@ -129,6 +137,7 @@ pub struct Env {
     pub cache: Cache,
     pub media: Media,
     pub auth: Auth,
+    pub app_store: AppStore,
     pub web_origin: String,
     pub web_dist: Option<String>,
 }
@@ -270,6 +279,12 @@ pub fn charger() -> Result<Env, String> {
             signing_secret,
             base_url: media_base,
             ttl_url_signee_secondes: entier("MEDIA_URL_TTL_SECONDS", 600),
+        },
+        app_store: AppStore {
+            environnement: lire("APPSTORE_ENVIRONMENT").unwrap_or_else(|| "sandbox".to_string()),
+            configure: lire("APPSTORE_ISSUER_ID").is_some()
+                && lire("APPSTORE_KEY_ID").is_some()
+                && lire("APPSTORE_KEY_PATH").is_some(),
         },
         auth: Auth {
             jwt_secret,
