@@ -122,6 +122,18 @@ pub struct Auth {
 }
 
 #[derive(Debug, Clone)]
+pub struct Apns {
+    pub key_id: Option<String>,
+    pub team_id: Option<String>,
+    pub key_path: Option<String>,
+    pub bundle_id: String,
+    pub environnement: String,
+    /// Sans ces trois valeurs, aucune notification ne peut être signée : les
+    /// envois sont alors simulés plutôt que de faire échouer les requêtes.
+    pub configure: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct AppStore {
     pub environnement: String,
     /// Sans ces trois valeurs, aucune transaction ne peut être vérifiée
@@ -137,6 +149,7 @@ pub struct Env {
     pub cache: Cache,
     pub media: Media,
     pub auth: Auth,
+    pub apns: Apns,
     pub app_store: AppStore,
     pub web_origin: String,
     pub web_dist: Option<String>,
@@ -279,6 +292,16 @@ pub fn charger() -> Result<Env, String> {
             signing_secret,
             base_url: media_base,
             ttl_url_signee_secondes: entier("MEDIA_URL_TTL_SECONDS", 600),
+        },
+        apns: Apns {
+            key_id: lire("APNS_KEY_ID"),
+            team_id: lire("APNS_TEAM_ID"),
+            key_path: lire("APNS_KEY_PATH"),
+            bundle_id: lire("APNS_BUNDLE_ID").unwrap_or_else(|| "com.weave.app".to_string()),
+            environnement: lire("APNS_ENVIRONMENT").unwrap_or_else(|| "sandbox".to_string()),
+            configure: lire("APNS_KEY_ID").is_some()
+                && lire("APNS_TEAM_ID").is_some()
+                && lire("APNS_KEY_PATH").is_some(),
         },
         app_store: AppStore {
             environnement: lire("APPSTORE_ENVIRONMENT").unwrap_or_else(|| "sandbox".to_string()),
