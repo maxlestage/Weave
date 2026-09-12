@@ -55,6 +55,31 @@ fn remede(nom: &str) -> &'static str {
     }
 }
 
+/// Lit un drapeau, sans piéger qui l'écrit.
+///
+/// La comparaison stricte à `"true"` a coûté une soirée : les deux réglages
+/// TLS d'Heroku étaient bien posés dans le tableau de bord, mais à `True` —
+/// la casse qu'on tape naturellement. Le service les tenait donc pour absents,
+/// réclamait qu'on les définisse alors qu'ils l'étaient, et s'arrêtait sur un
+/// certificat refusé. Un message qui contredit ce qu'on voit à l'écran est le
+/// pire endroit où perdre quelqu'un.
+///
+/// Sont acceptés : `true`, `1`, `yes`, `oui`, `on` — quelle que soit la casse,
+/// espaces en trop compris. Tout le reste vaut faux.
+fn vrai(nom: &str) -> bool {
+    lire(nom).is_some_and(|v| est_vrai(&v))
+}
+
+/// La lecture proprement dite, séparée de l'environnement pour être éprouvable
+/// sans le modifier — muter les variables du processus pendant que d'autres
+/// tests les lisent n'aurait rien prouvé de bon.
+fn est_vrai(valeur: &str) -> bool {
+    matches!(
+        valeur.trim().to_ascii_lowercase().as_str(),
+        "true" | "1" | "yes" | "oui" | "on"
+    )
+}
+
 /// Lit une variable obligatoire, ou note ce qui manque pour le rapport final.
 fn exiger(
     nom: &'static str,
@@ -211,8 +236,8 @@ pub fn charger() -> Result<Env, String> {
 
     let redis_url = exiger("REDIS_URL", Some("redis://127.0.0.1:6379"), mode, &mut problemes);
 
-    let ssl_insecure = lire("DATABASE_SSL_INSECURE").is_some_and(|v| v == "true");
-    let tls_insecure = lire("REDIS_TLS_INSECURE").is_some_and(|v| v == "true");
+    let ssl_insecure = vrai("DATABASE_SSL_INSECURE");
+    let tls_insecure = vrai("REDIS_TLS_INSECURE");
 
     // Chez Heroku, ces deux réglages ne sont pas un confort : sans eux la base
     // et le cache restent injoignables derrière leurs certificats auto-signés.
@@ -327,4 +352,25 @@ fn rapport(titre: &str, problemes: &[Probleme]) -> String {
     s.push_str("\n  Sur Heroku : tableau de bord → Settings → Config Vars,\n");
     s.push_str("  ou le workflow « Heroku — configurer les variables » depuis GitHub.\n\n");
     s
+}
+
+#[cfg(test)]
+mod tests_drapeaux {
+    use super::est_vrai;
+
+    /// Le cas qui a mis le service à terre : la variable était bien définie,
+    /// à `True`, et le service la déclarait manquante.
+    #[test]
+    fn la_casse_ne_decide_pas_de_la_valeur() {
+        for valeur in ["true", "True", "TRUE", "  true  ", "1", "yes", "Oui", "ON"] {
+            assert!(est_vrai(valeur), "« {valeur} » doit valoir vrai");
+        }
+    }
+
+    #[test]
+    fn ce_qui_n_est_pas_une_affirmation_reste_faux() {
+        for valeur in ["false", "False", "0", "non", "", "peut-être", "truc"] {
+            assert!(!est_vrai(valeur), "« {valeur} » doit valoir faux");
+        }
+    }
 }

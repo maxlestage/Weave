@@ -236,7 +236,6 @@ jobs:
               echo "| | |"
               echo "| --- | --- |"
               echo "| Site vitrine | https://$APP.herokuapp.com |"
-              echo "| Documentation de l'API | https://$APP.herokuapp.com/openapi |"
               echo "| Sonde de santé | https://$APP.herokuapp.com/health |"
             else
               echo "## Déployé, mais l'application ne répond pas encore"

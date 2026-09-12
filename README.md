@@ -49,7 +49,7 @@ bun run dev
 cargo run --manifest-path apps/api-rs/Cargo.toml
 ```
 
-- API : http://localhost:3000 — documentation OpenAPI sur `/openapi`
+- API : http://localhost:3000
 - Site : http://localhost:5173
 
 L'API démarre par défaut sur SQLite, et applique ses migrations elle-même.
