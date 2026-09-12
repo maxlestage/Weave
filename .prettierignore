@@ -5,3 +5,6 @@ apps/api/prisma/*.prisma
 apps/api/prisma/migrations*
 bun.lock
 *.md
+
+# Artefacts de compilation Rust : ni écrits ni relus à la main.
+apps/api-rs/target

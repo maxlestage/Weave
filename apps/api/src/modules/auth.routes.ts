@@ -144,11 +144,11 @@ export const authRoutes = new Elysia({ prefix: "/v1/auth", tags: ["Authentificat
         throw unauthorized("Code incorrect.");
       }
 
-      await prisma.otpChallenge.update({
-        where: { id: challenge.id },
-        data: { consumedAt: new Date() },
-      });
-
+      // Le code n'est PAS consommé ici. S'il l'était, l'appel qui répond
+      // « needsProfile » le brûlerait, et le rappel du client avec son nom et
+      // sa date de naissance échouerait sur « code déjà utilisé » : aucun
+      // compte ne pourrait plus être créé. Il est consommé plus bas, une fois
+      // la session réellement ouverte.
       let account = await prisma.account.findUnique({ where: { emailHash: hash } });
       let created = false;
 
@@ -178,6 +178,12 @@ export const authRoutes = new Elysia({ prefix: "/v1/auth", tags: ["Authentificat
         });
         created = true;
       }
+
+      // La session va être ouverte : le code a joué son rôle, on le retire.
+      await prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: { consumedAt: new Date() },
+      });
 
       const session = await issueSession(account.id, body.deviceId, (payload) => jwt.sign(payload));
       await prisma.account.update({ where: { id: account.id }, data: { lastSeenAt: new Date() } });
