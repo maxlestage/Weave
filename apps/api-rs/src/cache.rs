@@ -65,6 +65,14 @@ pub mod cles {
     pub fn identite(compte: &str) -> String {
         format!("{NS}:me:{compte}")
     }
+    /// Dernier état poussé de la Live Activity.
+    pub fn live_activity(compte: &str) -> String {
+        format!("{NS}:la:{compte}")
+    }
+    /// Résumé compact pour Apple Watch.
+    pub fn montre(compte: &str) -> String {
+        format!("{NS}:watch:{compte}")
+    }
     /// Compteur de limitation de débit.
     pub fn limitation(seau: &str, sujet: &str) -> String {
         format!("{NS}:rl:{seau}:{sujet}")

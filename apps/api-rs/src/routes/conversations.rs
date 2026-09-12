@@ -8,6 +8,7 @@ use crate::{
     entities::{accounts, conversations, messages, plans, profiles},
     error::{introuvable, invalide, AppError, Code},
     limitation::{consommer, Regle},
+    live_activity,
     temps::{age_depuis, iso8601},
     AppState,
 };
@@ -266,6 +267,8 @@ async fn clore(
             AppError::new(Code::Internal, "Une erreur interne est survenue.")
         })?;
 
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -313,11 +316,20 @@ async fn ecrire(
     .insert(&transaction)
     .await?;
 
+    let destinataire = if conversation.host_id == compte.id {
+        conversation.guest_id.clone()
+    } else {
+        conversation.host_id.clone()
+    };
+
     let mut maj: conversations::ActiveModel = conversation.into();
     maj.last_message_at = Set(Some(message.sent_at));
     maj.update(&transaction).await?;
 
     transaction.commit().await?;
+
+    // C'est le destinataire dont l'écran change, pas l'expéditeur.
+    live_activity::publier_au_mieux(&state, &destinataire).await;
 
     Ok(Json(json!({
         "id": message.id,

@@ -129,7 +129,15 @@ impl Service {
         .await
         .expect("Redis local requis : le quota n'a pas d'autre source de vérité");
 
-        let state = AppState { db: db.clone(), cache, config: Arc::new(config) };
+        let state = AppState {
+            db: db.clone(),
+            cache,
+            config: Arc::new(config),
+            // APNs n'est pas configuré en test : les envois sont simulés, et
+            // c'est bien ce qu'on veut éprouver — le reste du produit doit
+            // tourner sans certificat Apple.
+            apns: Arc::new(crate::apns::ClientApns::new()),
+        };
         static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let suffixe = format!(
             "{}x{}",
@@ -308,3 +316,4 @@ mod profil;
 mod demandes;
 mod conversations;
 mod offres;
+mod activite;

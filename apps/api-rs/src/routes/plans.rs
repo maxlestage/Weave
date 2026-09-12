@@ -13,6 +13,7 @@ use crate::{
     auth::Authentifie,
     crypto::signer_url_media,
     droits::{droits_pour, exiger_credit},
+    live_activity,
     entities::{accounts, join_requests, plans, profiles},
     error::{invalide, introuvable, AppError, Code},
     limitation::{consommer, regles},
@@ -282,6 +283,10 @@ async fn publier(
     .insert(&state.db)
     .await?;
 
+    // Le prochain plan a peut-être changé : la bannière de l'écran verrouillé
+    // doit le dire tout de suite.
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
     Ok(Json(json!({
         "id": plan.id,
         "title": plan.title,
@@ -331,6 +336,8 @@ async fn annuler(
     }
 
     transaction.commit().await?;
+
+    live_activity::publier_au_mieux(&state, &compte.id).await;
 
     Ok(Json(json!({ "ok": true })))
 }

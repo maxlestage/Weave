@@ -13,6 +13,7 @@ use crate::{
     entities::{accounts, blocks, conversations, join_requests, plans, profiles},
     error::{introuvable, invalide, AppError, Code},
     limitation::{consommer, regles},
+    live_activity,
     temps::{age_depuis, iso8601, jour_local, secondes_avant_minuit},
     AppState,
 };
@@ -224,6 +225,8 @@ async fn retirer(
     )
     .await;
 
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -253,10 +256,16 @@ async fn refuser(
         return Err(invalide("Cette demande est déjà tranchée."));
     }
 
+    let auteur_id = demande.author_id.clone();
     let mut refusee: join_requests::ActiveModel = demande.into();
     refusee.state = Set("refusee".to_string());
     refusee.decided_at = Set(Some(Utc::now().naive_utc()));
     refusee.update(&state.db).await?;
+
+    // Les deux côtés changent : une demande de moins à trancher pour l'hôte,
+    // une attente de moins pour qui l'avait écrite.
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+    live_activity::publier_au_mieux(&state, &auteur_id).await;
 
     Ok(Json(json!({ "ok": true })))
 }
@@ -401,6 +410,13 @@ async fn demander(
         tracing::warn!(erreur = %erreur, "fil non invalidé");
     }
 
+    // L'auteur du plan voit la demande arriver sur son écran verrouillé ; c'est
+    // le seul moment où Weave démarre une Live Activity de lui-même.
+    if let Err(erreur) = live_activity::demarrer_pour(&state, &plan.author_id).await {
+        tracing::warn!(erreur = %erreur, "Live Activity non démarrée");
+    }
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
     Ok(Json(json!({
         "id": demande.id,
         "sentAt": iso8601(demande.sent_at.and_utc()),
@@ -515,6 +531,13 @@ async fn accepter(
             tracing::warn!(erreur = %erreur, "fil non invalidé");
         }
     }
+
+    // Celui qui avait demandé apprend qu'il est attendu : là aussi, la bannière
+    // doit pouvoir apparaître sans que l'application ait été lancée.
+    if let Err(erreur) = live_activity::demarrer_pour(&state, &demande.author_id).await {
+        tracing::warn!(erreur = %erreur, "Live Activity non démarrée");
+    }
+    live_activity::publier_au_mieux(&state, &compte.id).await;
 
     Ok(Json(json!({ "ok": true, "conversationId": conversation.id })))
 }

@@ -10,6 +10,7 @@ mod db;
 mod droits;
 mod error;
 mod limitation;
+mod live_activity;
 mod migrations;
 mod routes;
 mod temps;
@@ -42,6 +43,9 @@ struct AppState {
     db: DatabaseConnection,
     cache: ConnectionManager,
     config: Arc<env::Env>,
+    /// Partagé : le jeton d'autorisation APNs vit dans le client, et en forger
+    /// un par notification coûterait une signature ES256 à chaque fois.
+    apns: Arc<apns::ClientApns>,
 }
 
 #[tokio::main]
@@ -92,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         cache,
         config: Arc::new(config),
+        apns: Arc::new(apns::ClientApns::new()),
     };
 
     let app = construire_routeur(state).layer(CorsLayer::new().allow_origin(origine));
