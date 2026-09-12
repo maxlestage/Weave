@@ -27,15 +27,29 @@ pub async fn ping(manager: &ConnectionManager) -> bool {
 
 /// Même situation que pour la base : certificat auto-signé sur le réseau
 /// interne de l'hébergeur.
+///
+/// La bibliothèque attend un **fragment**, `#insecure`, et rien d'autre : un
+/// paramètre de requête `?insecure=true` est accepté sans broncher par
+/// l'analyse d'URL, puis ignoré. La vérification restait donc active, et la
+/// connexion échouait sur `CaUsedAsEndEntity` — le certificat d'Heroku étant
+/// sa propre autorité.
+///
+/// Le fragment exige un chemin : `rediss://hôte:port#insecure` n'est pas
+/// analysable, `rediss://hôte:port/#insecure` l'est.
 fn url_effective(cfg: &Cache) -> String {
     if !cfg.tls_insecure || !cfg.url.starts_with("rediss://") {
         return cfg.url.clone();
     }
-    if cfg.url.contains("insecure") {
+    if cfg.url.contains('#') {
         return cfg.url.clone();
     }
-    let separateur = if cfg.url.contains('?') { '&' } else { '?' };
-    format!("{}{}insecure=true", cfg.url, separateur)
+    let base = cfg.url.trim_end_matches('/');
+    let apres_schema = &base["rediss://".len()..];
+    if apres_schema.contains('/') {
+        format!("{base}#insecure")
+    } else {
+        format!("{base}/#insecure")
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -244,5 +258,47 @@ async fn decrementer_sans_passer_sous_zero(manager: &ConnectionManager, cle: &st
         .unwrap_or(0);
     if utilisees > 0 {
         let _ = redis::cmd("DECR").arg(&cle).query_async::<i64>(&mut conn).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cache(url: &str, tls_insecure: bool) -> Cache {
+        Cache { url: url.to_string(), tls_insecure }
+    }
+
+    /// Le défaut qui a fait tomber le dyno : `?insecure=true` est une syntaxe
+    /// que l'analyse d'URL accepte et que la bibliothèque ignore. Seul le
+    /// fragment compte, et il lui faut un chemin.
+    #[test]
+    fn le_mode_permissif_passe_par_un_fragment() {
+        assert_eq!(
+            url_effective(&cache("rediss://:mdp@hote:6380", true)),
+            "rediss://:mdp@hote:6380/#insecure"
+        );
+        assert_eq!(
+            url_effective(&cache("rediss://hote:6380/", true)),
+            "rediss://hote:6380/#insecure"
+        );
+        assert_eq!(
+            url_effective(&cache("rediss://hote:6380/0", true)),
+            "rediss://hote:6380/0#insecure"
+        );
+    }
+
+    #[test]
+    fn le_fragment_n_est_pas_ajoute_deux_fois() {
+        let deja = "rediss://hote:6380/#insecure";
+        assert_eq!(url_effective(&cache(deja, true)), deja);
+    }
+
+    /// Sans TLS, ou sans le drapeau, l'URL ne doit pas être touchée : y
+    /// ajouter un fragment ferait échouer une connexion en clair.
+    #[test]
+    fn les_autres_urls_restent_intactes() {
+        assert_eq!(url_effective(&cache("redis://hote:6379", true)), "redis://hote:6379");
+        assert_eq!(url_effective(&cache("rediss://hote:6380", false)), "rediss://hote:6380");
     }
 }
