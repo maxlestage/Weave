@@ -2,6 +2,7 @@
 //!
 //! Pile : Rust + Axum + SeaORM + Redis.
 
+mod apns;
 mod auth;
 mod cache;
 mod crypto;
