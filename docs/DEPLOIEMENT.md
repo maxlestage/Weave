@@ -105,6 +105,25 @@ inline fera le vrai travail :
 
 Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
 
+#### Si vous préférez un buildpack Bun tiers
+
+Il en existe plusieurs, et ils fonctionnent — à une condition. Ces buildpacks
+appellent, dans cet ordre : `heroku-prebuild`, puis `build`, puis
+`heroku-postbuild`.
+
+Or `bun build` de l'API a besoin des clients Prisma. S'ils n'existent pas
+encore, l'étape `build` échoue à moitié : le site sort, l'API non, et le dyno
+s'arrête au démarrage sur `Cannot find module ../generated/prisma/client.ts`
+— un message qui ne désigne pas l'étape manquante.
+
+C'est pourquoi `heroku-prebuild` engendre les clients : ils doivent exister
+**avant** `build`. Rien à configurer, le script est dans le dépôt.
+
+Ce que ces buildpacks ne font pas, en revanche, c'est l'élagage des dépendances
+de développement ni le retrait du Node.js inutilisé. Le plafond de 500 Mo
+redevient donc un risque, que `bin/compile` écarte de son côté (401 Mo
+mesurés). À surveiller au premier déploiement.
+
 Le buildpack installe Bun à la version indiquée par `packageManager`, construit
 les clients Prisma et le site, puis élague les dépendances de développement. Le
 `Procfile` applique les migrations en phase de publication, puis démarre l'API.
