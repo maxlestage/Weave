@@ -12,6 +12,7 @@ mod error;
 mod limitation;
 mod live_activity;
 mod migrations;
+mod purge;
 mod routes;
 mod temps;
 
@@ -107,6 +108,21 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // `weave-api purge` : même logique que `migrate` — un processus séparé,
+    // qui ne démarre ni serveur ni cache, et qu'un planificateur appelle.
+    if std::env::args().nth(1).as_deref() == Some("purge") {
+        let bilan = purge::executer(&db).await?;
+        println!("  • messages effacés : {}", bilan.messages_effaces);
+        println!("  • comptes effacés  : {}", bilan.comptes_effaces);
+        if bilan.comptes_differes > 0 {
+            println!(
+                "  • comptes différés : {} (signalement encore ouvert)",
+                bilan.comptes_differes
+            );
+        }
+        return Ok(());
+    }
+
     let cache = cache::connecter(&config.cache).await?;
 
     let origine = if config.is_production() {
@@ -159,6 +175,7 @@ fn construire_routeur(state: AppState) -> Router {
         .merge(routes::conversations::routes())
         .merge(routes::moderation::routes())
         .merge(routes::devices::routes())
+        .merge(routes::export::routes())
         .merge(routes::media::routes())
         .merge(routes::fil::routes())
         .merge(routes::billing::routes())
