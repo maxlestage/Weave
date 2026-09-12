@@ -7,16 +7,20 @@ edition = "2024"
 anyhow = "1.0.104"
 argon2 = "0.6.0"
 axum = "0.8.9"
+base64 = "0.23.1"
 chrono = { version = "0.4.45", features = ["serde"] }
 dotenvy = "0.15.7"
 hex = "0.4.3"
+hmac = "0.13.0"
 jsonwebtoken = "11.0.0"
+password-hash = { version = "0.6.1", features = ["phc", "alloc", "getrandom"] }
 rand = "0.10.2"
 redis = { version = "1.7.0", features = ["tokio-comp", "tokio-rustls-comp", "connection-manager"] }
 sea-orm = { version = "2.0.2", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "sqlx-sqlite"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
+subtle = "2.6.1"
 thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["fs", "cors", "trace"] }

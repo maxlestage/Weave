@@ -3,6 +3,7 @@
 //! Pile : Rust + Axum + SeaORM + Redis.
 
 mod cache;
+mod crypto;
 mod db;
 mod env;
 
