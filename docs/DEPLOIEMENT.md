@@ -58,7 +58,6 @@ ouvrir directement :
 
 - `https://VOTRE-APP.herokuapp.com` → le site vitrine
 - `https://VOTRE-APP.herokuapp.com/health` → doit afficher `"status":"ok"`
-- `https://VOTRE-APP.herokuapp.com/openapi` → la documentation de l'API
 
 ### A4. Déployer automatiquement ensuite (facultatif)
 
