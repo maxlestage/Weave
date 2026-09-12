@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::moderation::routes())
         .merge(routes::devices::routes())
         .merge(routes::media::routes())
+        .merge(routes::fil::routes())
         .layer(CorsLayer::new().allow_origin(origine))
         .with_state(state);
 
