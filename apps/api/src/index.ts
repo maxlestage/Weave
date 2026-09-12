@@ -1,21 +1,14 @@
 /**
  * Point d'entrée de l'API Weave.
  *
- * Pile : Node.js + Elysia + Prisma + Redis.
- *
- * Elysia est écrit pour l'API web standard (`Request`/`Response`). L'adaptateur
- * `@elysiajs/node` fait le pont avec le serveur HTTP de Node : c'est la seule
- * ligne du service qui connaît la plateforme d'exécution.
+ * Pile : Bun + Elysia + Prisma + Redis. Aucun Node.js dans la chaîne, ni au
+ * développement ni en production.
  */
 import { Elysia } from "elysia";
-import { node } from "@elysiajs/node";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { serverTiming } from "@elysiajs/server-timing";
-import { existsSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { staticPlugin } from "@elysiajs/static";
 import { MAX_OPEN_PLANS, REQUESTS_PER_DAY_FLOOR } from "@weave/contracts";
 import { env } from "./env.ts";
 import { AppError } from "./lib/errors.ts";
@@ -40,7 +33,8 @@ import { requestRoutes } from "./modules/requests.routes.ts";
  * `WEB_DIST_PATH` n'est pas défini — Vite s'en charge — et ce greffon
  * n'enregistre alors aucune route.
  */
-const vitrineDisponible = env.webDist !== undefined && existsSync(`${env.webDist}/index.html`);
+const vitrineDisponible =
+  env.webDist !== undefined && (await Bun.file(`${env.webDist}/index.html`).exists());
 
 if (env.webDist !== undefined && !vitrineDisponible) {
   // Un site absent ne doit pas empêcher l'API de démarrer : elle rend un
@@ -50,66 +44,22 @@ if (env.webDist !== undefined && !vitrineDisponible) {
 
 const vitrine = !vitrineDisponible
   ? new Elysia({ name: "weave/vitrine-absente" })
-  : new Elysia({ name: "weave/vitrine" }).get(
-      "/*",
-      async ({ params, set }) => {
-        const demande = (params as { "*": string })["*"] ?? "";
-        const fichier = fichierDeLaVitrine(demande);
+  : new Elysia({ name: "weave/vitrine" })
+      .use(
+        await staticPlugin({
+          assets: env.webDist!,
+          prefix: "/",
+          indexHTML: true,
+          maxAge: 3600,
+        }),
+      )
+      // `indexHTML` ne couvre pas la racine elle-même : sans cette route,
+      // ouvrir l'adresse du service renvoie une 404.
+      .get("/", () => Bun.file(`${env.webDist}/index.html`), {
+        detail: { summary: "Site vitrine", tags: ["Service"] },
+      });
 
-        if (fichier === null) {
-          // Chemin sortant du dossier : on ne sert que la page d'accueil.
-          set.status = 404;
-          return "Introuvable.";
-        }
-
-        set.headers["content-type"] =
-          TYPES[fichier.slice(fichier.lastIndexOf("."))] ?? "application/octet-stream";
-        // Les ressources compilées portent une empreinte dans leur nom : elles
-        // peuvent être mises en cache longtemps. La page, elle, change à chaque
-        // publication.
-        set.headers["cache-control"] = fichier.endsWith(".html")
-          ? "no-cache"
-          : "public, max-age=31536000, immutable";
-        return readFile(fichier);
-      },
-      { detail: { summary: "Site vitrine", tags: ["Service"] } },
-    );
-
-/** Types MIME des ressources produites par Vite. */
-const TYPES: Readonly<Record<string, string>> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".webp": "image/webp",
-  ".woff2": "font/woff2",
-  ".json": "application/json; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".txt": "text/plain; charset=utf-8",
-};
-
-/**
- * Résout un chemin demandé vers un fichier du site, ou vers la page d'accueil.
- *
- * Le site est une application d'une seule page : toute adresse inconnue doit
- * rendre `index.html`, pas une 404. En revanche un chemin qui tenterait de
- * sortir du dossier compilé est refusé — la vérification porte sur le chemin
- * résolu, seule façon fiable de couvrir les `..` encodés.
- */
-function fichierDeLaVitrine(demande: string): string | null {
-  const racine = resolve(env.webDist!);
-  const accueil = join(racine, "index.html");
-  if (demande === "") return accueil;
-
-  const candidat = resolve(racine, demande);
-  if (candidat !== racine && !candidat.startsWith(racine + sep)) return null;
-
-  return existsSync(candidat) && statSync(candidat).isFile() ? candidat : accueil;
-}
-
-export const app = new Elysia({ adapter: node() })
+export const app = new Elysia()
   .use(
     cors({
       origin: env.isProduction ? [env.webOrigin] : true,
@@ -223,11 +173,7 @@ export type WeaveApp = typeof app;
 /* Démarrage                                                           */
 /* ------------------------------------------------------------------ */
 
-// `import.meta.main` n'existe pas sous Node : on compare le module d'entrée.
-const lanceDirectement =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (lanceDirectement) {
+if (import.meta.main) {
   app.listen(env.port);
 
   log.info("API Weave démarrée", {

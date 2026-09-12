@@ -1,27 +1,19 @@
 /**
- * Accès Redis, par ioredis.
+ * Accès Redis.
  *
- * Le client expose une méthode par commande, plus `call()` pour les commandes
- * brutes. Le reste du code n'utilise que `send()`, défini plus bas : une seule
- * façon d'appeler Redis dans tout le service, quelle que soit la commande.
+ * Weave n'embarque aucune bibliothèque cliente tierce : Bun expose un client
+ * Redis natif (`RedisClient`), déjà instrumenté et sans dépendance à installer.
+ * C'est cohérent avec le choix « Bun de bout en bout » et cela réduit la
+ * surface de dépendances du service.
  */
-import Redis from "ioredis";
+import { RedisClient } from "bun";
 import { env } from "../env.ts";
 
-const client = new Redis(env.redis.url, {
-  connectTimeout: 2_000,
-  /**
-   * Toute commande est bornée : au-delà, elle est rejetée plutôt que d'attendre
-   * le retour du serveur. Le cache est reconstructible — échouer vite vaut
-   * mieux qu'attendre, et c'est ce qui empêche la sonde de santé de rester sans
-   * réponse quand le cache est injoignable.
-   *
-   * La file d'attente hors connexion reste active : sans elle, les toutes
-   * premières commandes du démarrage seraient rejetées pendant les quelques
-   * millisecondes de l'établissement de la connexion.
-   */
-  commandTimeout: 2_000,
-  maxRetriesPerRequest: 2,
+export const redis = new RedisClient(env.redis.url, {
+  connectionTimeout: 2_000,
+  idleTimeout: 0,
+  autoReconnect: true,
+  maxRetries: 10,
   // Voir `env.redis.tlsInsecure` : certains hébergeurs présentent un
   // certificat auto-signé sur leur réseau interne.
   ...(env.redis.tlsInsecure ? { tls: { rejectUnauthorized: false } } : {}),
@@ -29,44 +21,16 @@ const client = new Redis(env.redis.url, {
 
 let ready = false;
 
-client.on("ready", () => {
+redis.onconnect = () => {
   ready = true;
-});
-client.on("end", () => {
+};
+redis.onclose = () => {
   ready = false;
-});
-// Sans cet écouteur, une erreur de connexion devient une exception non
-// interceptée et emporte le processus : un cache en panne arrêterait le
-// service, alors qu'il doit seulement le dégrader.
-client.on("error", () => {
-  ready = false;
-});
+};
 
 export function redisReady(): boolean {
   return ready;
 }
-
-/**
- * Façade minimale, reprise de l'ancien client : le reste du code n'a pas à
- * savoir quelle bibliothèque est dessous.
- */
-export const redis = {
-  /** Commande brute : `send("EVAL", [...])`, `send("SCAN", [...])`. */
-  send(commande: string, args: (string | number)[]): Promise<unknown> {
-    return client.call(commande, ...args) as Promise<unknown>;
-  },
-  get: (key: string) => client.get(key),
-  set: (key: string, value: string, mode?: string, ttl?: number) =>
-    mode !== undefined && ttl !== undefined
-      ? client.set(key, value, mode as "EX", ttl)
-      : client.set(key, value),
-  del: (key: string) => client.del(key),
-  incr: (key: string) => client.incr(key),
-  decr: (key: string) => client.decr(key),
-  expire: (key: string, seconds: number) => client.expire(key, seconds),
-  ttl: (key: string) => client.ttl(key),
-  close: () => client.quit(),
-};
 
 /**
  * Vérifie la disponibilité du cache, pour la sonde de santé.
@@ -163,5 +127,5 @@ export async function eval_(script: string, keys: string[], args: string[]): Pro
 }
 
 export async function disconnectRedis(): Promise<void> {
-  await client.quit();
+  redis.close();
 }

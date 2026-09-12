@@ -1,5 +1,5 @@
 # Retiré du slug avant construction : rien de tout cela n'est nécessaire pour
-# exécuter l'API.
+# exécuter l'API, et le slug Heroku est plafonné à 500 Mo.
 apps/ios
 docs
 *.md

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Dérive `prisma/schema.sqlite.prisma` à partir du schéma PostgreSQL.
  *
@@ -9,12 +9,10 @@
  * une construction non portable est introduite dans le schéma source.
  */
 
-import { readFile, writeFile } from "node:fs/promises";
-
 const SOURCE = new URL("../apps/api/prisma/schema.prisma", import.meta.url).pathname;
 const TARGET = new URL("../apps/api/prisma/schema.sqlite.prisma", import.meta.url).pathname;
 
-const source = await readFile(SOURCE, "utf8");
+const source = await Bun.file(SOURCE).text();
 
 /* --- Garde-fous de portabilité ------------------------------------ */
 
@@ -39,7 +37,7 @@ if (violations.length > 0) {
 /* --- Substitution du datasource et de la sortie du client ---------- */
 
 const header = `// FICHIER GÉNÉRÉ — NE PAS MODIFIER À LA MAIN.
-// Dérivé de prisma/schema.prisma par \`npm run db:sqlite\`.
+// Dérivé de prisma/schema.prisma par \`bun run db:sqlite\`.
 // Cible : SQLite, développement local uniquement. La production tourne sur PostgreSQL.
 
 `;
@@ -54,5 +52,5 @@ let out = source
 // Retire l'en-tête de documentation du fichier source (remplacé par le nôtre).
 out = out.replace(/^\/\/[^\n]*\n(\/\/[^\n]*\n|\n)*/, "");
 
-await writeFile(TARGET, header + out);
+await Bun.write(TARGET, header + out);
 console.log(`Schéma SQLite dérivé → ${TARGET.replace(process.cwd() + "/", "")}`);

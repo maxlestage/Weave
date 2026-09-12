@@ -89,39 +89,49 @@ jobs:
           echo "PILE_AVANT=$pile" >> "$GITHUB_ENV"
           echo "BP_AVANT=$bp" >> "$GITHUB_ENV"
 
-      - name: S'assurer de la pile et du buildpack Node.js
-        # Weave tourne sous Node.js, pour lequel Heroku fournit un buildpack
-        # officiel : la pile ordinaire suffit, et `heroku/nodejs` est même
-        # détecté tout seul à partir de package.json. On le pose explicitement
-        # pour qu'une application créée autrement, ou passée en pile conteneur
-        # lors d'une tentative précédente, revienne dans le rang.
+      - name: Forcer la pile « container »
+        # Étape décisive. Sans elle, Heroku ignore heroku.yml, croit à une
+        # application Node.js et lance `npm install` — qui échoue aussitôt,
+        # `workspace:*` étant une syntaxe que seul Bun comprend.
+        #
+        # La réponse est relue : annoncer « container » sans vérifier laisserait
+        # passer exactement le problème que cette étape doit empêcher.
         run: |
           curl -sS -X PATCH "https://api.heroku.com/apps/$APP" \
             -H "Accept: $ACCEPT" \
             -H "Authorization: Bearer $HEROKU_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"build_stack":"heroku-24"}' > /tmp/app.json
+            -d '{"build_stack":"container"}' > /tmp/app.json
 
           pile=$(python3 -c "import json;print(json.load(open('/tmp/app.json')).get('build_stack',{}).get('name',''))")
-          if [ "$pile" != "heroku-24" ]; then
-            echo "::error::La pile de construction vaut « $pile » au lieu de « heroku-24 »."
+
+          if [ "$pile" != "container" ]; then
+            echo "::error::La pile de construction vaut « $pile » au lieu de « container »."
+            echo "Réponse de l'API :"
             cat /tmp/app.json
             exit 1
           fi
+          echo "Pile de construction : container"
 
-          code=$(curl -sS -o /tmp/bp.json -w '%{http_code}' -X PUT \
+      - name: Retirer les buildpacks
+        # Sur la pile « container », les buildpacks ne servent plus à rien. Les
+        # laisser en place entretient l'ambiguïté : le tableau de bord continue
+        # d'afficher « Node.js », et un déploiement fait par un autre chemin
+        # peut encore tenter de les utiliser.
+        run: |
+          reponse=$(curl -sS -w '\n%{http_code}' -X PUT \
             "https://api.heroku.com/apps/$APP/buildpack-installations" \
             -H "Accept: $ACCEPT" \
             -H "Authorization: Bearer $HEROKU_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"updates":[{"buildpack":"heroku/nodejs"}]}')
+            -d '{"updates":[]}')
+          code=$(echo "$reponse" | tail -1)
 
-          if [ "$code" != "200" ]; then
-            echo "::error::Impossible de poser le buildpack Node.js (HTTP $code)."
-            cat /tmp/bp.json
-            exit 1
+          if [ "$code" = "200" ]; then
+            echo "Buildpacks retirés."
+          else
+            echo "::warning::Retrait des buildpacks impossible (HTTP $code). Sans conséquence sur la pile container, mais le tableau de bord continuera d'afficher un buildpack."
           fi
-          echo "Pile heroku-24, buildpack heroku/nodejs."
 
       - name: Brancher PostgreSQL et le magasin clé-valeur
         run: |
