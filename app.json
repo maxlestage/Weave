@@ -71,7 +71,7 @@
     "test": {
       "addons": ["heroku-redis:mini"],
       "scripts": {
-        "test": "bun run db:sqlite && bun run db:generate && bun test"
+        "test": "cargo test --manifest-path apps/api-rs/Cargo.toml"
       }
     }
   }
