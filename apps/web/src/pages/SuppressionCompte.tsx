@@ -11,7 +11,7 @@
  * quelqu'un qui veut partir ne doit pas avoir à chercher.
  */
 
-import { ACCOUNT_PURGE_DAYS, MESSAGE_RETENTION_DAYS } from "@weave/contracts";
+import { ACCOUNT_PURGE_DAYS } from "@weave/contracts";
 import { AC, Page, type Article } from "./Page.tsx";
 import { CONTACT, MISE_A_JOUR } from "./identite.ts";
 
@@ -71,7 +71,10 @@ const ARTICLES: readonly Article[] = [
           <li>vos critères de recherche et vos consentements en cours ;</li>
           <li>vos plans, publiés comme passés ;</li>
           <li>les demandes que vous avez envoyées et reçues ;</li>
-          <li>vos conversations et les messages qui s'y trouvent ;</li>
+          <li>
+            vos conversations et vos messages — y compris ceux que vous aviez envoyés, qui
+            disparaissent aussi de l'écran de vos correspondants ;
+          </li>
           <li>vos appareils liés et leurs jetons de notification.</li>
         </ul>
         <p>
@@ -95,17 +98,20 @@ const ARTICLES: readonly Article[] = [
           <li>
             <strong>Les signalements vous concernant</strong>, le temps d'instruire le dossier. Sans
             cela, supprimer son compte suffirait à effacer les preuves d'un comportement qu'on vient
-            de signaler.
+            de signaler. Tant qu'un signalement reste ouvert, la purge de votre compte est donc
+            reportée — il demeure invisible et inutilisable dans l'intervalle, puis il est effacé
+            dès le dossier clos.
           </li>
           <li>
-            <strong>Les pièces comptables</strong> liées à vos achats — identifiant de transaction,
-            produit, montant. La loi fiscale impose de les conserver dix ans, et ne nous laisse pas
-            le choix.
+            <strong>Les traces techniques</strong> de vos actions sensibles, dans notre journal
+            d'audit — mais <em>détachées de vous</em> : l'action reste consignée, son auteur devient
+            anonyme. C'est ce qui permet d'établir qu'un incident a eu lieu sans continuer à vous
+            désigner.
           </li>
           <li>
-            <strong>Les messages que vous avez envoyés</strong> restent lisibles par leurs
-            destinataires jusqu'à la purge de leur conversation, soit {MESSAGE_RETENTION_DAYS} jours
-            après sa clôture. Ils font partie de leur conversation autant que de la vôtre.
+            <strong>Vos factures, chez Apple.</strong> C'est Apple qui encaisse et qui édite les
+            justificatifs comptables ; ils suivent ses propres durées de conservation, que nous ne
+            maîtrisons pas. Notre copie des transactions, elle, part avec votre compte.
           </li>
         </ul>
       </>

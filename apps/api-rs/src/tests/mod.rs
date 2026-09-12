@@ -314,6 +314,7 @@ mod vitrine;
 mod session;
 mod profil;
 mod demandes;
+mod export;
 mod conversations;
 mod offres;
 mod activite;
