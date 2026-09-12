@@ -10,8 +10,13 @@ mod db;
 mod droits;
 mod error;
 mod limitation;
+mod live_activity;
+mod migrations;
 mod routes;
 mod temps;
+
+#[cfg(test)]
+mod tests;
 mod env;
 
 // Les 18 entités sont engendrées d'un bloc depuis la base ; celles qu'aucune
@@ -19,7 +24,14 @@ mod env;
 #[allow(dead_code)]
 mod entities;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::{Request, State},
+    http::{header, HeaderValue, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use redis::aio::ConnectionManager;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde_json::json;
@@ -31,6 +43,9 @@ struct AppState {
     db: DatabaseConnection,
     cache: ConnectionManager,
     config: Arc<env::Env>,
+    /// Partagé : le jeton d'autorisation APNs vit dans le client, et en forger
+    /// un par notification coûterait une signature ES256 à chaque fois.
+    apns: Arc<apns::ClientApns>,
 }
 
 #[tokio::main]
@@ -49,6 +64,23 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let db = db::connecter(&config.db).await?;
+
+    // `weave-api migrate` : la phase de publication d'Heroku l'appelle avant
+    // que la nouvelle version ne reçoive du trafic. Si elle échoue, la version
+    // précédente reste en ligne — d'où un processus séparé, qui ne démarre ni
+    // le serveur ni le cache.
+    if std::env::args().nth(1).as_deref() == Some("migrate") {
+        let posees = migrations::appliquer(&db).await?;
+        if posees.is_empty() {
+            println!("  • aucune migration à appliquer");
+        } else {
+            for nom in posees {
+                println!("  • appliquée : {nom}");
+            }
+        }
+        return Ok(());
+    }
+
     let cache = cache::connecter(&config.cache).await?;
 
     let origine = if config.is_production() {
@@ -64,22 +96,10 @@ async fn main() -> anyhow::Result<()> {
         db,
         cache,
         config: Arc::new(config),
+        apns: Arc::new(apns::ClientApns::new()),
     };
 
-    let app = Router::new()
-        .route("/health", get(health))
-        .merge(routes::auth::routes())
-        .merge(routes::me::routes())
-        .merge(routes::plans::routes())
-        .merge(routes::requests::routes())
-        .merge(routes::conversations::routes())
-        .merge(routes::moderation::routes())
-        .merge(routes::devices::routes())
-        .merge(routes::media::routes())
-        .merge(routes::fil::routes())
-        .merge(routes::billing::routes())
-        .layer(CorsLayer::new().allow_origin(origine))
-        .with_state(state);
+    let app = construire_routeur(state).layer(CorsLayer::new().allow_origin(origine));
 
     let ecoute = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!(port, database = driver, "API Weave démarrée");
@@ -95,6 +115,93 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+/// Assemble toutes les routes du service.
+///
+/// Extrait de `main` pour que les tests puissent monter le service entier —
+/// et non chaque gestionnaire isolément. Un gestionnaire juste derrière un
+/// routage faux ne rend toujours pas le bon service.
+fn construire_routeur(state: AppState) -> Router {
+    let vitrine = state.config.web_dist.clone();
+    let api = Router::new()
+        .route("/health", get(health))
+        .merge(routes::auth::routes())
+        .merge(routes::me::routes())
+        .merge(routes::plans::routes())
+        .merge(routes::requests::routes())
+        .merge(routes::conversations::routes())
+        .merge(routes::moderation::routes())
+        .merge(routes::devices::routes())
+        .merge(routes::media::routes())
+        .merge(routes::fil::routes())
+        .merge(routes::billing::routes())
+        .with_state(state);
+
+    monter_vitrine(api, vitrine.as_deref())
+}
+
+/// Monte le site vitrine sous les routes de l'API.
+///
+/// Le site est statique et peu visité : lui dédier un second dyno doublerait
+/// la facture sans rien apporter. Il passe en recours, jamais devant l'API —
+/// un fichier nommé `health` dans `dist` ne doit pas éteindre la sonde.
+///
+/// En développement il n'y a pas de `dist` : `WEB_DIST_PATH` n'est pas défini
+/// et aucune route n'est ajoutée. Un site absent là où on l'attendait est
+/// signalé, mais n'empêche pas l'API de démarrer : l'application iOS en
+/// dépend, et elle n'a que faire de la vitrine.
+fn monter_vitrine(routeur: Router, chemin: Option<&str>) -> Router {
+    let Some(chemin) = chemin else {
+        return routeur;
+    };
+
+    if !std::path::Path::new(chemin).join("index.html").is_file() {
+        tracing::warn!(chemin, "site vitrine introuvable, l'API démarre sans lui");
+        return routeur;
+    }
+
+    let fichiers = tower_http::services::ServeDir::new(chemin)
+        // Sans cela, `/` — un répertoire — rend une 404 : c'est l'adresse du
+        // service elle-même qui serait vide.
+        .append_index_html_on_directories(true);
+
+    let vitrine = Router::new()
+        .fallback_service(fichiers)
+        .layer(axum::middleware::from_fn(servir_vitrine));
+
+    routeur.fallback_service(vitrine)
+}
+
+/// Ce que le recours ajoute autour des fichiers : la méthode, puis le cache.
+///
+/// La construction appose une empreinte au nom des scripts, des styles et des
+/// images : leur contenu ne change jamais sous un même nom, ils se gardent
+/// indéfiniment. `index.html`, lui, garde les noms des autres : le mettre en
+/// cache une heure servirait l'ancien site une heure après chaque publication.
+async fn servir_vitrine(requete: Request, suite: Next) -> Response {
+    // Un POST sur une adresse d'API mal orthographiée arrive ici, et le
+    // service de fichiers répondrait « méthode interdite » : un contresens,
+    // qui laisse croire que la ressource existe. Elle n'existe pas.
+    if !matches!(*requete.method(), axum::http::Method::GET | axum::http::Method::HEAD) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let chemin = requete.uri().path();
+    let html = chemin == "/" || chemin.ends_with('/') || chemin.ends_with(".html");
+
+    let mut reponse = suite.run(requete).await;
+    if reponse.status().is_success() {
+        reponse.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(if html {
+                "no-cache"
+            } else {
+                "public, max-age=31536000, immutable"
+            }),
+        );
+    }
+    reponse
 }
 
 /// Sonde de santé.
