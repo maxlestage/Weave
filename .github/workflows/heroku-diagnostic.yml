@@ -1,0 +1,193 @@
+name: Heroku — diagnostic
+
+# Rapporte ce qu'Heroku a réellement fait : les buildpacks configurés, les
+# dernières constructions et la sortie de la dernière qui a échoué.
+#
+# Lire un journal de construction depuis le tableau de bord suppose un
+# ordinateur sous la main. Ce workflow ne demande que le secret déjà posé pour
+# le déploiement, et rend la même chose dans le résumé de l'exécution.
+#
+# Il ne modifie rien : que des lectures.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "Identifiant d'une construction précise (vide = la dernière qui a échoué)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostiquer:
+    name: Interroger Heroku
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      # L'API Heroku accepte indifféremment le nom de l'application ou son
+      # identifiant. Le second est lisible dans l'URL du tableau de bord, ce
+      # qui évite d'exiger une variable de dépôt pour un simple diagnostic.
+      APP: ${{ vars.HEROKU_APP_NAME || '433a0dfb-c04a-488a-bdbb-6b9278137e75' }}
+      BUILD_ID: ${{ inputs.build_id }}
+
+    steps:
+      - name: Vérifier la configuration
+        run: |
+          if [ -z "$HEROKU_API_KEY" ]; then
+            echo "::error::Secret HEROKU_API_KEY absent (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          echo "Application interrogée : $APP"
+
+      # ----------------------------------------------------------------
+      # Les buildpacks
+      #
+      # C'est la première chose à savoir : un buildpack Bun tiers n'installe
+      # pas la chaîne Rust, et le binaire ne serait jamais construit.
+      # ----------------------------------------------------------------
+      - name: Buildpacks configurés
+        run: |
+          curl -sS "https://api.heroku.com/apps/$APP/buildpack-installations" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+          | jq -r '.[] | "  \(.ordinal + 1). \(.buildpack.name // .buildpack.url)"' \
+          | tee buildpacks.txt
+
+          {
+            echo "## Buildpacks"
+            echo ""
+            echo '```'
+            cat buildpacks.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ----------------------------------------------------------------
+      # La configuration
+      #
+      # Seuls les NOMS sont rapportés. Une valeur de configuration est un
+      # secret : elle n'a rien à faire dans un journal d'exécution, que
+      # n'importe qui ayant accès au dépôt peut lire.
+      # ----------------------------------------------------------------
+      - name: Variables posées (noms seuls)
+        run: |
+          curl -sS "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+          | jq -r 'keys[]' | sort | tee noms-config.txt
+
+          attendues="JWT_SECRET MEDIA_SIGNING_SECRET DATABASE_SSL_INSECURE REDIS_TLS_INSECURE PUBLIC_WEB_ORIGIN MEDIA_BASE_URL DATABASE_URL REDIS_URL"
+          manquantes=""
+          for nom in $attendues; do
+            grep -qx "$nom" noms-config.txt || manquantes="$manquantes $nom"
+          done
+
+          {
+            echo "## Variables de configuration"
+            echo ""
+            echo "Posées : $(wc -l < noms-config.txt)"
+            echo ""
+            echo '```'
+            cat noms-config.txt
+            echo '```'
+            if [ -n "$manquantes" ]; then
+              echo ""
+              echo "**Manquantes :**$manquantes"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ----------------------------------------------------------------
+      # Les constructions
+      # ----------------------------------------------------------------
+      - name: Dernières constructions
+        run: |
+          curl -sS "https://api.heroku.com/apps/$APP/builds" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Range: created_at ..; order=desc, max=10" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -o builds.json
+
+          jq -r '.[] | "  \(.created_at)  \(.status)  \(.source_blob.version // "—")  \(.id)"' builds.json \
+            | tee liste.txt
+
+          {
+            echo "## Dernières constructions"
+            echo ""
+            echo '```'
+            cat liste.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Celle à examiner : celle demandée, sinon la dernière en échec,
+          # sinon simplement la dernière.
+          cible="$BUILD_ID"
+          [ -z "$cible" ] && cible=$(jq -r '[.[] | select(.status=="failed")][0].id // empty' builds.json)
+          [ -z "$cible" ] && cible=$(jq -r '.[0].id // empty' builds.json)
+          echo "CIBLE=$cible" >> "$GITHUB_ENV"
+
+      - name: Sortie de la construction
+        run: |
+          if [ -z "${CIBLE:-}" ]; then
+            echo "Aucune construction à examiner." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          flux=$(curl -sS "https://api.heroku.com/apps/$APP/builds/$CIBLE" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            | jq -r '.output_stream_url // empty')
+
+          if [ -z "$flux" ]; then
+            echo "::error::Construction $CIBLE sans flux de sortie."
+            exit 1
+          fi
+
+          # L'URL est signée : elle se lit sans en-tête d'autorisation.
+          curl -sS "$flux" -o sortie.txt || true
+          echo "Construction $CIBLE — $(wc -l < sortie.txt) lignes"
+
+          # Le journal complet dans les logs du job, pour le relire en entier.
+          echo "----- début de la sortie de construction -----"
+          cat sortie.txt
+          echo "----- fin de la sortie de construction -----"
+
+          # Et la fin dans le résumé, là où se trouve la cause.
+          {
+            echo "## Sortie de construction — $CIBLE"
+            echo ""
+            echo "### Les 60 dernières lignes"
+            echo '```'
+            tail -60 sortie.txt
+            echo '```'
+            echo ""
+            echo "### Lignes d'erreur"
+            echo '```'
+            grep -nEi "error|fatal|failed|not found|no such|killed|signal: 9|cannot|denied|panic" sortie.txt \
+              | tail -40 || echo "(aucune ligne ne correspond)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Journal de l'application
+        run: |
+          session=$(curl -sS -X POST "https://api.heroku.com/apps/$APP/log-sessions" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -d '{"lines":200,"tail":false}' \
+            | jq -r '.logplex_url // empty')
+
+          if [ -z "$session" ]; then
+            echo "Pas de session de journal disponible." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Le dyno peut n'avoir rien écrit : ce n'est pas une erreur.
+          curl -sS "$session" -o journal.txt || true
+          {
+            echo "## Journal de l'application (200 dernières lignes)"
+            echo ""
+            echo '```'
+            grep -v "sample#" journal.txt | tail -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
