@@ -4,6 +4,7 @@ pub mod auth;
 pub mod billing;
 pub mod conversations;
 pub mod devices;
+pub mod export;
 pub mod me;
 pub mod fil;
 pub mod media;
