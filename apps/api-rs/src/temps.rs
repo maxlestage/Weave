@@ -128,3 +128,35 @@ mod tests_iso {
         assert!(!iso8601(t).contains("+00:00"));
     }
 }
+
+/// Distance à vol d'oiseau, en kilomètres arrondis.
+///
+/// Les coordonnées sont déjà arrondies au kilomètre en base : Weave n'expose
+/// jamais de position précise, et cette distance n'est donc qu'un ordre de
+/// grandeur — c'est voulu.
+pub fn distance_km(a_lat: f64, a_lon: f64, b_lat: f64, b_lon: f64) -> f64 {
+    const RAYON_TERRE_KM: f64 = 6371.0;
+    let d_lat = (b_lat - a_lat).to_radians();
+    let d_lon = (b_lon - a_lon).to_radians();
+    let h = (d_lat / 2.0).sin().powi(2)
+        + a_lat.to_radians().cos() * b_lat.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
+    (2.0 * RAYON_TERRE_KM * h.sqrt().min(1.0).asin()).round()
+}
+
+#[cfg(test)]
+mod tests_distance {
+    use super::*;
+
+    #[test]
+    fn la_distance_correspond_aux_reperes_connus() {
+        // Lyon → Paris : environ 390 km à vol d'oiseau.
+        let d = distance_km(45.75, 4.85, 48.85, 2.35);
+        assert!((385.0..=395.0).contains(&d), "Lyon-Paris valait {d} km");
+        // Le même point est à zéro, et la distance est symétrique.
+        assert_eq!(distance_km(45.75, 4.85, 45.75, 4.85), 0.0);
+        assert_eq!(
+            distance_km(45.75, 4.85, 48.85, 2.35),
+            distance_km(48.85, 2.35, 45.75, 4.85)
+        );
+    }
+}
