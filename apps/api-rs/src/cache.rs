@@ -129,3 +129,69 @@ pub async fn compteur(manager: &ConnectionManager, cle: &str) -> i64 {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0)
 }
+
+/// Consomme une demande du quota du jour, de façon atomique.
+///
+/// Le script incrémente puis compare : si le plafond est dépassé, il annule son
+/// propre incrément et renvoie -1. Une vérification suivie d'une écriture en
+/// deux temps laisserait passer deux demandes concurrentes sur la dernière
+/// place — et l'invariant central du produit ne tiendrait plus.
+const CONSOMMER_DEMANDE_LUA: &str = r#"
+local plafond = tonumber(ARGV[1])
+local expiration = tonumber(ARGV[2])
+
+local utilisees = redis.call('INCR', KEYS[1])
+if utilisees == 1 then
+  redis.call('EXPIRE', KEYS[1], expiration)
+end
+
+if utilisees > plafond then
+  redis.call('DECR', KEYS[1])
+  return -1
+end
+
+return plafond - utilisees
+"#;
+
+/// Renvoie le nombre de demandes restantes, ou `None` si le quota est épuisé.
+pub async fn consommer_demande(
+    manager: &ConnectionManager,
+    compte: &str,
+    jour: &str,
+    quota: i64,
+    secondes_avant_minuit: i64,
+) -> Result<Option<i64>, crate::error::AppError> {
+    let mut conn = manager.clone();
+    // Au moins une minute d'expiration : une clé qui expirerait à l'instant
+    // rendrait le quota au mauvais moment.
+    let expiration = secondes_avant_minuit.max(60);
+
+    let restantes: i64 = redis::cmd("EVAL")
+        .arg(CONSOMMER_DEMANDE_LUA)
+        .arg(1)
+        .arg(cles::demandes_utilisees(compte, jour))
+        .arg(quota)
+        .arg(expiration)
+        .query_async(&mut conn)
+        .await?;
+
+    Ok((restantes >= 0).then_some(restantes))
+}
+
+/// Rend une demande au quota — lorsque l'écriture qui la suivait a échoué.
+/// Ne descend jamais sous zéro.
+pub async fn rendre_demande(manager: &ConnectionManager, compte: &str, jour: &str) {
+    let cle = cles::demandes_utilisees(compte, jour);
+    let mut conn = manager.clone();
+    let utilisees: i64 = redis::cmd("GET")
+        .arg(&cle)
+        .query_async::<Option<String>>(&mut conn)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if utilisees > 0 {
+        let _ = redis::cmd("DECR").arg(&cle).query_async::<i64>(&mut conn).await;
+    }
+}
