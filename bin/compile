@@ -9,9 +9,16 @@
 
 set -euo pipefail
 
-BUILD_DIR="$1"
-CACHE_DIR="$2"
+# Heroku passe des chemins absolus. Ce script mêle `cd "$BUILD_DIR"` et des
+# chemins `$BUILD_DIR/...` : avec un chemin relatif, les seconds se résoudraient
+# sous le premier et le binaire atterrirait dans un répertoire imbriqué, hors du
+# slug. On les rend absolus une fois pour toutes plutôt que de compter dessus.
+absolu() { (cd "$1" && pwd); }
+
+BUILD_DIR="$(absolu "$1")"
+CACHE_DIR="$(mkdir -p "$2" && absolu "$2")"
 ENV_DIR="${3:-}"
+if [ -n "$ENV_DIR" ] && [ -d "$ENV_DIR" ]; then ENV_DIR="$(absolu "$ENV_DIR")"; fi
 
 # Chaque ligne de sortie d'un buildpack est préfixée de « -----> » ou de blancs.
 titre() { echo "-----> $*"; }
