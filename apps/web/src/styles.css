@@ -165,3 +165,51 @@ button {
   background-clip: text;
   color: transparent;
 }
+
+/*
+ * Typographie des pages juridiques.
+ *
+ * Ces textes sont longs et se lisent d'une traite : ils ont besoin d'un rythme
+ * vertical, pas de la densité des sections marketing. Les styles sont portés
+ * par un conteneur plutôt que par des classes sur chaque balise — le contenu
+ * est écrit en JSX presque nu, et doit le rester.
+ */
+.prose-weave > * + * {
+  margin-top: 0.9rem;
+}
+
+.prose-weave ul,
+.prose-weave ol {
+  padding-left: 1.35rem;
+}
+
+.prose-weave ul {
+  list-style: disc;
+}
+
+.prose-weave ol {
+  list-style: decimal;
+}
+
+.prose-weave li + li {
+  margin-top: 0.45rem;
+}
+
+.prose-weave h3 {
+  margin-top: 1.6rem;
+  font-weight: 700;
+}
+
+.prose-weave a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.prose-weave strong {
+  font-weight: 700;
+}
+
+/* Une adresse de courriel ne doit pas déborder sur un écran de téléphone. */
+.prose-weave a[href^="mailto:"] {
+  overflow-wrap: anywhere;
+}

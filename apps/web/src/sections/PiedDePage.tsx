@@ -1,4 +1,5 @@
 import { MIN_AGE } from "@weave/contracts";
+import { DOCUMENTS } from "../pages/documents.ts";
 
 export function PiedDePage() {
   return (
@@ -14,28 +15,38 @@ export function PiedDePage() {
           — en écrivant pourquoi.
         </p>
 
-        <nav aria-label="Liens de pied de page" className="mt-8">
-          <ul className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
-            <li>
-              <a href="#principe" className="hover:underline underline-offset-4">
-                Le principe
-              </a>
-            </li>
-            <li>
-              <a href="#offres" className="hover:underline underline-offset-4">
-                Offres
-              </a>
-            </li>
-            <li>
-              <a href="#confiance" className="hover:underline underline-offset-4">
-                Confidentialité
-              </a>
-            </li>
-            <li>
-              <a href="#questions" className="hover:underline underline-offset-4">
-                Questions
-              </a>
-            </li>
+        {/*
+          Les ancres sont préfixées par « / » : ce pied de page s'affiche aussi
+          sur les pages juridiques, où « #offres » seul ne désignerait rien.
+        */}
+        <nav aria-label="Le site" className="mt-8">
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Le site</h2>
+          <ul className="mt-3 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            {[
+              { href: "/#principe", texte: "Le principe" },
+              { href: "/#deroule", texte: "Comment ça se passe" },
+              { href: "/#offres", texte: "Offres" },
+              { href: "/#questions", texte: "Questions" },
+            ].map((lien) => (
+              <li key={lien.href}>
+                <a href={lien.href} className="hover:underline underline-offset-4">
+                  {lien.texte}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <nav aria-label="Informations légales" className="mt-7">
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Informations légales</h2>
+          <ul className="mt-3 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            {DOCUMENTS.map((doc) => (
+              <li key={doc.slug}>
+                <a href={`/${doc.slug}`} className="hover:underline underline-offset-4">
+                  {doc.lien}
+                </a>
+              </li>
+            ))}
           </ul>
         </nav>
 

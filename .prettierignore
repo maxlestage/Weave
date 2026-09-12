@@ -1,8 +1,5 @@
 node_modules
 dist
-apps/api/src/generated
-apps/api/prisma/*.prisma
-apps/api/prisma/migrations*
 bun.lock
 *.md
 

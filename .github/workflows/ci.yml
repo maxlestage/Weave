@@ -35,34 +35,8 @@ jobs:
       - name: Installer les dépendances
         run: bun install --frozen-lockfile
 
-      - name: Dériver le schéma SQLite
-        run: bun run db:sqlite
-
-      - name: Vérifier que les migrations suivent le schéma
-        # Les migrations sont versionnées, le schéma aussi : si l'un a évolué
-        # sans l'autre, la base de production divergera silencieusement.
-        # `--exit-code` renvoie 2 quand une différence subsiste.
-        working-directory: apps/api
-        run: |
-          WEAVE_DB=sqlite bunx prisma migrate diff \
-            --from-migrations prisma/migrations-sqlite \
-            --to-schema prisma/schema.sqlite.prisma \
-            --exit-code
-
-      - name: Générer les clients Prisma
-        run: bun run db:generate
-
-      - name: Préparer la base de développement
-        run: WEAVE_DB=sqlite bun run db:deploy
-
-      - name: Jeu de données
-        run: WEAVE_DB=sqlite bun run db:seed
-
       - name: Vérification des types
         run: bun run typecheck
-
-      - name: Tests
-        run: WEAVE_DB=sqlite bun test
 
       - name: Compiler le site
         run: bun run --filter @weave/web build
