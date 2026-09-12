@@ -164,12 +164,25 @@ impl Service {
         self.appeler("POST", chemin, jeton, Some(corps)).await
     }
 
+    pub async fn delete(&self, chemin: &str, jeton: Option<&str>) -> (StatusCode, Value) {
+        self.appeler("DELETE", chemin, jeton, None).await
+    }
+
+    pub async fn patch(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
+        self.appeler("PATCH", chemin, jeton, Some(corps)).await
+    }
+
+    pub async fn put(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
+        self.appeler("PUT", chemin, jeton, Some(corps)).await
+    }
+
     /// La réponse entière, en-têtes compris : ce que `get` jette est
     /// précisément ce que le cache du navigateur lit.
     pub async fn get_brut(&self, chemin: &str) -> (StatusCode, axum::http::HeaderMap, String) {
         let requete = Request::builder()
             .method("GET")
             .uri(chemin)
+            .extension(adresse_appelante())
             .body(Body::empty())
             .expect("requête bien formée");
 
@@ -192,7 +205,14 @@ impl Service {
         jeton: Option<&str>,
         corps: Option<Value>,
     ) -> (StatusCode, Value) {
-        let mut requete = Request::builder().method(methode).uri(chemin);
+        // Les routes qui limitent le débit extraient l'adresse de l'appelant.
+        // En production, `into_make_service_with_connect_info` la pose ; ici,
+        // c'est au test de le faire, sinon l'extracteur échoue et la route
+        // rend 500 sans corps — ce qui ne se voit qu'à l'exécution.
+        let mut requete = Request::builder()
+            .method(methode)
+            .uri(chemin)
+            .extension(adresse_appelante());
         if let Some(j) = jeton {
             requete = requete.header(AUTHORIZATION, format!("Bearer {j}"));
         }
@@ -215,6 +235,22 @@ impl Service {
         let json = serde_json::from_slice(&octets).unwrap_or(Value::Null);
         (statut, json)
     }
+}
+
+/// L'adresse de l'appelant, telle que l'extracteur `ConnectInfo` l'attend.
+///
+/// Chaque test a la sienne : les compteurs de débit sont indexés par adresse,
+/// et deux tests partageant la même se disputeraient le même seau.
+fn adresse_appelante() -> axum::extract::ConnectInfo<std::net::SocketAddr> {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // 127.x.y.z : bouclage, jamais routable, et seize millions d'adresses.
+    let octets = n.to_be_bytes();
+    axum::extract::ConnectInfo(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(127, octets[1], octets[2], octets[3])),
+        4000,
+    ))
 }
 
 pub fn jeton_pour(compte_id: &str) -> String {
@@ -258,3 +294,5 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
     .expect("la table accounts doit exister");
 }
 mod vitrine;
+mod session;
+mod profil;
