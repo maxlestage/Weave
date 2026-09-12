@@ -166,6 +166,27 @@ export WEAVE_DB="${WEAVE_DB:-postgres}"
 export WEB_DIST_PATH="${WEB_DIST_PATH:-/app/apps/web/dist}"
 PROFILE
 
+# ------------------------------------------------------------------
+# Ce que le slug doit contenir
+#
+# Un slug auquel il manque un client Prisma se publie sans erreur : c'est au
+# démarrage que le dyno s'arrête, sur « Cannot find module », qui ne dit ni
+# quelle étape a manqué ni pourquoi. Le constater ici coûte une construction ;
+# le constater en ligne coûte une publication et une lecture de journal.
+# ------------------------------------------------------------------
+titre "Vérification du slug"
+for attendu in \
+  "apps/api/src/generated/prisma/client.ts" \
+  "apps/api/src/generated/prisma-sqlite/client.ts" \
+  "apps/web/dist/index.html"; do
+  if [ ! -f "$BUILD_DIR/$attendu" ]; then
+    echo " !     Absent du slug après construction : $attendu" >&2
+    echo " !     Le dyno s'arrêterait au démarrage. La construction est interrompue ici." >&2
+    exit 1
+  fi
+  detail "présent : $attendu"
+done
+
 slug="$(du -sm "$BUILD_DIR" | cut -f1)"
 detail "slug : ${slug} Mo (plafond Heroku : 500 Mo)"
 
