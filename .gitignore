@@ -65,4 +65,5 @@ apps/ios/Secrets.xcconfig
 
 # Vérification locale de l'image (généré, jamais versionné)
 Dockerfile.verify
+Dockerfile.verify.dockerignore
 ca-bundle.crt

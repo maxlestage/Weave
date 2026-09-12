@@ -1,12 +1,49 @@
+# Ce qui n'a rien à faire dans le contexte de construction.
+#
+# Heroku construit depuis l'arbre Git poussé, où l'essentiel de cette liste
+# n'existe pas. Le fichier sert surtout aux constructions locales, où
+# `apps/api-rs/target` pèse plusieurs gigaoctets et se retrouverait copié dans
+# l'image par le `COPY . .` de l'étage du site — assez pour saturer le disque.
+#
+# Les motifs `**/` couvrent toutes les profondeurs : `dist` seul ne désignerait
+# que celui de la racine, et laisserait passer `apps/web/dist`.
+
+# Dépendances
 node_modules
 **/node_modules
+.bun
+
+# Artefacts de construction
 **/dist
+**/target
+bin-release
 apps/api/src/generated
-apps/api/prisma/dev.db*
-apps/api/prisma/schema.sqlite.prisma
-apps/api/.env
+
+# Git et métadonnées
 .git
 .github
-docs
+.gitignore
+.dockerignore
+
+# Bases de développement
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
+apps/api/prisma/dev.db*
+apps/api/prisma/schema.sqlite.prisma
+
+# Environnement — un secret n'entre jamais dans une image
+**/.env
+**/.env.*
+**/*.p8
+**/*.p12
+**/*.mobileprovision
+apps/ios/Secrets.xcconfig
+ca-bundle.crt
+
+# Ce qui ne sert ni au site ni à l'API
 apps/ios
+docs
 *.log

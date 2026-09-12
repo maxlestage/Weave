@@ -24,7 +24,13 @@ RUN bun run --filter @weave/web build
 # en cache tant qu'ils ne changent pas, et compiler les dépendances de Weave
 # coûte plusieurs minutes.
 # ------------------------------------------------------------------
-FROM rust:1-slim AS api
+# La version de Debian est épinglée des deux côtés, et c'est le point
+# important : `rust:1-slim` suit la version par défaut de l'image Rust, qui est
+# passée à Debian 13. Le binaire réclamait alors `GLIBC_2.38`, absent de
+# l'étage d'exécution sous Debian 12 — l'image se construisait sans erreur, et
+# le dyno s'arrêtait au démarrage sur un message que rien ne relie à la
+# construction. Les deux étages doivent nommer la même version.
+FROM rust:1-slim-bookworm AS api
 WORKDIR /build
 COPY apps/api-rs/Cargo.toml apps/api-rs/Cargo.lock ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs && cargo build --release && rm -rf src
