@@ -4,7 +4,7 @@
 # L'image de base est l'image officielle Bun, en version figée : la même que
 # celle du développement et de l'intégration continue.
 
-FROM oven/bun:1.3.11-slim AS base
+FROM oven/bun:1.4.2-slim AS base
 WORKDIR /app
 
 # ------------------------------------------------------------------
