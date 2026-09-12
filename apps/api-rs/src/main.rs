@@ -48,8 +48,34 @@ struct AppState {
     apns: Arc<apns::ClientApns>,
 }
 
+/// Choisit le fournisseur cryptographique de rustls, avant tout usage de TLS.
+///
+/// Trois dépendances tirent rustls — `redis` pour Heroku Redis, `sqlx` pour
+/// PostgreSQL, `reqwest` pour APNs — et elles n'activent pas le même
+/// fournisseur : `aws-lc-rs` d'un côté, `ring` de l'autre. rustls voit les deux
+/// features actives, refuse de trancher à notre place, et **panique** au
+/// premier handshake :
+///
+/// ```text
+/// Could not automatically determine the process-level CryptoProvider
+/// from Rustls crate features.
+/// ```
+///
+/// Rien ne le révèle en développement : en local, Redis et PostgreSQL se
+/// joignent en clair, aucun handshake n'a lieu et le code ne s'exécute jamais.
+/// Sur Heroku, Redis est en `rediss://` — le dyno s'arrêtait donc au démarrage,
+/// sur un code 101 que rien ne relie à la configuration.
+///
+/// L'appel doit précéder la première connexion chiffrée, d'où sa place en tête
+/// de `main`. Il échoue seulement si un fournisseur est déjà installé, ce qui
+/// n'a rien d'un problème : l'objectif est atteint.
+fn installer_fournisseur_tls() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    installer_fournisseur_tls();
     let _ = dotenvy::dotenv();
     tracing_subscriber::fmt().with_target(false).json().init();
 
