@@ -69,6 +69,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(health))
         .merge(routes::auth::routes())
         .merge(routes::me::routes())
+        .merge(routes::plans::routes())
         .layer(CorsLayer::new().allow_origin(origine))
         .with_state(state);
 
