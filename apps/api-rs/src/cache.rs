@@ -65,6 +65,14 @@ pub mod cles {
     pub fn identite(compte: &str) -> String {
         format!("{NS}:me:{compte}")
     }
+    /// Dernier état poussé de la Live Activity.
+    pub fn live_activity(compte: &str) -> String {
+        format!("{NS}:la:{compte}")
+    }
+    /// Résumé compact pour Apple Watch.
+    pub fn montre(compte: &str) -> String {
+        format!("{NS}:watch:{compte}")
+    }
     /// Compteur de limitation de débit.
     pub fn limitation(seau: &str, sujet: &str) -> String {
         format!("{NS}:rl:{seau}:{sujet}")
@@ -178,10 +186,53 @@ pub async fn consommer_demande(
     Ok((restantes >= 0).then_some(restantes))
 }
 
+/// Applique un « Renfort » à la journée en cours, de façon atomique.
+///
+/// Même script que le quota de demandes, et pour la même raison : le nombre de
+/// renforts applicables dans une journée est lui-même borné. Sans ce second
+/// plafond, l'argent lèverait l'invariant, et « on ne peut pas arroser »
+/// deviendrait « on ne peut pas arroser gratuitement ».
+///
+/// Renvoie le nombre de renforts appliqués aujourd'hui, ou `None` si le
+/// plafond du jour est atteint.
+pub async fn appliquer_renfort(
+    manager: &ConnectionManager,
+    compte: &str,
+    jour: &str,
+    maximum: i64,
+    secondes_avant_minuit: i64,
+) -> Result<Option<i64>, crate::error::AppError> {
+    let mut conn = manager.clone();
+    let restants: i64 = redis::cmd("EVAL")
+        .arg(CONSOMMER_DEMANDE_LUA)
+        .arg(1)
+        .arg(cles::renforts(compte, jour))
+        .arg(maximum)
+        .arg(secondes_avant_minuit.max(60))
+        .query_async(&mut conn)
+        .await?;
+
+    Ok((restants >= 0).then(|| maximum - restants))
+}
+
+/// Libère une place de renfort réservée mais non payée.
+///
+/// La place est réservée AVANT que le crédit soit dépensé : l'inverse
+/// consommerait un achat pour rien lorsque le plafond est atteint. Elle est
+/// donc rendue si le crédit manque, sans quoi une tentative refusée
+/// grignoterait le plafond du jour.
+pub async fn rendre_renfort(manager: &ConnectionManager, compte: &str, jour: &str) {
+    decrementer_sans_passer_sous_zero(manager, &cles::renforts(compte, jour)).await;
+}
+
 /// Rend une demande au quota — lorsque l'écriture qui la suivait a échoué.
 /// Ne descend jamais sous zéro.
 pub async fn rendre_demande(manager: &ConnectionManager, compte: &str, jour: &str) {
-    let cle = cles::demandes_utilisees(compte, jour);
+    decrementer_sans_passer_sous_zero(manager, &cles::demandes_utilisees(compte, jour)).await;
+}
+
+async fn decrementer_sans_passer_sous_zero(manager: &ConnectionManager, cle: &str) {
+    let cle = cle.to_string();
     let mut conn = manager.clone();
     let utilisees: i64 = redis::cmd("GET")
         .arg(&cle)

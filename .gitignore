@@ -7,6 +7,9 @@ dist/
 build/
 *.tsbuildinfo
 .vite/
+# Rust : cible de compilation et binaire copié pour le slug
+apps/api-rs/target/
+bin-release/
 
 # Environnement
 .env
@@ -21,6 +24,7 @@ build/
 *.db-shm
 prisma/dev.db*
 apps/api/prisma/dev.db*
+weave-dev.sqlite*
 
 # Prisma généré
 apps/api/src/generated/

@@ -49,6 +49,9 @@ pub struct Envoi<'a> {
     /// Suffixe de sujet : ActivityKit exige « .push-type.liveactivity ».
     pub suffixe_sujet: Option<&'a str>,
     pub priorite: u8,
+    /// Clé de dédoublonnage : un seul état en vol par fil. Sans elle, deux
+    /// mises à jour rapprochées feraient clignoter la bannière.
+    pub collapse_id: Option<String>,
     pub charge: Value,
 }
 
@@ -57,6 +60,23 @@ pub struct Resultat {
     pub ok: bool,
     pub statut: u16,
     pub raison: Option<String>,
+}
+
+/// Les raisons pour lesquelles Apple dit qu'un jeton ne vaut plus rien.
+/// Continuer à pousser dessus n'aboutira jamais : la ligne se ferme.
+const JETONS_MORTS: [&str; 4] = [
+    "BadDeviceToken",
+    "Unregistered",
+    "ExpiredToken",
+    "DeviceTokenNotForTopic",
+];
+
+impl Resultat {
+    pub fn jeton_mort(&self) -> bool {
+        self.raison
+            .as_deref()
+            .is_some_and(|r| JETONS_MORTS.contains(&r))
+    }
 }
 
 #[derive(Serialize)]
@@ -124,13 +144,20 @@ impl ClientApns {
             None => config.apns.bundle_id.clone(),
         };
 
-        let reponse = self
+        let requete = self
             .http
             .post(format!("{hote}/3/device/{}", envoi.jeton_appareil))
             .header("authorization", format!("bearer {jeton}"))
             .header("apns-topic", sujet)
             .header("apns-push-type", envoi.type_envoi.en_tete())
-            .header("apns-priority", envoi.priorite.to_string())
+            .header("apns-priority", envoi.priorite.to_string());
+
+        let requete = match &envoi.collapse_id {
+            Some(cle) => requete.header("apns-collapse-id", cle.as_str()),
+            None => requete,
+        };
+
+        let reponse = requete
             .json(&envoi.charge)
             .send()
             .await;
@@ -266,6 +293,7 @@ mod tests {
                     type_envoi: TypeEnvoi::Alerte,
                     suffixe_sujet: None,
                     priorite: 10,
+                    collapse_id: None,
                     charge: serde_json::json!({}),
                 },
             )
