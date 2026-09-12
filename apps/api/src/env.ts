@@ -11,7 +11,16 @@
 
 type Mode = "development" | "test" | "production";
 
-const mode = (process.env.NODE_ENV ?? "development") as Mode;
+/*
+ * Sur un hébergeur, l'absence de NODE_ENV ne doit surtout pas valoir
+ * « développement ». Heroku définit `DYNO` sur chaque dyno : s'y fier écarte le
+ * pire des cas — un service qui démarre en ligne avec les réglages du
+ * développement, se rabat silencieusement sur SQLite, puis échoue sur un module
+ * absent du slug au lieu de dire ce qui manque. Le diagnostic coûtait alors un
+ * déploiement et une lecture de journal pour une variable oubliée.
+ */
+const surUnHebergeur = (process.env.DYNO ?? "") !== "";
+const mode = (process.env.NODE_ENV ?? (surUnHebergeur ? "production" : "development")) as Mode;
 
 /** Ce qui empêche de démarrer, accumulé puis rapporté d'un bloc. */
 const problemes: { variable: string; raison: string; remede: string }[] = [];

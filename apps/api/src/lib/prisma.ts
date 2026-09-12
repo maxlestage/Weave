@@ -31,7 +31,20 @@ async function createClient(): Promise<PrismaClient> {
 
   // `@prisma/adapter-better-sqlite3` repose sur un module natif Node.js qui ne
   // se charge pas sous Bun : Weave utilise son propre adaptateur `bun:sqlite`.
-  const { PrismaClient: SqliteClient } = await import("../generated/prisma-sqlite/client.ts");
+  // Ce client est engendré par `bun run db:generate`, et n'est pas versionné.
+  // Sans ce garde-fou, son absence ne dit rien de plus qu'un module introuvable
+  // — indéchiffrable pour qui découvre que son service tourne sur SQLite alors
+  // qu'il se croyait en PostgreSQL.
+  let SqliteClient: typeof import("../generated/prisma-sqlite/client.ts").PrismaClient;
+  try {
+    ({ PrismaClient: SqliteClient } = await import("../generated/prisma-sqlite/client.ts"));
+  } catch {
+    throw new Error(
+      "Le client Prisma SQLite n'a pas été engendré : lancez `bun run db:generate`.\n" +
+        "  Si ce message apparaît sur un hébergeur, c'est que le service tourne sur " +
+        "SQLite au lieu de PostgreSQL : définissez WEAVE_DB=postgres et NODE_ENV=production.",
+    );
+  }
   return new SqliteClient({
     adapter: new PrismaBunSqlite({ url: env.db.sqliteUrl }),
     log: ["warn", "error"],
