@@ -2,9 +2,14 @@
 //!
 //! Pile : Rust + Axum + SeaORM + Redis.
 
+mod auth;
 mod cache;
 mod crypto;
 mod db;
+mod droits;
+mod error;
+mod routes;
+mod temps;
 mod env;
 
 // Les 18 entités sont engendrées d'un bloc depuis la base ; celles qu'aucune
@@ -61,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .merge(routes::me::routes())
         .layer(CorsLayer::new().allow_origin(origine))
         .with_state(state);
 

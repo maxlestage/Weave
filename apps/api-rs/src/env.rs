@@ -78,6 +78,10 @@ fn exiger(
     String::new()
 }
 
+fn entier(nom: &str, defaut: i64) -> i64 {
+    lire(nom).and_then(|v| v.parse().ok()).unwrap_or(defaut)
+}
+
 fn lire(nom: &str) -> Option<String> {
     match env::var(nom) {
         Ok(v) if !v.is_empty() => Some(v),
@@ -104,6 +108,17 @@ pub struct Cache {
 pub struct Media {
     pub signing_secret: String,
     pub base_url: String,
+    /// Les URL de médias sont courtes par conception : une adresse qui fuite
+    /// ne doit pas rester lisible longtemps.
+    pub ttl_url_signee_secondes: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Auth {
+    pub jwt_secret: String,
+    /// Court : l'accès expire vite, le rafraîchissement prend le relais.
+    pub access_ttl_secondes: i64,
+    pub refresh_ttl_jours: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +128,7 @@ pub struct Env {
     pub db: Db,
     pub cache: Cache,
     pub media: Media,
-    pub jwt_secret: String,
+    pub auth: Auth,
     pub web_origin: String,
     pub web_dist: Option<String>,
 }
@@ -254,8 +269,13 @@ pub fn charger() -> Result<Env, String> {
         media: Media {
             signing_secret,
             base_url: media_base,
+            ttl_url_signee_secondes: entier("MEDIA_URL_TTL_SECONDS", 600),
         },
-        jwt_secret,
+        auth: Auth {
+            jwt_secret,
+            access_ttl_secondes: entier("ACCESS_TOKEN_TTL_SECONDS", 900),
+            refresh_ttl_jours: entier("REFRESH_TOKEN_TTL_DAYS", 60),
+        },
         web_origin,
         web_dist: lire("WEB_DIST_PATH"),
     })
