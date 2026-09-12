@@ -2,7 +2,7 @@
  * Client Prisma, branché sur l'adaptateur de driver correspondant au moteur.
  *
  *   production / préproduction → PostgreSQL via `@prisma/adapter-pg`
- *   développement              → SQLite via `@prisma/adapter-better-sqlite3`
+ *   développement              → SQLite via `@weave/prisma-bun-sqlite`
  *
  * Prisma 7 compile les requêtes pour un moteur donné : chaque schéma produit
  * donc son propre client (`generated/prisma` et `generated/prisma-sqlite`), et
@@ -11,6 +11,7 @@
  * interchangeables ; ceux de PostgreSQL font foi pour le reste du code.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaBunSqlite } from "@weave/prisma-bun-sqlite";
 import { env } from "../env.ts";
 import type { PrismaClient } from "../generated/prisma/client.ts";
 
@@ -28,14 +29,11 @@ async function createClient(): Promise<PrismaClient> {
     });
   }
 
-  // Chargé à la demande, comme le client généré juste en dessous :
-  // `better-sqlite3` est un module natif, et la production tourne sur
-  // PostgreSQL. Rien ne justifie qu'un binaire compilé doive se charger pour
-  // que le service démarre là où il ne servira jamais.
-  const { PrismaBetterSqlite3 } = await import("@prisma/adapter-better-sqlite3");
+  // `@prisma/adapter-better-sqlite3` repose sur un module natif Node.js qui ne
+  // se charge pas sous Bun : Weave utilise son propre adaptateur `bun:sqlite`.
   const { PrismaClient: SqliteClient } = await import("../generated/prisma-sqlite/client.ts");
   return new SqliteClient({
-    adapter: new PrismaBetterSqlite3({ url: env.db.sqliteUrl }),
+    adapter: new PrismaBunSqlite({ url: env.db.sqliteUrl }),
     log: ["warn", "error"],
   }) as unknown as PrismaClient;
 }
