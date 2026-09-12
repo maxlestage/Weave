@@ -355,3 +355,25 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 | `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, le quota de demandes ne peut pas être compté : c'est une dépendance dure, pas un confort |
 | « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B3 manque |
 | Échec de signature iOS | Relancez avec la case « créer les certificats » cochée, **une seule fois** |
+
+## La purge, à planifier
+
+Le déploiement ne suffit pas : `weave-api purge` doit tourner une fois par
+jour, sinon les comptes supprimés et les messages échus restent en base — et
+la politique de confidentialité annonce le contraire.
+
+```sh
+heroku addons:create scheduler:standard
+heroku addons:open scheduler
+```
+
+Y créer une tâche quotidienne :
+
+```sh
+./bin-release/weave-api purge
+```
+
+En conteneur, la commande est `/app/bin-release/weave-api purge`.
+
+La sortie dit ce qui a été fait — messages effacés, comptes effacés, et le cas
+échéant les comptes différés parce qu'un signalement les vise encore.

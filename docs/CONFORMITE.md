@@ -45,10 +45,44 @@ par une case unique valant acceptation de tout.
 | Opposition | `POST /v1/me/pause` : les plans ouverts sont annulés, le compte n'apparaît plus dans le fil |
 | Limitation | La mise en pause retire du fil sans supprimer le compte |
 
-**À construire avant le lancement** : la route d'export au format lisible par
-machine, et la tâche planifiée qui exécute réellement les purges (la structure
-est en place — `deletionRequestedAt`, `purgeAfter`, `Plan.state` — l'exécution
-périodique reste à brancher).
+## L'export et la purge
+
+Les deux existent désormais, et ce n'est pas un détail : jusqu'ici
+`deletionRequestedAt` et `purgeAfter` décrivaient une intention que rien
+n'exécutait. Les lignes restaient en base indéfiniment.
+
+**`GET /v1/me/export`** rend en un seul document JSON tout ce que le service
+détient d'un compte. Trois choses en sont volontairement absentes, et chacune
+pour une raison qui tient : les empreintes (adresse, jetons, codes) — ce sont
+nos données sur la personne, pas les siennes, et les rendre affaiblirait le
+compte ; les messages écrits par d'autres — ils appartiennent aussi à leur
+auteur ; et les signalements reçus — les rendre livrerait qui a signalé.
+
+**`weave-api purge`** est un processus séparé, comme `migrate`. Il efface les
+messages dont la date de purge est passée, puis les comptes dont le délai de
+trente jours est écoulé. La suppression d'un compte suffit à emporter tout ce
+qui s'y rattache : les vingt-trois clés étrangères sont en `ON DELETE CASCADE`,
+et `audit_events` en `SET NULL` — la trace de l'action survit, son auteur
+devient anonyme. Un test vérifie que la cascade s'applique réellement, y
+compris sous SQLite, où les clés étrangères ne sont pas actives par défaut.
+
+**L'exception à retenir** : un compte visé par un signalement non traité n'est
+pas purgé. Sinon, supprimer son compte suffirait à effacer les preuves d'un
+comportement qu'on vient de signaler. Le compte reste hors circulation dans
+l'intervalle, et part au passage suivant une fois le dossier clos.
+
+À planifier sur l'hébergeur — Heroku Scheduler, ou l'équivalent — une fois par
+jour :
+
+```sh
+weave-api purge
+```
+
+Sans cette planification, la purge n'a toujours pas lieu : le code existe, son
+déclenchement est une question d'exploitation.
+
+**Reste à construire** : l'écran « Mes données » dans l'application iOS, qui
+appellera la route d'export. La route, elle, est en place et testée.
 
 ## Sécurité des personnes
 
