@@ -164,6 +164,7 @@ async fn mettre_en_pause(
     // faut l'oublier, sinon le compte resterait « actif » un quart d'heure.
     crate::auth::oublier_compte(&state, &compte.id).await;
     oublier_fil(&state, &compte.id).await;
+    crate::live_activity::publier_au_mieux(&state, &compte.id).await;
 
     Ok(Json(json!({ "ok": true })))
 }
@@ -273,6 +274,10 @@ async fn couper_entre(state: &AppState, a: &str, b: &str) -> Result<(), AppError
 
     oublier_fil(state, a).await;
     oublier_fil(state, b).await;
+    // Les deux côtés perdent des conversations et des demandes : ce que chacun
+    // voit sur son écran verrouillé a changé.
+    crate::live_activity::publier_au_mieux(state, a).await;
+    crate::live_activity::publier_au_mieux(state, b).await;
     Ok(())
 }
 

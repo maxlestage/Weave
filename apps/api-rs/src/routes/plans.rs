@@ -11,22 +11,24 @@
 
 use crate::{
     auth::Authentifie,
-    droits::droits_pour,
-    entities::{join_requests, plans, profiles},
+    crypto::signer_url_media,
+    droits::{droits_pour, exiger_credit},
+    live_activity,
+    entities::{accounts, join_requests, plans, profiles},
     error::{invalide, introuvable, AppError, Code},
     limitation::{consommer, regles},
-    temps::iso8601,
+    temps::{age_depuis, iso8601},
     AppState,
 };
 use axum::{
     extract::{Path, State},
-    routing::{delete, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -52,7 +54,128 @@ const CATEGORIES: [&str; 8] = [
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/plans", post(publier))
+        // « mine » avant « {id} » : axum choisit la route littérale, mais
+        // l'ordre rend l'intention lisible.
+        .route("/v1/plans/mine", get(les_miens))
         .route("/v1/plans/{id}", delete(annuler))
+        .route("/v1/plans/{id}/requests", get(demandes_recues))
+}
+
+/// Le plafond de plans rendus. Personne n'en a cinquante ouverts : c'est une
+/// borne contre une requête qui dériverait, pas une pagination.
+const PLANS_RENDUS_MAX: u64 = 50;
+
+/// Mes plans — ceux que j'ai publiés, à venir comme passés.
+async fn les_miens(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+) -> Result<Json<Value>, AppError> {
+    let lignes = plans::Entity::find()
+        .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
+        .order_by_asc(plans::Column::StartsAt)
+        .limit(PLANS_RENDUS_MAX)
+        .all(&state.db)
+        .await?;
+
+    let maintenant = Utc::now().naive_utc();
+    let mut rendus = Vec::with_capacity(lignes.len());
+
+    for ligne in lignes {
+        let acceptees = join_requests::Entity::find()
+            .filter(join_requests::Column::PlanId.eq(ligne.id.as_str()))
+            .filter(join_requests::Column::State.eq("acceptee"))
+            .count(&state.db)
+            .await? as i32;
+        let en_attente = join_requests::Entity::find()
+            .filter(join_requests::Column::PlanId.eq(ligne.id.as_str()))
+            .filter(join_requests::Column::State.eq("envoyee"))
+            .count(&state.db)
+            .await?;
+
+        rendus.push(json!({
+            "id": ligne.id,
+            "title": ligne.title,
+            "note": ligne.note,
+            "category": ligne.category,
+            "startsAt": iso8601(ligne.starts_at.and_utc()),
+            "city": ligne.city,
+            "capacity": ligne.capacity,
+            "seatsLeft": (ligne.capacity - acceptees).max(0),
+            // Un plan dont l'heure est passée est « passé », quel que soit son
+            // état en base : c'est ce que voit l'auteur, et rien ne le réécrit.
+            "state": if ligne.starts_at < maintenant { "passe" } else { ligne.state.as_str() },
+            "pendingRequests": en_attente,
+        }));
+    }
+
+    Ok(Json(Value::Array(rendus)))
+}
+
+/// Les demandes reçues sur un de mes plans.
+///
+/// Seul l'auteur les voit : elles ne sont pas publiques, et le message qu'on
+/// écrit pour rejoindre un plan n'est lu que par qui l'organise.
+async fn demandes_recues(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Path(plan_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let plan = plans::Entity::find_by_id(plan_id.as_str())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable("Plan introuvable."))?;
+
+    if plan.author_id != compte.id {
+        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+    }
+
+    let demandes = join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.eq(plan_id.as_str()))
+        .filter(join_requests::Column::State.eq("envoyee"))
+        .order_by_asc(join_requests::Column::SentAt)
+        .all(&state.db)
+        .await?;
+
+    let mut rendues = Vec::with_capacity(demandes.len());
+    for demande in demandes {
+        let auteur = accounts::Entity::find_by_id(demande.author_id.as_str())
+            .one(&state.db)
+            .await?;
+        // Un compte supprimé entre-temps ne doit pas faire échouer la lecture
+        // de toute la liste : sa demande n'a simplement plus d'auteur à
+        // montrer.
+        let Some(auteur) = auteur else { continue };
+
+        let photo = profiles::Entity::find()
+            .filter(profiles::Column::AccountId.eq(auteur.id.as_str()))
+            .one(&state.db)
+            .await?
+            .and_then(|p| p.photo_key)
+            .map(|cle| {
+                signer_url_media(
+                    &state.config.media.base_url,
+                    &state.config.media.signing_secret,
+                    &cle,
+                    state.config.media.ttl_url_signee_secondes,
+                    0,
+                )
+            });
+
+        rendues.push(json!({
+            "id": demande.id,
+            "message": demande.message,
+            "sentAt": iso8601(demande.sent_at.and_utc()),
+            "author": {
+                "id": auteur.id,
+                "displayName": auteur.display_name,
+                "age": age_depuis(auteur.birth_date.and_utc(), Utc::now()),
+                "photoUrl": photo,
+                "verified": auteur.verified,
+            },
+        }));
+    }
+
+    Ok(Json(Value::Array(rendues)))
 }
 
 #[derive(Deserialize)]
@@ -160,6 +283,10 @@ async fn publier(
     .insert(&state.db)
     .await?;
 
+    // Le prochain plan a peut-être changé : la bannière de l'écran verrouillé
+    // doit le dire tout de suite.
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
     Ok(Json(json!({
         "id": plan.id,
         "title": plan.title,
@@ -210,40 +337,7 @@ async fn annuler(
 
     transaction.commit().await?;
 
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
     Ok(Json(json!({ "ok": true })))
-}
-
-/// Consomme un crédit, ou explique comment l'obtenir — par un palier ou à
-/// l'unité. Le client n'a rien à deviner ni à coder en dur.
-async fn exiger_credit(
-    state: &AppState,
-    compte_id: &str,
-    sku: &str,
-    nom: &str,
-) -> Result<(), AppError> {
-    use crate::entities::credit_balances;
-    use sea_orm::sea_query::ExprTrait;
-
-    // Décrément conditionnel : la clause `balance >= 1` est dans la requête,
-    // sans quoi deux achats simultanés pourraient dépenser le même crédit.
-    let resultat = credit_balances::Entity::update_many()
-        .col_expr(
-            credit_balances::Column::Balance,
-            sea_orm::sea_query::Expr::col(credit_balances::Column::Balance).sub(1),
-        )
-        .filter(credit_balances::Column::AccountId.eq(compte_id))
-        .filter(credit_balances::Column::Sku.eq(sku))
-        .filter(credit_balances::Column::Balance.gte(1))
-        .exec(&state.db)
-        .await?;
-
-    if resultat.rows_affected == 1 {
-        return Ok(());
-    }
-
-    Err(AppError::new(
-        Code::EntitlementRequired,
-        format!("« {nom} » n'est pas compris dans votre offre."),
-    )
-    .avec_details(json!({ "sku": sku })))
 }

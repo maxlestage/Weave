@@ -84,10 +84,12 @@ et bute aussitôt :
        npm error Unsupported URL Type "workspace:": workspace:*
 ```
 
-Heroku ne fournit aucun buildpack Bun. Weave embarque donc **le sien**, dans
-`bin/detect`, `bin/compile` et `bin/release`, exécuté par le buildpack officiel
-`heroku-community/inline` — dont le rôle est précisément de lancer un buildpack
-contenu dans le dépôt de l'application. Aucun code tiers n'intervient.
+Heroku ne fournit de buildpack ni pour Bun ni pour Rust, et Weave a besoin des
+deux : le site est bâti par Bun, l'API compilée par Cargo. Le dépôt embarque
+donc **son propre buildpack**, dans `bin/detect`, `bin/compile` et
+`bin/release`, exécuté par le buildpack officiel `heroku-community/inline` —
+dont le rôle est précisément de lancer un buildpack contenu dans le dépôt de
+l'application. Aucun code tiers n'intervient.
 
 **Une seule action :** tableau de bord → **Settings → Buildpacks** → **Add
 buildpack** → `heroku-community/inline`.
@@ -100,33 +102,27 @@ inline fera le vrai travail :
   `heroku-postbuild` neutralise son étape de construction ;
 - le Node.js qu'il dépose dans le slug — **208 Mo** — est retiré par
   `bin/compile` avant la mesure finale. Sans cela, le slug passait de 422 à
-  622 Mo et Heroku rejetait la publication. Rien dans Weave n'utilise Node :
-  le serveur, les migrations et la construction passent tous par Bun.
+  622 Mo et Heroku rejetait la publication. Rien dans Weave n'exécute Node : le
+  dyno ne lance qu'un binaire, pour la phase de publication comme pour le web.
 
 Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
 
-#### Si vous préférez un buildpack Bun tiers
+#### Les buildpacks Bun tiers ne conviennent plus
 
-Il en existe plusieurs, et ils fonctionnent — à une condition. Ces buildpacks
-appellent, dans cet ordre : `heroku-prebuild`, puis `build`, puis
-`heroku-postbuild`.
+Il en existe plusieurs — `jakeg/heroku-buildpack-bun` et les autres — et ils
+ont servi tant que l'API était écrite en TypeScript. **Ils ne peuvent plus
+construire Weave.**
 
-Or `bun build` de l'API a besoin des clients Prisma. S'ils n'existent pas
-encore, l'étape `build` échoue à moitié : le site sort, l'API non, et le dyno
-s'arrête au démarrage sur `Cannot find module ../generated/prisma/client.ts`
-— un message qui ne désigne pas l'étape manquante.
+La raison tient en une phrase : ces buildpacks installent Bun, puis appellent
+`heroku-prebuild`, `build` et `heroku-postbuild`. Aucun d'eux n'installe la
+chaîne Rust, et sans elle `cargo build` n'existe pas. La construction se
+termine donc sans erreur visible — le site sort — mais `bin-release/weave-api`
+n'est jamais produit, et le dyno s'arrête au démarrage sur un `No such file or
+directory` qui ne désigne pas l'étape manquante.
 
-C'est pourquoi `heroku-prebuild` engendre les clients : ils doivent exister
-**avant** `build`. Rien à configurer, le script est dans le dépôt.
-
-Ce que ces buildpacks ne font pas, en revanche, c'est l'élagage des dépendances
-de développement ni le retrait du Node.js inutilisé. Le plafond de 500 Mo
-redevient donc un risque, que `bin/compile` écarte de son côté (401 Mo
-mesurés). À surveiller au premier déploiement.
-
-Le buildpack installe Bun à la version indiquée par `packageManager`, construit
-les clients Prisma et le site, puis élague les dépendances de développement. Le
-`Procfile` applique les migrations en phase de publication, puis démarre l'API.
+Si le tableau de bord affiche encore un buildpack Bun tiers dans **Settings →
+Buildpacks**, il faut le remplacer par `heroku-community/inline`. C'est la
+seule voie par buildpack ; l'autre est le conteneur, décrit plus bas.
 
 #### Poser la configuration
 
@@ -175,19 +171,20 @@ variable.
 
 #### Ce que cette variante coûte
 
-Le slug Heroku est plafonné à **500 Mo**, et cette voie en consomme **environ
-422 Mo** — dont 95 Mo pour Bun lui-même et 323 Mo de dépendances après élagage.
-La marge est donc d'environ 80 Mo. `bin/compile` mesure le slug à chaque
-construction, prévient au-delà de 450 Mo et **interrompt la construction
-au-delà de 500 Mo**, plutôt que de laisser Heroku la rejeter avec un message
-obscur.
+Le slug Heroku est plafonné à **500 Mo**. C'est ce plafond qui a fait échouer
+les premières publications, quand l'API était en TypeScript : Bun, ses
+dépendances et un Node.js déposé pour rien pesaient ensemble plus de 600 Mo.
 
-L'élagage a été établi par essais, pas par supposition : `@prisma/studio-core`
-et `effect` semblent superflus mais sont requis par le CLI Prisma, même pour
-`migrate deploy`. Les retirer casse la phase de publication.
+Depuis le passage à Rust, le dyno ne transporte plus qu'un binaire de **20 Mo**
+et le site construit. La chaîne Rust, qui pèse près d'un gigaoctet, reste dans
+le cache de construction et n'entre jamais dans le slug ; les `node_modules`
+ayant servi à bâtir le site en sortent aussi, puisque plus rien ne les ouvre.
 
-La voie conteneur (section A2) n'a pas cette contrainte. Si les dépendances
-grossissent, c'est vers elle qu'il faudra revenir.
+`bin/compile` mesure le slug à chaque construction, prévient au-delà de 450 Mo
+et **interrompt la construction au-delà de 500 Mo**, plutôt que de laisser
+Heroku la rejeter avec un message obscur. Il vérifie aussi que le binaire et
+`apps/web/dist/index.html` sont bien là : un slug auquel il manque l'un des
+deux se publie sans erreur, et c'est au démarrage que le dyno s'arrête.
 
 ### Ce que ça coûte
 
@@ -212,9 +209,10 @@ repassez ces deux valeurs à vide.
 
 ### Pourquoi la pile de construction est décisive
 
-Weave tourne sous **Bun**, pour lequel il n'existe aucun buildpack Heroku. Le
-déploiement passe donc par le `Dockerfile` décrit dans `heroku.yml` — et Heroku
-ne lit `heroku.yml` **que si l'application est sur la pile `container`**.
+Heroku ne fournit de buildpack ni pour Bun ni pour Rust, et Weave a besoin des
+deux. Cette voie passe donc par le `Dockerfile` décrit dans `heroku.yml` — et
+Heroku ne lit `heroku.yml` **que si l'application est sur la pile
+`container`**.
 
 Une application créée depuis le tableau de bord est sur la pile `heroku-24` par
 défaut. Dans ce cas, Heroku ignore le `Dockerfile`, croit à une application

@@ -9,8 +9,8 @@
 
 use crate::{
     auth::Authentifie,
-    droits::{credits_pour, demandes_restantes, quota_journalier},
-    entities::subscriptions,
+    droits::{credits_pour, demandes_restantes, droits_pour, quota_journalier},
+    entities::{credit_balances, subscriptions, unit_purchases},
     error::{invalide, AppError},
     temps::iso8601,
     AppState,
@@ -23,6 +23,24 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 const BUNDLE: &str = "com.weave.app";
+
+/// Les unités achetables, telles que `packages/contracts` les décrit.
+/// (sku, nom, identifiant StoreKit sans le préfixe, prix en centimes, dotation)
+const UNITES: [(&str, &str, i64, i32); 5] = [
+    ("renfort", "Renfort", 149, 1),
+    ("horizon", "Horizon", 99, 1),
+    ("tablee", "Tablée", 149, 1),
+    ("escale", "Escale", 399, 1),
+    ("bilan", "Bilan", 299, 1),
+];
+
+/// Retrouve l'unité derrière un identifiant StoreKit.
+fn unite_depuis_produit(produit_id: &str) -> Option<(&'static str, &'static str, i64, i32)> {
+    UNITES
+        .iter()
+        .find(|(sku, ..)| produit_id == format!("{BUNDLE}.unit.{sku}"))
+        .copied()
+}
 
 /// Le catalogue, tel qu'il est décrit dans les contrats partagés.
 /// (palier, nom, prix mensuel en centimes, prix annuel, identifiants StoreKit)
@@ -39,6 +57,181 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/billing/tiers", get(catalogue))
         .route("/v1/billing/entitlement", get(droits_courants))
         .route("/v1/billing/subscriptions", post(enregistrer_abonnement))
+        .route("/v1/billing/units", post(enregistrer_unite))
+        .route("/v1/billing/apple/notifications", post(notification_app_store))
+}
+
+/// Enregistre un achat à l'unité — consommables StoreKit.
+async fn enregistrer_unite(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Json(corps): Json<TransactionSignee>,
+) -> Result<Json<Value>, AppError> {
+    if corps.signed_transaction.len() < 10 {
+        return Err(invalide("Transaction StoreKit illisible."));
+    }
+    let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
+
+    let (sku, _nom, prix_centimes, dotation) = unite_depuis_produit(&transaction.product_id)
+        .ok_or_else(|| {
+            invalide(&format!(
+                "Produit à l'unité inconnu : {}",
+                transaction.product_id
+            ))
+        })?;
+
+    // `transactionId` est unique côté Apple : la contrainte d'unicité empêche
+    // qu'une même transaction soit créditée deux fois. On la lit d'abord pour
+    // répondre « déjà appliqué » plutôt que de rendre une erreur de base à un
+    // client qui n'a fait que réessayer.
+    let deja = unit_purchases::Entity::find()
+        .filter(unit_purchases::Column::TransactionId.eq(transaction.transaction_id.as_str()))
+        .one(&state.db)
+        .await?;
+
+    if deja.is_some() {
+        return Ok(Json(json!({
+            "ok": true,
+            "alreadyApplied": true,
+            "credits": credits_pour(&state, &compte.id).await?,
+        })));
+    }
+
+    unit_purchases::ActiveModel {
+        id: Set(cuid2::create_id()),
+        account_id: Set(compte.id.clone()),
+        sku: Set(sku.to_string()),
+        transaction_id: Set(transaction.transaction_id.clone()),
+        quantity: Set(dotation),
+        price_cents: Set(prix_centimes as i32),
+        currency: Set("EUR".to_string()),
+        environment: Set(transaction.environnement.clone()),
+        consumed_at: Set(None),
+        refunded_at: Set(None),
+        purchased_at: Set(Utc::now().naive_utc()),
+    }
+    .insert(&state.db)
+    .await?;
+
+    crediter(&state, &compte.id, sku, dotation, None).await?;
+
+    Ok(Json(json!({
+        "ok": true,
+        "alreadyApplied": false,
+        "credits": credits_pour(&state, &compte.id).await?,
+    })))
+}
+
+/// Ajoute des unités au solde, en créant la ligne si elle manque.
+async fn crediter(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    montant: i32,
+    remise_a_zero: Option<chrono::NaiveDateTime>,
+) -> Result<(), AppError> {
+    let existant = credit_balances::Entity::find()
+        .filter(credit_balances::Column::AccountId.eq(compte_id))
+        .filter(credit_balances::Column::Sku.eq(sku))
+        .one(&state.db)
+        .await?;
+
+    match existant {
+        Some(ligne) => {
+            let solde = ligne.balance + montant;
+            let mut maj: credit_balances::ActiveModel = ligne.into();
+            maj.balance = Set(solde);
+            if let Some(date) = remise_a_zero {
+                maj.resets_at = Set(Some(date));
+            }
+            maj.updated_at = Set(Utc::now().naive_utc());
+            maj.update(&state.db).await?;
+        }
+        None => {
+            credit_balances::ActiveModel {
+                id: Set(cuid2::create_id()),
+                account_id: Set(compte_id.to_string()),
+                sku: Set(sku.to_string()),
+                balance: Set(montant),
+                resets_at: Set(remise_a_zero),
+                updated_at: Set(Utc::now().naive_utc()),
+            }
+            .insert(&state.db)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChargeSignee {
+    signed_payload: String,
+}
+
+/// Notifications serveur à serveur de l'App Store (V2) : renouvellements,
+/// remboursements, expirations, périodes de grâce.
+///
+/// Cette route n'est pas authentifiée — Apple l'appelle, pas un client. Ce qui
+/// la protège, c'est la signature de la charge : une notification qui ne
+/// correspond à aucun abonnement connu est ignorée sans rien changer.
+async fn notification_app_store(
+    State(state): State<AppState>,
+    Json(corps): Json<ChargeSignee>,
+) -> Result<Json<Value>, AppError> {
+    let transaction = verifier_transaction(&state, &corps.signed_payload)?;
+
+    let Some((palier, _periode)) = palier_depuis_produit(&transaction.product_id) else {
+        return Ok(Json(json!({ "ok": true, "ignored": true })));
+    };
+
+    let abonnement = subscriptions::Entity::find()
+        .filter(
+            subscriptions::Column::OriginalTransactionId
+                .eq(transaction.original_transaction_id.as_str()),
+        )
+        .one(&state.db)
+        .await?;
+
+    let Some(abonnement) = abonnement else {
+        return Ok(Json(json!({ "ok": true, "ignored": true })));
+    };
+
+    let compte_id = abonnement.account_id.clone();
+    let echeance = transaction.expire_le;
+    // Une échéance passée fait retomber le compte au palier de départ. Jamais
+    // l'inverse : un abonnement expiré ne doit pas conserver ses droits.
+    let expire = echeance.is_some_and(|date| date < Utc::now());
+
+    let mut maj: subscriptions::ActiveModel = abonnement.into();
+    maj.tier = Set(if expire { "depart".to_string() } else { palier.to_string() });
+    maj.renews_at = Set(echeance.map(|d| d.naive_utc()));
+    maj.expires_at = Set(echeance.map(|d| d.naive_utc()));
+    maj.in_grace_period = Set(false);
+    maj.updated_at = Set(Utc::now().naive_utc());
+    maj.update(&state.db).await?;
+
+    if let (false, Some(echeance)) = (expire, echeance) {
+        // Dotation mensuelle du palier. Les crédits achetés à l'unité ne sont
+        // jamais remis à zéro : on ajoute, on ne remplace pas.
+        let escales = droits_pour(palier).escales_par_mois;
+        if escales > 0 {
+            crediter(
+                &state,
+                &compte_id,
+                "escale",
+                escales as i32,
+                Some(echeance.naive_utc()),
+            )
+            .await?;
+        }
+    }
+
+    // Le palier vit dans le résumé d'identité : sans cet oubli, le compte
+    // garderait son ancien palier un quart d'heure après le renouvellement.
+    crate::auth::oublier_compte(&state, &compte_id).await;
+
+    Ok(Json(json!({ "ok": true, "ignored": false })))
 }
 
 fn prix(centimes: i64) -> String {
@@ -112,6 +305,9 @@ struct TransactionSignee {
 
 struct Transaction {
     product_id: String,
+    /// Unique côté Apple : c'est ce qui empêche qu'un même achat soit crédité
+    /// deux fois.
+    transaction_id: String,
     original_transaction_id: String,
     expire_le: Option<DateTime<Utc>>,
     environnement: String,
@@ -165,6 +361,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
 
     Ok(Transaction {
         product_id,
+        transaction_id: transaction_id.clone(),
         original_transaction_id: claims
             .get("originalTransactionId")
             .and_then(Value::as_str)

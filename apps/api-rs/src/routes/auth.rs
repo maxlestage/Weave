@@ -4,9 +4,10 @@
 //! tentatives. Il n'y a pas de mot de passe à voler, à réutiliser ou à oublier.
 
 use crate::{
-    auth::emettre_jeton,
+    auth::{emettre_jeton, oublier_compte, Authentifie},
+    cache,
     crypto::{code_otp, hacher_secret, hash_email, jeton_opaque, normaliser_email, sha256_hex, verifier_secret},
-    entities::{accounts, otp_challenges, preferences, refresh_tokens, subscriptions},
+    entities::{accounts, join_requests, otp_challenges, plans, preferences, refresh_tokens, subscriptions},
     error::{invalide, non_autorise, AppError, Code},
     limitation::{consommer, regles},
     temps::{age_depuis, iso8601},
@@ -14,12 +15,12 @@ use crate::{
 };
 use axum::{
     extract::{ConnectInfo, State},
-    routing::post,
+    routing::{delete, post},
     Json, Router,
 };
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -32,11 +33,177 @@ const OTP_TTL_MINUTES: i64 = 10;
 const OTP_MAX_TENTATIVES: i32 = 5;
 /// Weave est réservé aux majeurs.
 const AGE_MINIMUM: i32 = 18;
+/// Le délai légal avant purge des données d'un compte supprimé.
+/// `packages/contracts/src/invariants.ts` fait foi : les deux doivent
+/// s'accorder, puisque l'application iOS affiche ce nombre.
+const PURGE_COMPTE_JOURS: i64 = 30;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/auth/otp/request", post(demander_code))
         .route("/v1/auth/otp/verify", post(verifier_code))
+        .route("/v1/auth/refresh", post(renouveler))
+        .route("/v1/auth/logout", post(fermer_session))
+        .route("/v1/auth/account", delete(supprimer_compte))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DemandeRenouvellement {
+    refresh_token: String,
+}
+
+/// Renouvelle la session.
+///
+/// Le jeton présenté est immédiatement révoqué et remplacé — rotation. Une
+/// réutilisation ultérieure du même jeton sera donc rejetée : c'est ce qui
+/// distingue un jeton volé d'un jeton légitime, qui n'est présenté qu'une fois.
+async fn renouveler(
+    State(state): State<AppState>,
+    Json(corps): Json<DemandeRenouvellement>,
+) -> Result<Json<Value>, AppError> {
+    let empreinte = sha256_hex(&corps.refresh_token);
+
+    let stocke = refresh_tokens::Entity::find()
+        .filter(refresh_tokens::Column::TokenHash.eq(empreinte.as_str()))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| non_autorise("Session expirée. Reconnectez-vous."))?;
+
+    if stocke.revoked_at.is_some() || stocke.expires_at < Utc::now().naive_utc() {
+        return Err(non_autorise("Session expirée. Reconnectez-vous."));
+    }
+
+    let session = ouvrir_session(&state, &stocke.account_id, stocke.device_id.as_deref()).await?;
+
+    let nouveau = session
+        .get("refreshToken")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            tracing::error!("session ouverte sans jeton de renouvellement");
+            AppError::new(Code::Internal, "Une erreur interne est survenue.")
+        })?;
+
+    let mut revoque: refresh_tokens::ActiveModel = stocke.into();
+    revoque.revoked_at = Set(Some(Utc::now().naive_utc()));
+    revoque.rotated_to = Set(Some(sha256_hex(nouveau)));
+    revoque.update(&state.db).await?;
+
+    Ok(Json(json!({ "session": session })))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct DemandeFermeture {
+    /// Absent : toutes les sessions du compte sont révoquées.
+    refresh_token: Option<String>,
+}
+
+/// Ferme la session — celle qu'on présente, ou toutes.
+async fn fermer_session(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    corps: Option<Json<DemandeFermeture>>,
+) -> Result<Json<Value>, AppError> {
+    let corps = corps.map(|Json(c)| c).unwrap_or_default();
+
+    let mut a_revoquer = refresh_tokens::Entity::find()
+        .filter(refresh_tokens::Column::AccountId.eq(compte.id.as_str()));
+
+    a_revoquer = match &corps.refresh_token {
+        Some(jeton) => {
+            a_revoquer.filter(refresh_tokens::Column::TokenHash.eq(sha256_hex(jeton)))
+        }
+        None => a_revoquer.filter(refresh_tokens::Column::RevokedAt.is_null()),
+    };
+
+    for jeton in a_revoquer.all(&state.db).await? {
+        let mut revoque: refresh_tokens::ActiveModel = jeton.into();
+        revoque.revoked_at = Set(Some(Utc::now().naive_utc()));
+        revoque.update(&state.db).await?;
+    }
+
+    oublier_compte(&state, &compte.id).await;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Demande la suppression du compte.
+///
+/// En deux temps : le compte sort immédiatement de la circulation, les données
+/// sont purgées à l'issue du délai légal. Les plans ouverts disparaissent du
+/// fil des autres tout de suite — un rendez-vous auquel personne ne répondra
+/// ne doit plus être proposé.
+async fn supprimer_compte(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+) -> Result<Json<Value>, AppError> {
+    let ligne = accounts::Entity::find_by_id(compte.id.as_str())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| non_autorise("Session expirée. Reconnectez-vous."))?;
+
+    let mut sortant: accounts::ActiveModel = ligne.into();
+    sortant.status = Set("deleting".to_string());
+    sortant.deletion_requested_at = Set(Some(Utc::now().naive_utc()));
+    sortant.updated_at = Set(Utc::now().naive_utc());
+    sortant.update(&state.db).await?;
+
+    for jeton in refresh_tokens::Entity::find()
+        .filter(refresh_tokens::Column::AccountId.eq(compte.id.as_str()))
+        .filter(refresh_tokens::Column::RevokedAt.is_null())
+        .all(&state.db)
+        .await?
+    {
+        let mut revoque: refresh_tokens::ActiveModel = jeton.into();
+        revoque.revoked_at = Set(Some(Utc::now().naive_utc()));
+        revoque.update(&state.db).await?;
+    }
+
+    let ouverts: Vec<String> = plans::Entity::find()
+        .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
+        .filter(plans::Column::State.eq("ouvert"))
+        .select_only()
+        .column(plans::Column::Id)
+        .into_tuple()
+        .all(&state.db)
+        .await?;
+
+    for plan in plans::Entity::find()
+        .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
+        .filter(plans::Column::State.eq("ouvert"))
+        .all(&state.db)
+        .await?
+    {
+        let mut annule: plans::ActiveModel = plan.into();
+        annule.state = Set("annule".to_string());
+        annule.cancelled_at = Set(Some(Utc::now().naive_utc()));
+        annule.updated_at = Set(Utc::now().naive_utc());
+        annule.update(&state.db).await?;
+    }
+
+    // Les demandes encore en attente sur ces plans n'ont plus d'interlocuteur :
+    // les laisser « envoyée » retiendrait indéfiniment le quota de qui les a
+    // écrites.
+    if !ouverts.is_empty() {
+        for demande in join_requests::Entity::find()
+            .filter(join_requests::Column::PlanId.is_in(ouverts))
+            .filter(join_requests::Column::State.eq("envoyee"))
+            .all(&state.db)
+            .await?
+        {
+            let mut expiree: join_requests::ActiveModel = demande.into();
+            expiree.state = Set("expiree".to_string());
+            expiree.decided_at = Set(Some(Utc::now().naive_utc()));
+            expiree.update(&state.db).await?;
+        }
+    }
+
+    if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(&compte.id)).await {
+        tracing::warn!(erreur = %erreur, "fil non invalidé");
+    }
+    oublier_compte(&state, &compte.id).await;
+
+    Ok(Json(json!({ "ok": true, "purgeAfterDays": PURGE_COMPTE_JOURS })))
 }
 
 #[derive(Deserialize)]

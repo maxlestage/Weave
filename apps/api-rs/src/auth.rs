@@ -89,17 +89,31 @@ async fn charger_compte(state: &AppState, compte_id: &str) -> Option<CompteAuthe
         return Some(en_cache);
     }
 
-    let compte = accounts::Entity::find_by_id(compte_id.to_string())
-        .one(&state.db)
-        .await
-        .ok()??;
+    // Une panne de base ne doit pas se déguiser en « non authentifié » : le
+    // client réessaierait avec un jeton valable, sans jamais comprendre. On la
+    // journalise pour qu'elle soit lisible, puis on refuse.
+    let compte = match accounts::Entity::find_by_id(compte_id.to_string()).one(&state.db).await {
+        Ok(Some(ligne)) => ligne,
+        Ok(None) => return None,
+        Err(erreur) => {
+            tracing::error!(erreur = %erreur, compte = compte_id, "compte illisible");
+            return None;
+        }
+    };
 
-    let abonnement = subscriptions::Entity::find()
+    let abonnement = match subscriptions::Entity::find()
         .filter(subscriptions::Column::AccountId.eq(compte_id))
         .one(&state.db)
         .await
-        .ok()
-        .flatten();
+    {
+        Ok(ligne) => ligne,
+        Err(erreur) => {
+            // Un abonnement illisible ne doit pas fermer la porte : le compte
+            // retombe au palier de départ, ce qui est le repli sûr.
+            tracing::error!(erreur = %erreur, compte = compte_id, "abonnement illisible");
+            None
+        }
+    };
 
     // Un abonnement sans échéance ne se périme pas ; sinon il faut qu'elle
     // soit devant nous. Hors de ces deux cas, le compte retombe au palier de

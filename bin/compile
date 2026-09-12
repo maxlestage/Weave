@@ -3,11 +3,9 @@
 #
 #   bin/compile <RÉPERTOIRE_BUILD> <RÉPERTOIRE_CACHE> <RÉPERTOIRE_ENV>
 #
-# Installe Bun, construit l'application, puis élague les dépendances pour tenir
-# dans le slug Heroku, plafonné à 500 Mo. Les paquets retirés sont ceux dont le
-# CLI Prisma n'a pas besoin pour `migrate deploy` — la liste a été établie par
-# essais successifs, pas par supposition : retirer davantage casse la phase de
-# publication.
+# Construit le site avec Bun, l'API avec Cargo, puis élague tout ce qui ne sert
+# plus, pour tenir dans le slug Heroku plafonné à 500 Mo. Depuis le passage à
+# Rust, le dyno n'exécute qu'un binaire : ni Bun ni Node n'ont à y rester.
 
 set -euo pipefail
 
@@ -92,39 +90,59 @@ titre "Dépendances"
 BUN_INSTALL_CACHE_DIR="$CACHE_DIR/bun-install" \
   bun install --frozen-lockfile 2>&1 | sed 's/^/       /'
 
-titre "Clients Prisma"
-bun run db:sqlite 2>&1 | sed 's/^/       /'
-bun run db:generate 2>&1 | sed 's/^/       /'
-
 titre "Site vitrine"
 bun run --filter @weave/web build 2>&1 | sed 's/^/       /'
 
 # ------------------------------------------------------------------
+# L'API, en Rust
+#
+# La chaîne Rust pèse près d'un gigaoctet : elle vit dans le cache de
+# construction, jamais dans le slug. Seul le binaire compilé y entre.
+# ------------------------------------------------------------------
+RUST_HOME="$CACHE_DIR/rust"
+export RUSTUP_HOME="$RUST_HOME/rustup"
+export CARGO_HOME="$RUST_HOME/cargo"
+export PATH="$CARGO_HOME/bin:$PATH"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+  titre "Chaîne Rust"
+  detail "installation (première construction, comptez quelques minutes)"
+  mkdir -p "$RUSTUP_HOME" "$CARGO_HOME"
+  curl -fsSL --retry 3 https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path 2>&1 \
+    | sed 's/^/       /'
+else
+  titre "Chaîne Rust"
+  detail "récupérée du cache de construction"
+fi
+detail "$(rustc --version)"
+
+titre "API Weave"
+# Le cache de `target` fait la différence entre dix minutes et une, mais il
+# grossit sans fin : on ne garde que ce qui sert au prochain build.
+CARGO_TARGET_DIR="$CACHE_DIR/cargo-target" \
+  cargo build --release --manifest-path apps/api-rs/Cargo.toml 2>&1 \
+  | sed 's/^/       /'
+
+mkdir -p "$BUILD_DIR/bin-release"
+cp "$CACHE_DIR/cargo-target/release/weave-api" "$BUILD_DIR/bin-release/weave-api"
+chmod +x "$BUILD_DIR/bin-release/weave-api"
+detail "binaire : $(du -h "$BUILD_DIR/bin-release/weave-api" | cut -f1)"
+
+# ------------------------------------------------------------------
 # Élagage
 #
-# Le slug est plafonné à 500 Mo et Bun pèse à lui seul près de 100 Mo. On
-# repasse en installation de production, puis on retire les paquets dont le CLI
-# Prisma n'a pas besoin pour appliquer les migrations.
+# Le slug est plafonné à 500 Mo, et c'est ce plafond qui a fait échouer les
+# premières publications. Rien de ce qui a servi à construire n'a à voyager
+# avec le slug : les migrations elles-mêmes sont dans le binaire.
 # ------------------------------------------------------------------
-titre "Élagage des dépendances de développement"
-avant="$(du -sm node_modules | cut -f1)"
+titre "Élagage"
 
-# `bun install --production` ne purge pas un arbre déjà installé : il faut
-# repartir de zéro. Le cache de téléchargement est conservé entre deux
-# constructions, la réinstallation ne coûte donc que quelques secondes.
-rm -rf node_modules
-BUN_INSTALL_CACHE_DIR="$CACHE_DIR/bun-install" \
-  bun install --production --frozen-lockfile 2>&1 | sed 's/^/       /'
-
-# `@electric-sql/pglite` sert à `prisma dev`, `typescript` à la compilation :
-# ni l'un ni l'autre n'intervient dans `migrate deploy`. En retirer davantage
-# — notamment `@prisma/studio-core` ou `effect` — casse le CLI.
-for paquet in "@electric-sql+pglite" "@typescript+typescript-linux-x64" "typescript" "better-sqlite3"; do
-  rm -rf node_modules/.bun/${paquet}@* 2>/dev/null || true
-done
-
-apres="$(du -sm node_modules | cut -f1)"
-detail "node_modules : ${avant} Mo → ${apres} Mo"
+# Le site est construit : ses dépendances n'ont plus lieu d'être dans le slug.
+# L'API est un binaire, elle n'en a jamais eu besoin.
+avant="$(du -sm node_modules 2>/dev/null | cut -f1 || echo 0)"
+rm -rf node_modules apps/web/node_modules packages/*/node_modules
+detail "node_modules : ${avant} Mo → 0 Mo (retirés)"
 
 # ------------------------------------------------------------------
 # Node.js déposé par un autre buildpack
@@ -140,8 +158,9 @@ detail "node_modules : ${avant} Mo → ${apres} Mo"
 # garantie, et celle-ci a déjà été manquée.
 #
 # Condition pour que ce soit sans danger : plus rien ne doit invoquer un
-# `#!/usr/bin/env node`. `scripts/heroku-release.sh` lance donc le CLI Prisma
-# par `bun`, qui sait exécuter ces fichiers sans Node.
+# `#!/usr/bin/env node`. Depuis le passage à Rust, c'est acquis — le `Procfile`
+# n'appelle que le binaire, pour la phase de publication comme pour le dyno
+# web.
 if [ -d "$BUILD_DIR/.heroku/node" ]; then
   titre "Node.js inutilisé"
   poids="$(du -sm "$BUILD_DIR/.heroku/node" | cut -f1)"
@@ -158,7 +177,8 @@ titre "Environnement d'exécution"
 mkdir -p "$BUILD_DIR/.profile.d"
 cat > "$BUILD_DIR/.profile.d/weave.sh" <<'PROFILE'
 # Exécuté au démarrage de chaque dyno, avant la commande du Procfile.
-export PATH="/app/.heroku/bun/bin:$PATH"
+# L'API est un binaire autonome : Bun ne sert plus qu'à construire le site,
+# et n'a rien à faire sur le dyno.
 
 # Valeurs par défaut, qui ne remplacent jamais une variable déjà définie.
 export NODE_ENV="${NODE_ENV:-production}"
@@ -169,15 +189,14 @@ PROFILE
 # ------------------------------------------------------------------
 # Ce que le slug doit contenir
 #
-# Un slug auquel il manque un client Prisma se publie sans erreur : c'est au
-# démarrage que le dyno s'arrête, sur « Cannot find module », qui ne dit ni
+# Un slug auquel il manque le binaire, ou le site construit, se publie sans
+# erreur : c'est au démarrage que le dyno s'arrête, sur un message qui ne dit ni
 # quelle étape a manqué ni pourquoi. Le constater ici coûte une construction ;
 # le constater en ligne coûte une publication et une lecture de journal.
 # ------------------------------------------------------------------
 titre "Vérification du slug"
 for attendu in \
-  "apps/api/src/generated/prisma/client.ts" \
-  "apps/api/src/generated/prisma-sqlite/client.ts" \
+  "bin-release/weave-api" \
   "apps/web/dist/index.html"; do
   if [ ! -f "$BUILD_DIR/$attendu" ]; then
     echo " !     Absent du slug après construction : $attendu" >&2

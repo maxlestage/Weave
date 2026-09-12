@@ -13,7 +13,7 @@ build:
 release:
   image: web
   command:
-    - bash scripts/heroku-release.sh
+    - /app/bin-release/weave-api migrate
 
 run:
-  web: bun apps/api/src/index.ts
+  web: /app/bin-release/weave-api
