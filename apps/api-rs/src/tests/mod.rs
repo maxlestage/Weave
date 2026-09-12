@@ -151,6 +151,15 @@ impl Service {
         id
     }
 
+    /// Une adresse e-mail propre à ce test.
+    ///
+    /// Les demandes de code sont limitées en débit par empreinte d'adresse, et
+    /// ce compteur vit dans le cache partagé : une adresse fixe ferait passer
+    /// la suite une fois, puis rendrait 429 à l'exécution suivante.
+    pub fn email(&self, nom: &str) -> String {
+        format!("{nom}-{}@exemple.fr", self.suffixe)
+    }
+
     /// Un jeton d'accès pour un compte nommé dans un test.
     pub fn jeton(&self, nom: &str) -> String {
         jeton_pour(&self.id(nom))
@@ -297,3 +306,5 @@ mod vitrine;
 mod session;
 mod profil;
 mod demandes;
+mod conversations;
+mod offres;

@@ -10,7 +10,8 @@ use axum::http::StatusCode;
 use serde_json::json;
 
 /// Ouvre une session en déroulant le parcours réel, et rend (accès, renouvellement).
-async fn session(service: &Service, email: &str) -> (String, String) {
+async fn session(service: &Service, nom: &str) -> (String, String) {
+    let email = &service.email(nom);
     let (statut, corps) = service
         .post("/v1/auth/otp/request", None, json!({ "email": email }))
         .await;
@@ -35,7 +36,7 @@ async fn session(service: &Service, email: &str) -> (String, String) {
 #[tokio::test]
 async fn une_session_se_renouvelle() {
     let service = Service::monter().await;
-    let (_, renouvellement) = session(&service, "renouvelle@exemple.fr").await;
+    let (_, renouvellement) = session(&service, "renouvelle").await;
 
     let (statut, corps) = service
         .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement }))
@@ -53,7 +54,7 @@ async fn une_session_se_renouvelle() {
 #[tokio::test]
 async fn un_jeton_de_renouvellement_ne_sert_qu_une_fois() {
     let service = Service::monter().await;
-    let (_, renouvellement) = session(&service, "rotation@exemple.fr").await;
+    let (_, renouvellement) = session(&service, "rotation").await;
 
     let (statut, _) = service
         .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement.clone() }))
@@ -82,7 +83,7 @@ async fn un_jeton_inconnu_ne_renouvelle_rien() {
 #[tokio::test]
 async fn fermer_une_session_revoque_son_jeton() {
     let service = Service::monter().await;
-    let (acces, renouvellement) = session(&service, "ferme@exemple.fr").await;
+    let (acces, renouvellement) = session(&service, "ferme").await;
 
     let (statut, _) = service
         .post("/v1/auth/logout", Some(&acces), json!({ "refreshToken": renouvellement.clone() }))
@@ -100,7 +101,7 @@ async fn fermer_une_session_revoque_son_jeton() {
 #[tokio::test]
 async fn fermer_sans_preciser_revoque_tout() {
     let service = Service::monter().await;
-    let (acces, premier) = session(&service, "partout@exemple.fr").await;
+    let (acces, premier) = session(&service, "partout").await;
 
     // Un second appareil, sur le même compte.
     let (statut, corps) = service
