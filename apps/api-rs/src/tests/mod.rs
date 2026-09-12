@@ -10,7 +10,7 @@
 //! reviendrait à ne pas tester l'invariant central du produit.
 
 use crate::{
-    auth::emettre_jeton, cache, construire_routeur, db, env::*, AppState,
+    auth::emettre_jeton, cache, construire_routeur, env::*, AppState,
 };
 use axum::{
     body::Body,
@@ -29,7 +29,7 @@ const SECRET_MEDIA: &str = "un-autre-secret-de-test-assez-long-pour-les-medias";
 /// le recopier garantit que les tests portent sur les tables réelles : une
 /// colonne ajoutée au schéma sans l'être ici ferait échouer le test, ce qui
 /// est exactement ce qu'on veut.
-const SCHEMA: &str = include_str!("../../../api/prisma/migrations-sqlite/0_init/migration.sql");
+const SCHEMA: &str = include_str!("../../migrations-sqlite/0_init/migration.sql");
 
 pub async fn base_de_test() -> DatabaseConnection {
     // Ni `sqlite::memory:` ni une base nommée en cache partagé ne conviennent :
@@ -98,6 +98,14 @@ fn configuration() -> Env {
 pub struct Service {
     routeur: axum::Router,
     pub db: DatabaseConnection,
+    /// Ce qui distingue les comptes d'un test de ceux d'un autre.
+    ///
+    /// La base est déjà propre à chaque test, mais le cache, lui, est partagé
+    /// — et le quota de demandes n'y vit que sous l'identifiant du compte, pour
+    /// la journée. Deux tests qui nommeraient leurs comptes pareil se
+    /// partageraient donc le même quota, entre eux et d'une exécution à la
+    /// suivante. Le suffixe sépare ce que la base séparait déjà.
+    suffixe: String,
 }
 
 impl Service {
@@ -105,8 +113,14 @@ impl Service {
     /// cache : sans cela, deux tests exécutés en parallèle se disputeraient le
     /// même quota.
     pub async fn monter() -> Self {
+        Self::monter_avec(None).await
+    }
+
+    /// Même service, avec un site vitrine à servir.
+    pub async fn monter_avec(web_dist: Option<String>) -> Self {
         let db = base_de_test().await;
-        let config = configuration();
+        let mut config = configuration();
+        config.web_dist = web_dist;
         let cache = cache::connecter(&Cache {
             url: std::env::var("REDIS_URL")
                 .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
@@ -116,7 +130,30 @@ impl Service {
         .expect("Redis local requis : le quota n'a pas d'autre source de vérité");
 
         let state = AppState { db: db.clone(), cache, config: Arc::new(config) };
-        Self { routeur: construire_routeur(state), db }
+        static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let suffixe = format!(
+            "{}x{}",
+            std::process::id(),
+            COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        Self { routeur: construire_routeur(state), db, suffixe }
+    }
+
+    /// L'identifiant réel d'un compte nommé dans un test.
+    pub fn id(&self, nom: &str) -> String {
+        format!("{nom}_{}", self.suffixe)
+    }
+
+    /// Insère un compte utilisable et rend son identifiant.
+    pub async fn compte(&self, nom: &str, palier: &str) -> String {
+        let id = self.id(nom);
+        compte_de_test(&self.db, &id, palier).await;
+        id
+    }
+
+    /// Un jeton d'accès pour un compte nommé dans un test.
+    pub fn jeton(&self, nom: &str) -> String {
+        jeton_pour(&self.id(nom))
     }
 
     pub async fn get(&self, chemin: &str, jeton: Option<&str>) -> (StatusCode, Value) {
@@ -125,6 +162,27 @@ impl Service {
 
     pub async fn post(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
         self.appeler("POST", chemin, jeton, Some(corps)).await
+    }
+
+    /// La réponse entière, en-têtes compris : ce que `get` jette est
+    /// précisément ce que le cache du navigateur lit.
+    pub async fn get_brut(&self, chemin: &str) -> (StatusCode, axum::http::HeaderMap, String) {
+        let requete = Request::builder()
+            .method("GET")
+            .uri(chemin)
+            .body(Body::empty())
+            .expect("requête bien formée");
+
+        let reponse = self
+            .routeur
+            .clone()
+            .oneshot(requete)
+            .await
+            .expect("le service répond");
+        let statut = reponse.status();
+        let entetes = reponse.headers().clone();
+        let octets = reponse.into_body().collect().await.expect("corps lisible").to_bytes();
+        (statut, entetes, String::from_utf8_lossy(&octets).into_owned())
     }
 
     async fn appeler(
@@ -199,3 +257,4 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
     .await
     .expect("la table accounts doit exister");
 }
+mod vitrine;

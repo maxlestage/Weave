@@ -67,5 +67,35 @@ jobs:
       - name: Compiler le site
         run: bun run --filter @weave/web build
 
+      # ----------------------------------------------------------------
+      # L'API, en Rust
+      #
+      # Le portage n'est pas encore celui que le dyno exécute — il lui manque
+      # des routes —, mais il se garde dès maintenant : une régression laissée
+      # à découvrir le jour de la bascule serait découverte trop tard.
+      # ----------------------------------------------------------------
+      - name: Installer Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de compilation Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/api-rs/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('apps/api-rs/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Tests de l'API
+        # Les tests d'intégration montent le service entier ; le quota de
+        # demandes n'a d'autre source de vérité que le cache, d'où Redis.
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+        run: cargo test --manifest-path apps/api-rs/Cargo.toml
+
+      - name: Compiler l'API
+        run: cargo build --release --manifest-path apps/api-rs/Cargo.toml
+
       - name: Formatage
         run: bunx --bun prettier --check .

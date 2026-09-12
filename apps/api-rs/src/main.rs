@@ -10,6 +10,7 @@ mod db;
 mod droits;
 mod error;
 mod limitation;
+mod migrations;
 mod routes;
 mod temps;
 
@@ -22,7 +23,14 @@ mod env;
 #[allow(dead_code)]
 mod entities;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::{Request, State},
+    http::{header, HeaderValue, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use redis::aio::ConnectionManager;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde_json::json;
@@ -52,6 +60,23 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let db = db::connecter(&config.db).await?;
+
+    // `weave-api migrate` : la phase de publication d'Heroku l'appelle avant
+    // que la nouvelle version ne reçoive du trafic. Si elle échoue, la version
+    // précédente reste en ligne — d'où un processus séparé, qui ne démarre ni
+    // le serveur ni le cache.
+    if std::env::args().nth(1).as_deref() == Some("migrate") {
+        let posees = migrations::appliquer(&db).await?;
+        if posees.is_empty() {
+            println!("  • aucune migration à appliquer");
+        } else {
+            for nom in posees {
+                println!("  • appliquée : {nom}");
+            }
+        }
+        return Ok(());
+    }
+
     let cache = cache::connecter(&config.cache).await?;
 
     let origine = if config.is_production() {
@@ -93,7 +118,8 @@ async fn main() -> anyhow::Result<()> {
 /// et non chaque gestionnaire isolément. Un gestionnaire juste derrière un
 /// routage faux ne rend toujours pas le bon service.
 fn construire_routeur(state: AppState) -> Router {
-    Router::new()
+    let vitrine = state.config.web_dist.clone();
+    let api = Router::new()
         .route("/health", get(health))
         .merge(routes::auth::routes())
         .merge(routes::me::routes())
@@ -105,7 +131,72 @@ fn construire_routeur(state: AppState) -> Router {
         .merge(routes::media::routes())
         .merge(routes::fil::routes())
         .merge(routes::billing::routes())
-        .with_state(state)
+        .with_state(state);
+
+    monter_vitrine(api, vitrine.as_deref())
+}
+
+/// Monte le site vitrine sous les routes de l'API.
+///
+/// Le site est statique et peu visité : lui dédier un second dyno doublerait
+/// la facture sans rien apporter. Il passe en recours, jamais devant l'API —
+/// un fichier nommé `health` dans `dist` ne doit pas éteindre la sonde.
+///
+/// En développement il n'y a pas de `dist` : `WEB_DIST_PATH` n'est pas défini
+/// et aucune route n'est ajoutée. Un site absent là où on l'attendait est
+/// signalé, mais n'empêche pas l'API de démarrer : l'application iOS en
+/// dépend, et elle n'a que faire de la vitrine.
+fn monter_vitrine(routeur: Router, chemin: Option<&str>) -> Router {
+    let Some(chemin) = chemin else {
+        return routeur;
+    };
+
+    if !std::path::Path::new(chemin).join("index.html").is_file() {
+        tracing::warn!(chemin, "site vitrine introuvable, l'API démarre sans lui");
+        return routeur;
+    }
+
+    let fichiers = tower_http::services::ServeDir::new(chemin)
+        // Sans cela, `/` — un répertoire — rend une 404 : c'est l'adresse du
+        // service elle-même qui serait vide.
+        .append_index_html_on_directories(true);
+
+    let vitrine = Router::new()
+        .fallback_service(fichiers)
+        .layer(axum::middleware::from_fn(servir_vitrine));
+
+    routeur.fallback_service(vitrine)
+}
+
+/// Ce que le recours ajoute autour des fichiers : la méthode, puis le cache.
+///
+/// La construction appose une empreinte au nom des scripts, des styles et des
+/// images : leur contenu ne change jamais sous un même nom, ils se gardent
+/// indéfiniment. `index.html`, lui, garde les noms des autres : le mettre en
+/// cache une heure servirait l'ancien site une heure après chaque publication.
+async fn servir_vitrine(requete: Request, suite: Next) -> Response {
+    // Un POST sur une adresse d'API mal orthographiée arrive ici, et le
+    // service de fichiers répondrait « méthode interdite » : un contresens,
+    // qui laisse croire que la ressource existe. Elle n'existe pas.
+    if !matches!(*requete.method(), axum::http::Method::GET | axum::http::Method::HEAD) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let chemin = requete.uri().path();
+    let html = chemin == "/" || chemin.ends_with('/') || chemin.ends_with(".html");
+
+    let mut reponse = suite.run(requete).await;
+    if reponse.status().is_success() {
+        reponse.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(if html {
+                "no-cache"
+            } else {
+                "public, max-age=31536000, immutable"
+            }),
+        );
+    }
+    reponse
 }
 
 /// Sonde de santé.

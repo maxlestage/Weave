@@ -37,19 +37,19 @@ async fn un_jeton_valable_pour_un_compte_inexistant_est_refuse() {
     // Un compte supprimé laisse des jetons valides en circulation : ils ne
     // doivent plus ouvrir la porte.
     let service = Service::monter().await;
-    let (statut, _) = service.get("/v1/me", Some(&jeton_pour("compte_fantome"))).await;
+    let (statut, _) = service.get("/v1/me", Some(&service.jeton("compte_fantome"))).await;
     assert_eq!(statut, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
 async fn la_fiche_rend_le_palier_et_le_quota_du_palier() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_fiche", "escapade").await;
+    service.compte("c_fiche", "escapade").await;
 
-    let (statut, corps) = service.get("/v1/me", Some(&jeton_pour("c_fiche"))).await;
+    let (statut, corps) = service.get("/v1/me", Some(&service.jeton("c_fiche"))).await;
 
     assert_eq!(statut, StatusCode::OK);
-    assert_eq!(corps["handle"], "c_fiche");
+    assert_eq!(corps["handle"], service.id("c_fiche"));
     assert_eq!(corps["tier"], "escapade");
     // Escapade donne 25 demandes par jour, aucune encore dépensée.
     assert_eq!(corps["requestsLeftToday"], 25);
@@ -65,8 +65,8 @@ async fn la_fiche_rend_le_palier_et_le_quota_du_palier() {
 #[tokio::test]
 async fn trois_plans_ouverts_et_pas_un_de_plus() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_plans", "grandtour").await;
-    let jeton = jeton_pour("c_plans");
+    service.compte("c_plans", "grandtour").await;
+    let jeton = &service.jeton("c_plans");
 
     let plan = |titre: &str| {
         json!({
@@ -95,8 +95,8 @@ async fn trois_plans_ouverts_et_pas_un_de_plus() {
 #[tokio::test]
 async fn un_plan_se_publie_a_l_avance_et_avec_un_vrai_titre() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_valid", "depart").await;
-    let jeton = jeton_pour("c_valid");
+    service.compte("c_valid", "depart").await;
+    let jeton = &service.jeton("c_valid");
 
     let dans_deux_jours = (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339();
 
@@ -130,11 +130,11 @@ async fn un_plan_se_publie_a_l_avance_et_avec_un_vrai_titre() {
 #[tokio::test]
 async fn une_demande_exige_un_message_ecrit() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_hote", "depart").await;
-    compte_de_test(&service.db, "c_invite", "depart").await;
+    service.compte("c_hote", "depart").await;
+    service.compte("c_invite", "depart").await;
 
     let (statut, plan) = service
-        .post("/v1/plans", Some(&jeton_pour("c_hote")), json!({
+        .post("/v1/plans", Some(&service.jeton("c_hote")), json!({
             "title": "Un plan a rejoindre pour cet essai",
             "category": "balade",
             "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
@@ -145,12 +145,12 @@ async fn une_demande_exige_un_message_ecrit() {
 
     // « Salut » n'est pas une demande : c'est un geste.
     let (statut, _) = service
-        .post("/v1/requests", Some(&jeton_pour("c_invite")), json!({ "planId": plan_id, "message": "Salut" }))
+        .post("/v1/requests", Some(&service.jeton("c_invite")), json!({ "planId": plan_id, "message": "Salut" }))
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 
     let (statut, corps) = service
-        .post("/v1/requests", Some(&jeton_pour("c_invite")), json!({
+        .post("/v1/requests", Some(&service.jeton("c_invite")), json!({
             "planId": plan_id,
             "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
         }))
@@ -161,7 +161,7 @@ async fn une_demande_exige_un_message_ecrit() {
 
     // On ne redemande pas deux fois.
     let (statut, corps) = service
-        .post("/v1/requests", Some(&jeton_pour("c_invite")), json!({
+        .post("/v1/requests", Some(&service.jeton("c_invite")), json!({
             "planId": plan_id,
             "message": "Je retente ma chance avec un message different.",
         }))
@@ -173,8 +173,8 @@ async fn une_demande_exige_un_message_ecrit() {
 #[tokio::test]
 async fn on_ne_demande_pas_a_venir_a_son_propre_plan() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_solo", "depart").await;
-    let jeton = jeton_pour("c_solo");
+    service.compte("c_solo", "depart").await;
+    let jeton = &service.jeton("c_solo");
 
     let (_, plan) = service
         .post("/v1/plans", Some(&jeton), json!({
@@ -196,18 +196,18 @@ async fn on_ne_demande_pas_a_venir_a_son_propre_plan() {
 #[tokio::test]
 async fn le_fil_ecarte_ses_propres_plans() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_fil", "depart").await;
-    compte_de_test(&service.db, "c_autre", "depart").await;
+    service.compte("c_fil", "depart").await;
+    service.compte("c_autre", "depart").await;
 
     let demain = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
-    service.post("/v1/plans", Some(&jeton_pour("c_fil")), json!({
+    service.post("/v1/plans", Some(&service.jeton("c_fil")), json!({
         "title": "Le plan de celui qui regarde", "category": "sortie", "startsAt": demain,
     })).await;
-    service.post("/v1/plans", Some(&jeton_pour("c_autre")), json!({
+    service.post("/v1/plans", Some(&service.jeton("c_autre")), json!({
         "title": "Le plan de quelquun dautre", "category": "sortie", "startsAt": demain,
     })).await;
 
-    let (statut, corps) = service.get("/v1/plans", Some(&jeton_pour("c_fil"))).await;
+    let (statut, corps) = service.get("/v1/plans", Some(&service.jeton("c_fil"))).await;
     assert_eq!(statut, StatusCode::OK);
 
     let plans = corps["plans"].as_array().unwrap();
@@ -236,14 +236,17 @@ async fn le_catalogue_ne_vend_aucune_visibilite() {
 #[tokio::test]
 async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
     let service = Service::monter().await;
-    compte_de_test(&service.db, "c_media", "depart").await;
+    service.compte("c_media", "depart").await;
     service
         .db
-        .execute_unprepared("UPDATE profiles SET photoKey='photos/secrete.jpg' WHERE accountId='c_media'")
+        .execute_unprepared(&format!(
+            "UPDATE profiles SET photoKey='photos/secrete.jpg' WHERE accountId='{}'",
+            service.id("c_media")
+        ))
         .await
         .unwrap();
 
-    let (_, fiche) = service.get("/v1/me", Some(&jeton_pour("c_media"))).await;
+    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_media"))).await;
     let url = fiche["photoUrl"].as_str().expect("une photo signée");
     let chemin = url.strip_prefix("https://exemple.test").unwrap();
 
