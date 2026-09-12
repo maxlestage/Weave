@@ -1,6 +1,7 @@
 //! Les routes de l'API, par module métier.
 
 pub mod auth;
+pub mod billing;
 pub mod conversations;
 pub mod devices;
 pub mod me;
