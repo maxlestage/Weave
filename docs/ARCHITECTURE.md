@@ -12,7 +12,7 @@
                   │  HTTPS + JWT          ▲
                   ▼                       │ APNs (liveactivity)
         ┌───────────────────────────────────────────┐
-        │        API Weave — Bun + Elysia           │
+        │        API Weave — Rust + Axum            │
         │  composition du fil · droits · APNs       │
         └───────┬───────────────────────┬───────────┘
                 │                       │
@@ -24,48 +24,35 @@
 
         ┌────────────────┐
         │  Site vitrine  │  React, bundlé par Bun — présentation
-        │  (mobile first)│  ne touche pas à l'API
+        │  (mobile first)│  servi par le même binaire
         └────────────────┘
 ```
 
 ## Choix techniques, et pourquoi
 
-### Bun partout, pas de Node.js
+### L'API en Rust, le reste en Bun
 
-Bun 1.3 sert de gestionnaire de paquets, d'exécuteur, de lanceur de tests et de
-bundler. Il apporte aussi, en natif, deux briques qui auraient sinon exigé des
-dépendances : **un client Redis** (`Bun.RedisClient`) et **un moteur SQLite**
-(`bun:sqlite`). Moins de dépendances, c'est moins de surface d'attaque et moins
-de mises à jour à suivre.
+L'API est un binaire Rust autonome : Axum pour le routage, SeaORM pour l'accès
+aux données, un client Redis natif. C'est lui que le dyno exécute, et il ne
+dépend d'aucun environnement d'exécution à installer à côté.
 
-Une conséquence a demandé du travail : l'adaptateur Prisma officiel pour SQLite
-repose sur `better-sqlite3`, un module natif Node.js qui ne se charge pas sous
-Bun (`ERR_DLOPEN_FAILED`). Weave embarque donc son propre adaptateur,
-[`@weave/prisma-bun-sqlite`](../packages/prisma-bun-sqlite), bâti sur
-`bun:sqlite`. Il implémente l'interface publique `SqlMigrationAwareDriverAdapterFactory`
-de Prisma et reproduit sa sémantique de conversion (types de colonnes, dates ISO
-8601, entiers 64 bits, transactions sérialisées). Vingt tests le couvrent.
+Bun reste le gestionnaire de paquets et le bundler du site vitrine, et sert la
+chaîne de développement. Le site et l'API ne partagent que
+[`@weave/contracts`](../packages/contracts) — des constantes, pas du code.
 
-En production, rien de tout cela n'intervient : PostgreSQL via `@prisma/adapter-pg`.
+### Les migrations sont du SQL, et rien d'autre
 
-### Elysia
+`apps/api-rs/migrations/` pour PostgreSQL, `apps/api-rs/migrations-sqlite/` pour
+SQLite : deux jeux de fichiers `.sql` versionnés, appliqués par
+`weave-api migrate` avant que la nouvelle version ne reçoive du trafic.
 
-Le typage de bout en bout est la raison principale : les schémas de validation
-sont aussi les types TypeScript, et la documentation OpenAPI en est dérivée
-plutôt que maintenue à côté. Sur Bun, c'est aussi le routeur le plus rapide de
-l'écosystème.
+Le binaire tient son journal dans la table `_prisma_migrations`, au format que
+Prisma utilisait. Ce n'est pas de la nostalgie : la base de production porte
+déjà cet état, et le relire évite de rejouer des migrations déjà appliquées.
 
-### Un schéma Prisma portable, deux moteurs
-
-Le schéma est écrit sans `enum`, sans liste scalaire, sans type natif propre à
-un moteur. Seul le bloc `datasource` diffère. `bun run db:sqlite` dérive le
-schéma SQLite du schéma PostgreSQL et **refuse la dérivation** si une
-construction non portable a été introduite entre-temps.
-
-Prisma 7 compile les requêtes pour un moteur donné : chaque schéma produit son
-propre client, et `src/lib/prisma.ts` charge le bon au démarrage selon
-`WEAVE_DB`. SQLite est refusé en production par une garde explicite dans
-`env.ts`.
+Chaque dialecte a son propre jeu. Servir le SQL de PostgreSQL à SQLite avait
+déjà fait échouer une publication, sur un `near "(": syntax error` — un test
+garde ce cas.
 
 ### Redis n'est pas un cache d'accélération
 
@@ -86,13 +73,11 @@ Détails dans [CACHE.md](./CACHE.md).
 ```
 weave/
 ├── apps/
-│   ├── api/     Elysia · Prisma · Redis · APNs
+│   ├── api-rs/  Axum · SeaORM · Redis · APNs — le binaire du dyno
 │   ├── web/     React 19 · Tailwind 4, bundlés par Bun — vitrine
 │   └── ios/     Swift 6.2 · SwiftUI · ActivityKit · watchOS
 ├── packages/
-│   ├── contracts/           invariants, catalogue, types partagés
-│   └── prisma-bun-sqlite/   adaptateur Prisma pour bun:sqlite
-├── scripts/                 dérivation du schéma, passe-plat Prisma
+│   └── contracts/   invariants, catalogue, types partagés
 └── docs/
 ```
 
@@ -103,14 +88,14 @@ le catalogue des offres et les types de transport sont définis une fois et
 consommés par l'API **et** par le site. Le site ne peut donc pas afficher un
 tarif ou un plafond que l'API n'applique pas.
 
-Côté Swift, les mêmes structures sont redéfinies dans `WeaveKit/Models` — un
-miroir manuel, puisqu'on ne partage pas de types entre TypeScript et Swift. Les
+Côté Rust comme côté Swift, les mêmes valeurs sont redéfinies à la main —
+on ne partage pas de types entre TypeScript, Rust et Swift. Les
 tests de `WeaveKit` décodent des charges utiles réelles de l'API pour vérifier
 que le miroir n'a pas dérivé.
 
 ## La composition du fil
 
-`apps/api/src/modules/plans.service.ts`
+`apps/api-rs/src/routes/fil.rs`
 
 1. **Préfiltre en SQL** — boîte englobante géographique (pas d'extension
    géospatiale : le schéma doit rester portable), fenêtre de dates bornée par
@@ -130,13 +115,13 @@ requête, pas un algorithme de recommandation.
 
 ## L'invariant de quota
 
-`apps/api/src/lib/cache.ts` et `apps/api/src/modules/requests.routes.ts`
+`apps/api-rs/src/cache.rs` et `apps/api-rs/src/routes/requests.rs`
 
 Le compteur de demandes du jour vit dans Redis, expire à minuit dans le fuseau
 de la personne, et se décrémente par un script Lua atomique. Le quota est
 prélevé **avant** l'écriture de la demande, et rendu si l'insertion échoue.
 
-Toutes les lectures passent par `dailyRequestQuota()`, qui tient compte des
+Toutes les lectures passent par `quota_journalier()`, qui tient compte des
 « Renforts » achetés : calculer `requestsPerDay` seul quelque part afficherait
 un compteur faux.
 

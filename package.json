@@ -9,30 +9,20 @@
     "bun": ">=1.4.2"
   },
   "workspaces": [
-    "apps/api",
     "apps/web",
     "packages/*"
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
-    "dev:api": "bun run --filter @weave/api dev",
     "dev:web": "bun run --filter @weave/web dev",
     "build": "bun run --filter '*' build",
-    "heroku-prebuild": "bash scripts/heroku-prebuild.sh",
-    "heroku-postbuild": "echo 'Rien à faire ici : les clients Prisma sont engendrés par heroku-prebuild, avant build.'",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test",
+    "test": "cargo test --manifest-path apps/api-rs/Cargo.toml",
     "lint": "bunx --bun prettier --check .",
     "format": "bunx --bun prettier --write .",
-    "db:sqlite": "bun run scripts/gen-sqlite-schema.ts",
-    "db:generate": "bun run --filter @weave/api db:generate:all",
-    "db:migrate": "bun run --filter @weave/api db:migrate",
-    "db:seed": "bun run --filter @weave/api db:seed",
-    "db:studio": "bun run --filter @weave/api db:studio",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
-    "setup": "bun install && bun run db:sqlite && bun run db:generate && WEAVE_DB=sqlite bun run db:deploy && bun run db:seed",
-    "db:deploy": "bun run --filter @weave/api db:deploy"
+    "setup": "bun install"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",

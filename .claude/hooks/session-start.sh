@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prépare une session de travail : dépendances, cache, schéma, base locale.
+# Prépare une session de travail : dépendances et cache.
 # Idempotent — il peut être relancé sans effet de bord.
 set -uo pipefail
 
@@ -25,15 +25,6 @@ if ! redis-cli ping >/dev/null 2>&1; then
   fi
 fi
 
-echo "  • schéma SQLite"
-bun run db:sqlite >/dev/null 2>&1
-
-echo "  • clients Prisma"
-bun run db:generate >/dev/null 2>&1 || echo "    (échec de la génération)"
-
-if [ ! -f apps/api/prisma/dev.db ]; then
-  echo "  • base de développement et jeu de données"
-  (cd apps/api && WEAVE_DB=sqlite bun run db:deploy >/dev/null 2>&1 && WEAVE_DB=sqlite bun run db:seed >/dev/null 2>&1)
-fi
-
-echo "  prêt — bun run dev"
+# L'API crée son schéma elle-même : `weave-api migrate` applique les migrations
+# de `apps/api-rs/migrations`. Rien à préparer ici.
+echo "  prêt — bun run dev:web pour le site, cargo run pour l'API"

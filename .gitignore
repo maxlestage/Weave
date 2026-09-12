@@ -22,15 +22,11 @@ bin-release/
 *.db-journal
 *.db-wal
 *.db-shm
-prisma/dev.db*
-apps/api/prisma/dev.db*
 weave-dev.sqlite*
 
 # Prisma généré
-apps/api/src/generated/
 
 # Schéma SQLite dérivé (généré par scripts/gen-sqlite-schema.ts)
-apps/api/prisma/schema.sqlite.prisma
 
 # Logs
 *.log

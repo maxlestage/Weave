@@ -17,7 +17,6 @@ node_modules
 **/dist
 **/target
 bin-release
-apps/api/src/generated
 
 # Git et métadonnées
 .git
@@ -31,8 +30,6 @@ apps/api/src/generated
 **/*.db-wal
 **/*.db-shm
 **/*.sqlite
-apps/api/prisma/dev.db*
-apps/api/prisma/schema.sqlite.prisma
 
 # Environnement — un secret n'entre jamais dans une image
 **/.env
