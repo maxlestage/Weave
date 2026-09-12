@@ -2,11 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["bun"],
     "paths": {
       "@weave/contracts": ["../../packages/contracts/src/index.ts"],
       "@weave/contracts/*": ["../../packages/contracts/src/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "../../packages/contracts/src"]
+  "include": ["src", "build.ts", "../../packages/contracts/src"]
 }

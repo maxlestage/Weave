@@ -23,7 +23,7 @@
         └────────────────┘      └──────────────────┘
 
         ┌────────────────┐
-        │  Site vitrine  │  React + Vite — présentation seulement,
+        │  Site vitrine  │  React, bundlé par Bun — présentation
         │  (mobile first)│  ne touche pas à l'API
         └────────────────┘
 ```
@@ -87,7 +87,7 @@ Détails dans [CACHE.md](./CACHE.md).
 weave/
 ├── apps/
 │   ├── api/     Elysia · Prisma · Redis · APNs
-│   ├── web/     React 19 · Vite 8 · Tailwind 4 — vitrine
+│   ├── web/     React 19 · Tailwind 4, bundlés par Bun — vitrine
 │   └── ios/     Swift 6.2 · SwiftUI · ActivityKit · watchOS
 ├── packages/
 │   ├── contracts/           invariants, catalogue, types partagés

@@ -29,7 +29,7 @@ Ce dépôt contient l'API, l'application iOS et watchOS, et le site de présenta
 | ORM | Prisma | 7 |
 | Base | PostgreSQL (production) · SQLite (développement) | — |
 | Cache | Redis, via le client natif de Bun | — |
-| Site | React · Vite · Tailwind | 19 · 8 · 4 |
+| Site | React · Tailwind, bundlés par Bun | 19 · 4 |
 | Applications | Swift · SwiftUI · ActivityKit · WidgetKit | 6.2 |
 
 Toutes les dépendances viennent de leurs canaux officiels : registre npm pour

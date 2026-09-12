@@ -1,0 +1,11 @@
+# Site vitrine — configuration Bun.
+#
+# Tailwind v4 n'est pas du CSS standard : `@import "tailwindcss"` et `@theme`
+# demandent un greffon, sans lequel le bundler recopierait ces règles telles
+# quelles et la page sortirait sans styles.
+#
+# Cette section ne vaut que pour le serveur de développement. La construction
+# ne la lit pas : `build.ts` déclare le même greffon de son côté.
+
+[serve.static]
+plugins = ["bun-plugin-tailwind"]
