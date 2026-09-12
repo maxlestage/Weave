@@ -7,6 +7,7 @@
 
 use crate::{
     auth::Authentifie,
+    entities::conversations,
     cache,
     droits::quota_journalier,
     entities::{accounts, blocks, join_requests, plans},
@@ -15,10 +16,15 @@ use crate::{
     temps::{iso8601, jour_local, secondes_avant_minuit},
     AppState,
 };
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{
+    extract::{Path, State},
+    routing::post,
+    Json, Router,
+};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, Set,
+    TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -29,7 +35,9 @@ const MESSAGE_MIN: usize = 20;
 const MESSAGE_MAX: usize = 600;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/v1/requests", post(demander))
+    Router::new()
+        .route("/v1/requests", post(demander))
+        .route("/v1/requests/{id}/accept", post(accepter))
 }
 
 #[derive(Deserialize)]
@@ -177,4 +185,115 @@ async fn demander(
         "sentAt": iso8601(demande.sent_at.and_utc()),
         "requestsLeftToday": restantes,
     })))
+}
+
+/// Accepter une demande : ouvre une conversation à deux.
+///
+/// Quand la dernière place part, le plan passe « complet » et les demandes
+/// encore en attente sont closes — leurs auteurs n'ont plus à attendre une
+/// réponse qui ne viendrait pas.
+async fn accepter(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let demande = join_requests::Entity::find_by_id(id.clone())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable("Demande introuvable."))?;
+
+    let plan = plans::Entity::find_by_id(demande.plan_id.clone())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable("Demande introuvable."))?;
+
+    if plan.author_id != compte.id {
+        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+    }
+    if demande.state != "envoyee" {
+        return Err(invalide("Cette demande est déjà tranchée."));
+    }
+    if plan.state != "ouvert" {
+        return Err(AppError::new(
+            Code::PlanClosed,
+            "Ce plan n'accepte plus de demandes.",
+        ));
+    }
+
+    let acceptees = join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.eq(plan.id.as_str()))
+        .filter(join_requests::Column::State.eq("acceptee"))
+        .count(&state.db)
+        .await?;
+    if acceptees >= plan.capacity as u64 {
+        return Err(AppError::new(
+            Code::PlanClosed,
+            "Toutes les places sont prises.",
+        ));
+    }
+    let restant_apres = plan.capacity as u64 - acceptees - 1;
+
+    let transaction = state.db.begin().await?;
+
+    // Le filtre sur l'état porte l'invariant de capacité : de deux
+    // acceptations concurrentes, une seule voit une ligne « envoyee » et passe.
+    let accepte = join_requests::Entity::update_many()
+        .col_expr(
+            join_requests::Column::State,
+            sea_orm::sea_query::Expr::value("acceptee"),
+        )
+        .col_expr(
+            join_requests::Column::DecidedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(join_requests::Column::Id.eq(id.as_str()))
+        .filter(join_requests::Column::State.eq("envoyee"))
+        .exec(&transaction)
+        .await?;
+    if accepte.rows_affected != 1 {
+        transaction.rollback().await?;
+        return Err(invalide("Cette demande est déjà tranchée."));
+    }
+
+    if restant_apres == 0 {
+        let mut complet: plans::ActiveModel = plan.clone().into();
+        complet.state = Set("complet".to_string());
+        complet.updated_at = Set(Utc::now().naive_utc());
+        complet.update(&transaction).await?;
+
+        join_requests::Entity::update_many()
+            .col_expr(
+                join_requests::Column::State,
+                sea_orm::sea_query::Expr::value("expiree"),
+            )
+            .col_expr(
+                join_requests::Column::DecidedAt,
+                sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+            )
+            .filter(join_requests::Column::PlanId.eq(plan.id.as_str()))
+            .filter(join_requests::Column::State.eq("envoyee"))
+            .exec(&transaction)
+            .await?;
+    }
+
+    let conversation = conversations::ActiveModel {
+        id: Set(cuid2::create_id()),
+        plan_id: Set(demande.plan_id.clone()),
+        request_id: Set(demande.id.clone()),
+        host_id: Set(compte.id.clone()),
+        guest_id: Set(demande.author_id.clone()),
+        ..Default::default()
+    }
+    .insert(&transaction)
+    .await?;
+
+    transaction.commit().await?;
+
+    for compte_id in [&compte.id, &demande.author_id] {
+        if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(compte_id)).await {
+            tracing::warn!(erreur = %erreur, "fil non invalidé");
+        }
+    }
+
+    Ok(Json(json!({ "ok": true, "conversationId": conversation.id })))
 }
