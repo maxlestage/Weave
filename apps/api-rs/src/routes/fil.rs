@@ -12,7 +12,9 @@ use crate::routes::me::jours_json;
 use crate::{
     auth::{Authentifie, CompteAuthentifie},
     cache,
-    droits::{demandes_restantes, droits_pour, filtre_autorise, quota_journalier, Critere},
+    droits::{
+        demandes_restantes, droits_pour, filtre_autorise, quota_journalier, rayon_effectif, Critere,
+    },
     entities::{accounts, blocks, join_requests, plans, preferences, profiles},
     error::AppError,
     limitation::{consommer, Regle},
@@ -195,8 +197,12 @@ async fn contexte_de(
     Ok(Some(Contexte {
         lat: profil.lat_rounded,
         lon: profil.lon_rounded,
+        // La distance est rabattue sur un cran quand le palier n'achète pas la
+        // distance fine — relue ici comme les autres critères vendus, et non
+        // seulement contrôlée à l'écriture : un abonnement qui expire doit
+        // cesser de donner ce qu'on ne paie plus.
         distance_max_km: if pref.max_distance_km > 0 {
-            pref.max_distance_km as f64
+            f64::from(rayon_effectif(palier, pref.max_distance_km))
         } else {
             RAYON_DEFAUT_KM
         },

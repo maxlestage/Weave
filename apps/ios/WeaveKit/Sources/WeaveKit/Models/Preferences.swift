@@ -17,6 +17,17 @@ public struct Preferences: Decodable, Sendable {
     public let minAge: Int
     public let maxAge: Int
     public let maxDistanceKm: Int
+    /// Le rayon que le fil applique réellement.
+    ///
+    /// Sans « critères précis », il est rabattu sur l'un de quelques crans : le
+    /// réglage reste celui qu'on a choisi — il revient exact dès que l'offre le
+    /// permet — mais le fil, lui, en retient un autre. Afficher `maxDistanceKm`
+    /// seul montrerait « 27 km » à quelqu'un dont le fil en retient 25, sans
+    /// jamais le lui dire.
+    public let effectiveDistanceKm: Int
+
+    /// Le réglage choisi diffère-t-il de ce qui est appliqué ?
+    public var distanceRabattue: Bool { effectiveDistanceKm != maxDistanceKm }
     public let seeking: [Gender]
     public let categories: [PlanCategory]
     /// Jours retenus, au sens ISO : 1 lundi, 7 dimanche. Vide = tous.

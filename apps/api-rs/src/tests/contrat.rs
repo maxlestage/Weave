@@ -347,6 +347,29 @@ fn chaine_du_contrat(source: &str, nom: &str) -> String {
         .to_string()
 }
 
+/// Les crans de rayon, des deux côtés.
+///
+/// Le catalogue vend « distance fine » à partir de l'Escapade. Les crans sont
+/// ce que les autres paliers obtiennent : une liste qui diverge ferait que le
+/// site annonce un rayon que le fil n'applique pas.
+#[test]
+fn les_crans_de_rayon_sont_ceux_du_contrat_partage() {
+    let source = contrat();
+    let attendus: Vec<String> = crate::droits::CRANS_RAYON_KM
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        liste_du_contrat(&source, "RADIUS_STEPS_KM"),
+        {
+            let mut triee = attendus;
+            triee.sort();
+            triee
+        },
+        "les crans de rayon divergent entre le contrat et l'API"
+    );
+}
+
 /// Les prix, des deux côtés.
 ///
 /// L'API les réécrit — elle ne peut pas lire le TypeScript — et elle ne les
