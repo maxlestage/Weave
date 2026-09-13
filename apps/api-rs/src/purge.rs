@@ -226,6 +226,7 @@ pub(super) mod tests {
             locale: Set("fr".to_string()),
             verified: Set(true),
             last_seen_at: Set(None),
+            last_bilan_at: Set(None),
             deletion_requested_at: Set(
                 supprime_il_y_a.map(|j| Utc::now().naive_utc() - Duration::days(j))
             ),

@@ -40,8 +40,15 @@ export interface Tier {
   readonly name: string;
   readonly tagline: string;
   readonly monthlyPriceCents: number;
-  readonly yearlyPriceCents: number | null;
-  readonly storeKit: { readonly monthly: string | null; readonly yearly: string | null };
+  /**
+   * Identifiant StoreKit de l'abonnement mensuel. `null` pour le socle
+   * gratuit, qui ne s'achète pas.
+   *
+   * Il n'y a pas d'abonnement annuel : un engagement de douze mois sur un
+   * service qu'on peut vouloir quitter du jour au lendemain ne rend service
+   * qu'à celui qui l'encaisse.
+   */
+  readonly storeKit: { readonly monthly: string | null };
   readonly entitlements: TierEntitlements;
   readonly highlights: readonly string[];
 }
@@ -54,8 +61,7 @@ export const TIERS: Readonly<Record<PlanTier, Tier>> = {
     name: "Départ",
     tagline: "De quoi publier ses plans et demander à venir.",
     monthlyPriceCents: 0,
-    yearlyPriceCents: null,
-    storeKit: { monthly: null, yearly: null },
+    storeKit: { monthly: null },
     entitlements: {
       requestsPerDay: REQUESTS_PER_DAY_FLOOR,
       daysAhead: 7,
@@ -76,8 +82,7 @@ export const TIERS: Readonly<Record<PlanTier, Tier>> = {
     name: "Virée",
     tagline: "Pour ceux qui sortent souvent.",
     monthlyPriceCents: 499,
-    yearlyPriceCents: 4490,
-    storeKit: { monthly: `${BUNDLE}.sub.viree.monthly`, yearly: `${BUNDLE}.sub.viree.yearly` },
+    storeKit: { monthly: `${BUNDLE}.sub.viree.monthly` },
     entitlements: {
       requestsPerDay: 12,
       daysAhead: 14,
@@ -98,11 +103,7 @@ export const TIERS: Readonly<Record<PlanTier, Tier>> = {
     name: "Escapade",
     tagline: "Des critères qui trient vraiment.",
     monthlyPriceCents: 899,
-    yearlyPriceCents: 7990,
-    storeKit: {
-      monthly: `${BUNDLE}.sub.escapade.monthly`,
-      yearly: `${BUNDLE}.sub.escapade.yearly`,
-    },
+    storeKit: { monthly: `${BUNDLE}.sub.escapade.monthly` },
     entitlements: {
       requestsPerDay: 25,
       daysAhead: 30,
@@ -123,11 +124,7 @@ export const TIERS: Readonly<Record<PlanTier, Tier>> = {
     name: "Expédition",
     tagline: "Organiser loin, et savoir ce qui marche.",
     monthlyPriceCents: 1499,
-    yearlyPriceCents: 12990,
-    storeKit: {
-      monthly: `${BUNDLE}.sub.expedition.monthly`,
-      yearly: `${BUNDLE}.sub.expedition.yearly`,
-    },
+    storeKit: { monthly: `${BUNDLE}.sub.expedition.monthly` },
     entitlements: {
       requestsPerDay: 40,
       daysAhead: 60,
@@ -148,11 +145,7 @@ export const TIERS: Readonly<Record<PlanTier, Tier>> = {
     name: "Grand Tour",
     tagline: "Tout, sans y penser.",
     monthlyPriceCents: 2499,
-    yearlyPriceCents: 20990,
-    storeKit: {
-      monthly: `${BUNDLE}.sub.grandtour.monthly`,
-      yearly: `${BUNDLE}.sub.grandtour.yearly`,
-    },
+    storeKit: { monthly: `${BUNDLE}.sub.grandtour.monthly` },
     entitlements: {
       requestsPerDay: 60,
       daysAhead: 90,
@@ -232,7 +225,7 @@ export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
 export function tierFromStoreKitId(productId: string): Tier | null {
   for (const tier of PLAN_TIERS) {
     const offre = TIERS[tier];
-    if (offre.storeKit.monthly === productId || offre.storeKit.yearly === productId) return offre;
+    if (offre.storeKit.monthly === productId) return offre;
   }
   return null;
 }

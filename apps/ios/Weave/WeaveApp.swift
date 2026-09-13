@@ -60,6 +60,7 @@ final class ModeleApplication {
     let plans: PlansStore
     let activites: ActivityController
     let notifications: NotificationsController
+    let boutique: BoutiqueController
 
     private(set) var moi: Me?
     private(set) var connecte = false
@@ -71,6 +72,7 @@ final class ModeleApplication {
         self.sessionStore = store
         self.api = api
         self.plans = PlansStore(api: api)
+        self.boutique = BoutiqueController(api: api)
         self.activites = ActivityController(api: api, vendorID: Self.vendorID)
         let notifications = NotificationsController(api: api, vendorID: Self.vendorID)
         self.notifications = notifications
@@ -79,6 +81,16 @@ final class ModeleApplication {
         DelegueApplication.surJetonRecu = { [notifications] jeton in
             await notifications.deposer(jeton: jeton)
         }
+
+        // L'écoute des transactions démarre AVANT toute connexion, et ne
+        // s'arrête pas.
+        //
+        // Un achat peut aboutir sans passer par le bouton : autorisation
+        // parentale accordée plus tard, paiement interrompu puis repris,
+        // renouvellement d'abonnement, achat fait sur un autre appareil. Sans
+        // écoute permanente, ces transactions-là ne seraient jamais transmises
+        // au serveur — quelqu'un aurait payé sans rien recevoir.
+        boutique.demarrer()
     }
 
     func demarrer() async {
