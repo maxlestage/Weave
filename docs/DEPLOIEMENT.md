@@ -106,6 +106,41 @@ inline fera le vrai travail :
 
 Les déploiements automatiques depuis GitHub fonctionnent ensuite normalement.
 
+#### Un buildpack Rust en plus fait échouer toute la construction
+
+Ajouter `emk/heroku-buildpack-rust` à côté de l'inline paraît raisonnable —
+l'API est en Rust, après tout. **C'est ce qui casse le déploiement**, et la
+manière dont il casse mérite d'être connue.
+
+Ce buildpack cherche un `Cargo.toml` **à la racine du dépôt**. Celui de Weave
+est dans `apps/api-rs/`. Sa détection échoue donc, et une détection qui échoue
+sur un buildpack de la liste annule la publication entière :
+
+```
+-----> Weave est prêt
+       présent : bin-release/weave-api
+...
+-----> App not compatible with buildpack: https://github.com/emk/heroku-buildpack-rust
+ !     Push failed
+```
+
+Le piège est là : **la construction a réussi**. `bin/compile` a installé la
+chaîne Rust, compilé le binaire et vérifié sa présence. Tout le travail est
+fait, et il est jeté à la dernière ligne par un buildpack qui n'avait rien à
+faire là. L'application continue de servir la version précédente, sans qu'aucun
+message ne relie ce qu'on voit en ligne à ce qu'on vient de fusionner.
+
+`bin/compile` construit déjà l'API — c'est tout son objet. Aucun buildpack Rust
+n'est nécessaire :
+
+```sh
+heroku buildpacks -a weave                 # voir la liste
+heroku buildpacks:remove https://github.com/emk/heroku-buildpack-rust -a weave
+```
+
+`heroku/nodejs` peut rester sans danger, mais il reconstruit le site une
+seconde fois pour rien : le retirer aussi raccourcit chaque déploiement.
+
 #### Les buildpacks Bun tiers ne conviennent plus
 
 Il en existe plusieurs — `jakeg/heroku-buildpack-bun` et les autres — et ils
