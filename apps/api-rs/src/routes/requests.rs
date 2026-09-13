@@ -457,12 +457,45 @@ async fn accepter(
         ));
     }
 
+    let transaction = state.db.begin().await?;
+
+    // Le verrou de la place, et il doit être pris AVANT de compter.
+    //
+    // Compter hors transaction ne protégeait que deux acceptations de la MÊME
+    // demande — le filtre sur l'état s'en chargeait. Deux acceptations de
+    // demandes DIFFÉRENTES sur la dernière place lisaient toutes deux le même
+    // compte, mettaient chacune à jour sa propre ligne, et passaient toutes
+    // deux : un plan pour une personne en accueillait deux.
+    //
+    // Écrire sur la ligne du plan prend son verrou pour la durée de la
+    // transaction. La seconde acceptation attend donc la première, puis
+    // réévalue `state = 'ouvert'` : si la première a rempli le plan, elle ne
+    // touche aucune ligne et repart. Sinon, le compte qui suit voit la place
+    // déjà prise.
+    let ouvert = plans::Entity::update_many()
+        .col_expr(
+            plans::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(plans::Column::Id.eq(plan.id.as_str()))
+        .filter(plans::Column::State.eq("ouvert"))
+        .exec(&transaction)
+        .await?;
+    if ouvert.rows_affected != 1 {
+        transaction.rollback().await?;
+        return Err(AppError::new(
+            Code::PlanClosed,
+            "Toutes les places sont prises.",
+        ));
+    }
+
     let acceptees = join_requests::Entity::find()
         .filter(join_requests::Column::PlanId.eq(plan.id.as_str()))
         .filter(join_requests::Column::State.eq("acceptee"))
-        .count(&state.db)
+        .count(&transaction)
         .await?;
     if acceptees >= plan.capacity as u64 {
+        transaction.rollback().await?;
         return Err(AppError::new(
             Code::PlanClosed,
             "Toutes les places sont prises.",
@@ -470,10 +503,7 @@ async fn accepter(
     }
     let restant_apres = plan.capacity as u64 - acceptees - 1;
 
-    let transaction = state.db.begin().await?;
-
-    // Le filtre sur l'état porte l'invariant de capacité : de deux
-    // acceptations concurrentes, une seule voit une ligne « envoyee » et passe.
+    // Le filtre sur l'état écarte une seconde acceptation de la même demande.
     let accepte = join_requests::Entity::update_many()
         .col_expr(
             join_requests::Column::State,

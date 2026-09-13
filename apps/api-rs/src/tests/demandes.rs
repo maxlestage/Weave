@@ -236,3 +236,42 @@ async fn un_renfort_sans_credit_est_refuse_et_ne_grignote_pas_le_plafond() {
     assert_eq!(corps["granted"], 5);
     assert_eq!(corps["requestsLeftToday"], 10, "le renfort n'a pas augmenté le quota");
 }
+
+/// La dernière place d'un plan ne doit être accordée qu'une fois.
+///
+/// La capacité est comptée AVANT d'ouvrir la transaction. Deux acceptations
+/// concurrentes de demandes DIFFÉRENTES lisent donc toutes deux le même
+/// compte, et passent toutes deux : le filtre d'état sur la demande ne
+/// sérialise que deux acceptations de la MÊME demande.
+#[tokio::test]
+async fn deux_acceptations_concurrentes_ne_donnent_pas_deux_fois_la_meme_place() {
+    let service = Service::monter().await;
+    service.compte("c_hote_place", "depart").await;
+    service.compte("c_premier_place", "depart").await;
+    service.compte("c_second_place", "depart").await;
+
+    // Un plan en solo : une seule place à prendre.
+    let plan = plan_de(&service, "c_hote_place", "Un cafe en tete a tete").await;
+
+    let (s1, c1) = demander(&service, "c_premier_place", &plan).await;
+    assert_eq!(s1, StatusCode::OK, "{c1}");
+    let (s2, c2) = demander(&service, "c_second_place", &plan).await;
+    assert_eq!(s2, StatusCode::OK, "{c2}");
+
+    let premier = c1["id"].as_str().unwrap().to_string();
+    let second = c2["id"].as_str().unwrap().to_string();
+    let jeton = service.jeton("c_hote_place");
+
+    let route_premier = format!("/v1/requests/{premier}/accept");
+    let route_second = format!("/v1/requests/{second}/accept");
+    let (a, b) = tokio::join!(
+        service.post(&route_premier, Some(&jeton), json!({})),
+        service.post(&route_second, Some(&jeton), json!({})),
+    );
+
+    let acceptees = [a.0, b.0].iter().filter(|s| s.is_success()).count();
+    assert_eq!(
+        acceptees, 1,
+        "une seule place, une seule acceptation — obtenu {acceptees} (réponses : {a:?} / {b:?})"
+    );
+}

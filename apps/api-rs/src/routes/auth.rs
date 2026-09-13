@@ -7,7 +7,7 @@ use crate::{
     auth::{emettre_jeton, oublier_compte, Authentifie},
     cache,
     crypto::{code_otp, hacher_secret, hash_email, jeton_opaque, normaliser_email, sha256_hex, verifier_secret},
-    entities::{accounts, join_requests, otp_challenges, plans, preferences, refresh_tokens, subscriptions},
+    entities::{audit_events, accounts, join_requests, otp_challenges, plans, preferences, refresh_tokens, subscriptions},
     error::{invalide, non_autorise, AppError, Code},
     limitation::{consommer, regles},
     temps::{age_depuis, iso8601},
@@ -60,9 +60,11 @@ struct DemandeRenouvellement {
 /// distingue un jeton volé d'un jeton légitime, qui n'est présenté qu'une fois.
 async fn renouveler(
     State(state): State<AppState>,
+    ConnectInfo(adresse): ConnectInfo<std::net::SocketAddr>,
     Json(corps): Json<DemandeRenouvellement>,
 ) -> Result<Json<Value>, AppError> {
     let empreinte = sha256_hex(&corps.refresh_token);
+    let maintenant = Utc::now().naive_utc();
 
     let stocke = refresh_tokens::Entity::find()
         .filter(refresh_tokens::Column::TokenHash.eq(empreinte.as_str()))
@@ -70,7 +72,36 @@ async fn renouveler(
         .await?
         .ok_or_else(|| non_autorise("Session expirée. Reconnectez-vous."))?;
 
-    if stocke.revoked_at.is_some() || stocke.expires_at < Utc::now().naive_utc() {
+    // Un jeton déjà tourné qu'on nous représente : quelqu'un rejoue une vieille
+    // copie. Le porteur légitime a rotationné depuis, donc soit c'est un vol,
+    // soit une sauvegarde restaurée — dans les deux cas la session ne vaut plus
+    // rien, et laisser vivre les jetons frères reviendrait à laisser la porte
+    // ouverte à qui détient la copie.
+    //
+    // C'est à cela que sert `rotated_to`, écrit depuis toujours et jamais relu.
+    // Sans cette lecture, la rotation ne protégeait de rien : un jeton volé
+    // fonctionnait jusqu'à son expiration, et le vol ne se voyait jamais.
+    if stocke.rotated_to.is_some() {
+        revoquer_famille(&state, &stocke.account_id, adresse.ip()).await?;
+        return Err(non_autorise("Session expirée. Reconnectez-vous."));
+    }
+
+    // La revendication, en une seule écriture conditionnelle.
+    //
+    // Lire puis écrire laissait deux renouvellements concurrents du MÊME jeton
+    // passer tous deux le contrôle et ouvrir deux sessions indépendantes. Un
+    // voleur n'avait qu'à courir contre le client légitime.
+    let revendique = refresh_tokens::Entity::update_many()
+        .col_expr(
+            refresh_tokens::Column::RevokedAt,
+            sea_orm::sea_query::Expr::value(maintenant),
+        )
+        .filter(refresh_tokens::Column::TokenHash.eq(empreinte.as_str()))
+        .filter(refresh_tokens::Column::RevokedAt.is_null())
+        .filter(refresh_tokens::Column::ExpiresAt.gt(maintenant))
+        .exec(&state.db)
+        .await?;
+    if revendique.rows_affected != 1 {
         return Err(non_autorise("Session expirée. Reconnectez-vous."));
     }
 
@@ -84,10 +115,16 @@ async fn renouveler(
             AppError::new(Code::Internal, "Une erreur interne est survenue.")
         })?;
 
-    let mut revoque: refresh_tokens::ActiveModel = stocke.into();
-    revoque.revoked_at = Set(Some(Utc::now().naive_utc()));
-    revoque.rotated_to = Set(Some(sha256_hex(nouveau)));
-    revoque.update(&state.db).await?;
+    // Le successeur, posé après coup : c'est lui qui permettra de reconnaître
+    // un réemploi de ce jeton-ci.
+    refresh_tokens::Entity::update_many()
+        .col_expr(
+            refresh_tokens::Column::RotatedTo,
+            sea_orm::sea_query::Expr::value(sha256_hex(nouveau)),
+        )
+        .filter(refresh_tokens::Column::TokenHash.eq(empreinte.as_str()))
+        .exec(&state.db)
+        .await?;
 
     Ok(Json(json!({ "session": session })))
 }
@@ -454,6 +491,60 @@ async fn pseudo_unique(state: &AppState, nom: &str) -> Result<String, AppError> 
     }
     // Après vingt tentatives, on cesse de tirer au sort : l'horodatage tranche.
     Ok(format!("{base}{}", Utc::now().timestamp()))
+}
+
+/// Révoque toutes les sessions vivantes d'un compte, et consigne pourquoi.
+///
+/// Appelée quand un jeton déjà tourné est représenté. On ne sait pas lequel des
+/// deux porteurs est le légitime — celui qui a rotationné, ou celui qui rejoue
+/// — et c'est précisément pourquoi on coupe tout : la personne se reconnecte,
+/// le voleur n'a plus rien. Une demi-mesure laisserait vivre la session du
+/// voleur si c'est lui qui a rotationné le dernier.
+///
+/// L'incident est écrit dans `audit_events`. Cette table existait sans qu'une
+/// seule ligne n'y soit jamais posée, alors que la politique de
+/// confidentialité annonce des « traces techniques : identifiant de compte,
+/// action, adresse IP ». Un vol de session est exactement ce qu'on veut
+/// pouvoir établir après coup.
+async fn revoquer_famille(
+    state: &AppState,
+    compte_id: &str,
+    ip: std::net::IpAddr,
+) -> Result<(), AppError> {
+    let maintenant = Utc::now().naive_utc();
+
+    let coupees = refresh_tokens::Entity::update_many()
+        .col_expr(
+            refresh_tokens::Column::RevokedAt,
+            sea_orm::sea_query::Expr::value(maintenant),
+        )
+        .filter(refresh_tokens::Column::AccountId.eq(compte_id))
+        .filter(refresh_tokens::Column::RevokedAt.is_null())
+        .exec(&state.db)
+        .await?;
+
+    audit_events::ActiveModel {
+        id: Set(cuid2::create_id()),
+        account_id: Set(Some(compte_id.to_string())),
+        action: Set("refresh_reuse".to_string()),
+        subject: Set(None),
+        meta_json: Set(
+            json!({ "sessionsRevoquees": coupees.rows_affected }).to_string(),
+        ),
+        ip: Set(Some(ip.to_string())),
+        created_at: Set(maintenant),
+    }
+    .insert(&state.db)
+    .await?;
+
+    tracing::warn!(
+        compte = compte_id,
+        sessions = coupees.rows_affected,
+        "jeton de renouvellement rejoué : toutes les sessions sont coupées"
+    );
+
+    oublier_compte(state, compte_id).await;
+    Ok(())
 }
 
 async fn ouvrir_session(
