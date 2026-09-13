@@ -8,7 +8,7 @@ use crate::{
     auth::{oublier_compte, Authentifie},
     cache,
     crypto::signer_url_media,
-    droits::{credits_pour, demandes_restantes, quota_journalier},
+    droits::{credits_pour, demandes_restantes, exiger_credit, quota_journalier},
     entities::{accounts, preferences, profiles},
     error::{introuvable, invalide, AppError},
     temps::{age_depuis, iso8601},
@@ -16,10 +16,10 @@ use crate::{
 };
 use axum::{
     extract::State,
-    routing::{get, put},
+    routing::{get, post, put},
     Json, Router,
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,6 +52,7 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/me", get(lire).patch(modifier))
         .route("/v1/me/profile", put(deposer_fiche))
         .route("/v1/me/preferences", get(lire_criteres).patch(ajuster_criteres))
+        .route("/v1/me/escale", post(ouvrir_escale).delete(fermer_escale))
 }
 
 #[derive(Deserialize)]
@@ -111,6 +112,108 @@ struct Fiche {
     longitude: f64,
     gender: String,
     bio: Option<String>,
+}
+
+/// Durée d'une « Escale », telle qu'elle est vendue.
+///
+/// « Publier depuis une autre ville pendant sept jours » — c'est le texte du
+/// catalogue, et donc ce que la personne a payé.
+const ESCALE_JOURS: i64 = 7;
+
+#[derive(Deserialize)]
+struct NouvelleEscale {
+    city: String,
+}
+
+/// Ouvre une « Escale » : le fil se compose autour d'une autre ville.
+///
+/// ## Ce qui manquait
+///
+/// « Escale » se vend 3,99 € dans le catalogue, avec sa description. Le crédit
+/// était bien accordé à l'achat, et le fil honorait déjà l'escale — il
+/// remplace le filtre géographique par une ville dès que `escaleCity` est
+/// posé. Mais **aucune ligne n'a jamais écrit `escaleCity`.** Personne ne
+/// pouvait déclencher ce qu'il venait d'acheter : le crédit s'accumulait sans
+/// usage.
+///
+/// Le mécanisme était donc complet à une route près, et c'est cette route.
+async fn ouvrir_escale(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Json(corps): Json<NouvelleEscale>,
+) -> Result<Json<Value>, AppError> {
+    let ville = corps.city.trim().to_string();
+    if ville.is_empty() || ville.chars().count() > 80 {
+        return Err(invalide("Indiquez une ville."));
+    }
+
+    let ligne = preferences::Entity::find()
+        .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable("Critères introuvables."))?;
+
+    // Une escale en cours ne se remplace pas : la seconde ferait payer un
+    // crédit pour raccourcir la première, ce que personne ne veut acheter.
+    if ligne
+        .escale_until
+        .is_some_and(|jusqua| jusqua.and_utc() > Utc::now())
+    {
+        return Err(invalide(
+            "Une escale est déjà en cours. Attendez sa fin, ou fermez-la.",
+        ));
+    }
+
+    // Le crédit se dépense AVANT d'ouvrir : un décrément conditionnel qui
+    // échoue laisse l'escale fermée, alors que l'ordre inverse ouvrirait une
+    // escale que personne n'a payée.
+    exiger_credit(&state, &compte.id, "escale", "Escale").await?;
+
+    let fin = Utc::now() + Duration::days(ESCALE_JOURS);
+    let mut maj: preferences::ActiveModel = ligne.into();
+    maj.escale_city = Set(Some(ville.clone()));
+    maj.escale_until = Set(Some(fin.naive_utc()));
+    maj.updated_at = Set(Utc::now().naive_utc());
+    maj.update(&state.db).await?;
+
+    // Le fil est mis en cache : sans cet oubli, l'escale ne prendrait effet
+    // qu'à l'expiration du cache, et l'achat semblerait sans effet.
+    if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(&compte.id)).await {
+        tracing::warn!(erreur = %erreur, "fil non invalidé après ouverture d'escale");
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "escaleCity": ville,
+        "escaleUntil": iso8601(fin),
+    })))
+}
+
+/// Ferme une escale avant son terme.
+///
+/// Le crédit n'est pas rendu : il a été dépensé, et l'escale a servi. Fermer
+/// sert à revenir chez soi plus tôt, pas à annuler un achat.
+async fn fermer_escale(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+) -> Result<Json<Value>, AppError> {
+    let ligne = preferences::Entity::find()
+        .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable("Critères introuvables."))?;
+
+    let mut maj: preferences::ActiveModel = ligne.into();
+    maj.escale_city = Set(None);
+    maj.escale_until = Set(None);
+    maj.updated_at = Set(Utc::now().naive_utc());
+    maj.update(&state.db).await?;
+
+    if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(&compte.id)).await {
+        tracing::warn!(erreur = %erreur, "fil non invalidé après fermeture d'escale");
+    }
+
+    Ok(Json(json!({ "ok": true })))
 }
 
 /// Déposer sa fiche : une ville, un genre, une phrase.
