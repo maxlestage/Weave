@@ -7,8 +7,34 @@ import { Ouverture } from "./sections/Ouverture.tsx";
 import { PiedDePage } from "./sections/PiedDePage.tsx";
 import { Principe } from "./sections/Principe.tsx";
 import { Questions } from "./sections/Questions.tsx";
+import { FournisseurDeLangue, useTraduction } from "./contexte-langue.tsx";
+import { LANGUE_PAR_DEFAUT, type Langue, type Traduit } from "./langues.ts";
 
-export function App() {
+const TEXTES: Traduit<{ contenu: string }> = {
+  fr: { contenu: "Aller au contenu" },
+  en: { contenu: "Skip to content" },
+  es: { contenu: "Ir al contenido" },
+};
+
+/**
+ * La page d'accueil, dans la langue qu'on lui donne.
+ *
+ * La langue est un accessoire et non une détection : la construction rend la
+ * même application trois fois, une par adresse, et le client reprend celle
+ * que l'adresse indique. Deviner d'après `navigator.language` produirait un
+ * balisage différent de celui rendu au serveur, et l'hydratation échouerait.
+ */
+export function App({ langue = LANGUE_PAR_DEFAUT }: { langue?: Langue }) {
+  return (
+    <FournisseurDeLangue langue={langue}>
+      <Page />
+    </FournisseurDeLangue>
+  );
+}
+
+function Page() {
+  const t = useTraduction(TEXTES);
+
   return (
     <>
       <a
@@ -16,7 +42,7 @@ export function App() {
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:px-4 focus:py-2"
         style={{ background: "var(--accent)", color: "var(--sur-accent)" }}
       >
-        Aller au contenu
+        {t.contenu}
       </a>
 
       <Entete />

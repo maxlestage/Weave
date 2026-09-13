@@ -4,18 +4,18 @@
 //! unique envoyé par e-mail, puis par un couple accès/rafraîchissement.
 //! L'accès est court ; le rafraîchissement est rotatif et stocké haché.
 
+use crate::messages::Msg;
 use crate::{
-    cache,
+    AppState, cache,
     entities::{accounts, subscriptions},
-    error::{non_autorise, AppError},
-    AppState,
+    error::{AppError, non_autorise},
 };
 use axum::{
     extract::FromRequestParts,
     http::{header::AUTHORIZATION, request::Parts},
 };
 use chrono::Utc;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 
@@ -92,7 +92,10 @@ async fn charger_compte(state: &AppState, compte_id: &str) -> Option<CompteAuthe
     // Une panne de base ne doit pas se déguiser en « non authentifié » : le
     // client réessaierait avec un jeton valable, sans jamais comprendre. On la
     // journalise pour qu'elle soit lisible, puis on refuse.
-    let compte = match accounts::Entity::find_by_id(compte_id.to_string()).one(&state.db).await {
+    let compte = match accounts::Entity::find_by_id(compte_id.to_string())
+        .one(&state.db)
+        .await
+    {
         Ok(Some(ligne)) => ligne,
         Ok(None) => return None,
         Err(erreur) => {
@@ -140,7 +143,8 @@ async fn charger_compte(state: &AppState, compte_id: &str) -> Option<CompteAuthe
 
     // Un cache indisponible ne doit pas refuser la requête : il fait gagner un
     // aller-retour, il ne conditionne pas l'authentification.
-    if let Err(erreur) = cache::ecrire_json(&state.cache, &cle, &resume, TTL_RESUME_IDENTITE).await {
+    if let Err(erreur) = cache::ecrire_json(&state.cache, &cle, &resume, TTL_RESUME_IDENTITE).await
+    {
         tracing::warn!(erreur = %erreur, "résumé d'identité non mis en cache");
     }
 
@@ -168,23 +172,23 @@ impl FromRequestParts<AppState> for Authentifie {
             .headers
             .get(AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| non_autorise("Authentification requise."))?;
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?;
 
         let jeton = entete
             .strip_prefix("Bearer ")
             .or_else(|| entete.strip_prefix("bearer "))
-            .ok_or_else(|| non_autorise("Authentification requise."))?
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?
             .trim();
 
         let claims = lire_jeton(&state.config.auth.jwt_secret, jeton)
-            .ok_or_else(|| non_autorise("Authentification requise."))?;
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?;
 
         let compte = charger_compte(state, &claims.sub)
             .await
-            .ok_or_else(|| non_autorise("Authentification requise."))?;
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?;
 
         if compte.status == "suspended" {
-            return Err(non_autorise("Ce compte est suspendu."));
+            return Err(non_autorise(Msg::CompteSuspendu));
         }
 
         // Un compte en cours de suppression ne doit plus rien pouvoir faire.
@@ -198,9 +202,7 @@ impl FromRequestParts<AppState> for Authentifie {
         // demandée par erreur, et cela passe par l'assistance, pas par le
         // jeton qu'on avait encore en poche.
         if compte.status == "deleting" {
-            return Err(non_autorise(
-                "Ce compte est en cours de suppression. Écrivez à l'assistance pour l'annuler.",
-            ));
+            return Err(non_autorise(Msg::CompteEnSuppression));
         }
 
         Ok(Authentifie(compte))
@@ -262,7 +264,14 @@ mod tests {
 
     #[test]
     fn ce_qui_n_est_pas_un_jeton_est_refuse_sans_paniquer() {
-        for entree in ["", "pas-un-jeton", "a.b.c", "..", "eyJhbGciOiJub25lIn0..", "�"] {
+        for entree in [
+            "",
+            "pas-un-jeton",
+            "a.b.c",
+            "..",
+            "eyJhbGciOiJub25lIn0..",
+            "�",
+        ] {
             assert!(lire_jeton(SECRET, entree).is_none(), "refusé : {entree}");
         }
     }

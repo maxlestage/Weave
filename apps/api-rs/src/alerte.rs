@@ -27,9 +27,9 @@
 //! suffisant : elle sert à faire ouvrir l'application, pas à la remplacer.
 
 use crate::{
+    AppState,
     apns::{Envoi, TypeEnvoi},
     entities::devices,
-    AppState,
 };
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
@@ -195,6 +195,9 @@ mod tests {
         let poussees = pousser(&service.etat, &compte, NOUVEAU_MESSAGE)
             .await
             .expect("poussée");
-        assert_eq!(poussees, 0, "un appareil sans jeton d'alerte ne reçoit rien");
+        assert_eq!(
+            poussees, 0,
+            "un appareil sans jeton d'alerte ne reçoit rien"
+        );
     }
 }

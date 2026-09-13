@@ -34,17 +34,18 @@
 //! période d'activité qui permet d'établir que le traitement était licite
 //! quand il a eu lieu.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::Authentifie,
     entities::{consent_records, preferences},
-    error::{invalide, AppError},
+    error::{AppError, invalide},
     temps::iso8601,
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::State,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -52,7 +53,7 @@ use sea_orm::{
     Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Les objets sur lesquels un consentement distinct est demandé.
 /// `packages/contracts` fait foi : `CONSENT_KINDS`.
@@ -120,9 +121,7 @@ async fn poser(
     let objet = valider_objet(&corps.kind)?;
     let version = corps.version.unwrap_or_default();
     if version != VERSION_POLITIQUE {
-        return Err(invalide(
-            "Ce consentement porte sur une version du texte qui n'est plus en vigueur.",
-        ));
+        return Err(invalide(Msg::ConsentementSurVersionPerimee));
     }
 
     let transaction = state.db.begin().await?;
@@ -206,7 +205,7 @@ fn valider_objet(kind: &str) -> Result<&'static str, AppError> {
     OBJETS
         .into_iter()
         .find(|objet| *objet == kind)
-        .ok_or_else(|| invalide("Objet de consentement inconnu."))
+        .ok_or_else(|| invalide(Msg::ObjetDeConsentementInconnu))
 }
 
 /// Vrai quand le consentement vaut encore : donné, non retiré, et sur la
@@ -239,10 +238,7 @@ async fn dernier_enregistrement<C: sea_orm::ConnectionTrait>(
 ///
 /// Lu par les critères, qui refusent d'enregistrer un genre recherché sans
 /// lui, et par le fil, qui cesse de filtrer dessus quand il tombe.
-pub async fn sensibles_autorisees(
-    db: &DatabaseConnection,
-    compte: &str,
-) -> Result<bool, DbErr> {
+pub async fn sensibles_autorisees(db: &DatabaseConnection, compte: &str) -> Result<bool, DbErr> {
     Ok(dernier_enregistrement(db, compte, DONNEES_SENSIBLES)
         .await?
         .as_ref()

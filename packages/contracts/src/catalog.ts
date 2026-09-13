@@ -267,3 +267,153 @@ export function unitFromStoreKitId(productId: string): UnitProduct | null {
 export function formatPrice(cents: number, locale = "fr-FR", currency = "EUR"): string {
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(cents / 100);
 }
+
+/* ------------------------------------------------------------------ */
+/* Traductions du catalogue                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les *noms* des offres et des achats à l'unité ne se traduisent pas :
+ * « Escapade », « Renfort », « Bilan » sont des noms de produits, déclarés
+ * tels quels dans App Store Connect. Ce qui se traduit, c'est la phrase qui
+ * les accompagne et ce qu'ils donnent.
+ */
+export type LangueCatalogue = "fr" | "en" | "es";
+
+export interface TierCopy {
+  readonly tagline: string;
+  readonly highlights: readonly string[];
+}
+
+export const TIER_COPY_PAR_LANGUE: Readonly<
+  Record<LangueCatalogue, Readonly<Record<PlanTier, TierCopy>>>
+> = {
+  fr: {
+    depart: { tagline: TIERS.depart.tagline, highlights: TIERS.depart.highlights },
+    viree: { tagline: TIERS.viree.tagline, highlights: TIERS.viree.highlights },
+    escapade: { tagline: TIERS.escapade.tagline, highlights: TIERS.escapade.highlights },
+    expedition: { tagline: TIERS.expedition.tagline, highlights: TIERS.expedition.highlights },
+    grandtour: { tagline: TIERS.grandtour.tagline, highlights: TIERS.grandtour.highlights },
+  },
+  en: {
+    depart: {
+      tagline: "Enough to post your plans and ask to come along.",
+      highlights: [
+        "3 plans open at a time",
+        "5 requests a day",
+        "Conversations with no limit, once a request is accepted",
+      ],
+    },
+    viree: {
+      tagline: "For people who go out often.",
+      highlights: [
+        "12 requests a day",
+        "Group plans, up to four people",
+        "Post up to two weeks ahead",
+      ],
+    },
+    escapade: {
+      tagline: "Filters that actually narrow things down.",
+      highlights: [
+        "Precise filters: category, day, fine-grained distance",
+        "Post up to a month ahead",
+        "1 Escale a month, to plan a trip",
+      ],
+    },
+    expedition: {
+      tagline: "Organise far ahead, and learn what works.",
+      highlights: [
+        "Post up to two months ahead",
+        "Monthly Bilan: which plans draw people, and why",
+        "2 Escales a month",
+      ],
+    },
+    grandtour: {
+      tagline: "Everything, without thinking about it.",
+      highlights: [
+        "Post up to three months ahead",
+        "4 Escales a month",
+        "Faster profile verification and priority support",
+      ],
+    },
+  },
+  es: {
+    depart: {
+      tagline: "Lo justo para publicar tus planes y pedir venir.",
+      highlights: [
+        "3 planes abiertos a la vez",
+        "5 peticiones al día",
+        "Conversaciones sin límite, una vez aceptada la petición",
+      ],
+    },
+    viree: {
+      tagline: "Para quien sale a menudo.",
+      highlights: [
+        "12 peticiones al día",
+        "Planes de grupo, hasta cuatro personas",
+        "Publicar hasta dos semanas antes",
+      ],
+    },
+    escapade: {
+      tagline: "Criterios que filtran de verdad.",
+      highlights: [
+        "Criterios precisos: categoría, día, distancia afinada",
+        "Publicar hasta un mes antes",
+        "1 Escale al mes, para preparar una salida",
+      ],
+    },
+    expedition: {
+      tagline: "Organizar con tiempo, y saber qué funciona.",
+      highlights: [
+        "Publicar hasta dos meses antes",
+        "Bilan mensual: qué planes atraen, y por qué",
+        "2 Escales al mes",
+      ],
+    },
+    grandtour: {
+      tagline: "Todo, sin pensarlo.",
+      highlights: [
+        "Publicar hasta tres meses antes",
+        "4 Escales al mes",
+        "Verificación de perfil acelerada y asistencia prioritaria",
+      ],
+    },
+  },
+};
+
+export const UNIT_DESCRIPTIONS_PAR_LANGUE: Readonly<
+  Record<LangueCatalogue, Readonly<Record<UnitSku, string>>>
+> = {
+  fr: {
+    renfort: UNIT_PRODUCTS.renfort.description,
+    horizon: UNIT_PRODUCTS.horizon.description,
+    tablee: UNIT_PRODUCTS.tablee.description,
+    escale: UNIT_PRODUCTS.escale.description,
+    bilan: UNIT_PRODUCTS.bilan.description,
+  },
+  en: {
+    renfort: "Five more requests today.",
+    horizon: "Post a plan up to sixty days ahead, once.",
+    tablee: "One group plan, up to four people, once.",
+    escale: "Post from another town for seven days.",
+    bilan: "A one-off look at your plans: what draws people, what falls flat.",
+  },
+  es: {
+    renfort: "Cinco peticiones más hoy.",
+    horizon: "Publicar un plan hasta sesenta días antes, una vez.",
+    tablee: "Un plan de grupo, hasta cuatro personas, una vez.",
+    escale: "Publicar desde otra ciudad durante siete días.",
+    bilan: "Un repaso puntual de tus planes: qué atrae, qué no cuaja.",
+  },
+};
+
+/**
+ * Les prix restent en euros dans les trois langues : la facturation passe par
+ * Apple, en euros, quelle que soit la langue d'affichage. Seule la façon
+ * d'écrire le nombre change.
+ */
+export const LOCALE_DE_PRIX: Readonly<Record<LangueCatalogue, string>> = {
+  fr: "fr-FR",
+  en: "en-IE",
+  es: "es-ES",
+};

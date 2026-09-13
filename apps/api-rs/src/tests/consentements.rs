@@ -3,7 +3,7 @@
 //! La page « Confidentialité » fait trois promesses. Un fichier par promesse
 //! aurait été plus joli ; elles se tiennent, et se cassent, ensemble.
 
-use super::{refuse, Service};
+use super::{Service, refuse};
 use crate::routes::consentements::{DONNEES_SENSIBLES, VERSION_POLITIQUE};
 use axum::http::StatusCode;
 use serde_json::json;
@@ -46,20 +46,39 @@ async fn chercher_par_genre_exige_le_consentement() {
     let jeton = service.jeton("c_art9");
 
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["homme"] }),
+        )
         .await;
-    assert_eq!(statut, StatusCode::FORBIDDEN, "accepté sans consentement : {corps}");
+    assert_eq!(
+        statut,
+        StatusCode::FORBIDDEN,
+        "accepté sans consentement : {corps}"
+    );
     assert!(
-        corps["message"].as_str().unwrap_or_default().contains("Confidentialité"),
+        corps["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Confidentialité"),
         "le refus doit dire où le donner : {corps}"
     );
 
     service.consentir(&jeton).await;
 
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["homme"] }),
+        )
         .await;
-    assert_eq!(statut, StatusCode::OK, "refusé après consentement : {corps}");
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "refusé après consentement : {corps}"
+    );
 }
 
 /// Les autres critères ne sont pas sensibles, et ne doivent rien demander.
@@ -95,7 +114,11 @@ async fn retirer_efface_le_critere_et_date_le_retrait() {
 
     service.consentir(&jeton).await;
     let (statut, _) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["femme"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["femme"] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
@@ -147,7 +170,11 @@ async fn le_service_marche_encore_apres_un_retrait() {
         .await;
 
     let (statut, corps) = service.get("/v1/plans", Some(&jeton)).await;
-    assert_eq!(statut, StatusCode::OK, "le fil a cessé de répondre : {corps}");
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "le fil a cessé de répondre : {corps}"
+    );
 
     // Et vider une liste reste possible sans consentement : sinon le retrait
     // buterait sur son propre effet.
@@ -171,7 +198,8 @@ async fn consentir_deux_fois_ne_reecrit_pas_la_date_d_octroi() {
     service.consentir(&jeton).await;
     let (_, second) = service.get("/v1/me/consents", Some(&jeton)).await;
     assert_eq!(
-        consentement(&second)["grantedAt"], date,
+        consentement(&second)["grantedAt"],
+        date,
         "la date d'octroi est celle du premier oui"
     );
 }
@@ -191,7 +219,12 @@ async fn un_consentement_doit_porter_la_version_en_vigueur() {
                 json!({ "kind": DONNEES_SENSIBLES, "version": version }),
             )
             .await;
-        refuse(statut, &corps, "validation", &format!("version « {version} » acceptée : {corps}"));
+        refuse(
+            statut,
+            &corps,
+            "validation",
+            &format!("version « {version} » acceptée : {corps}"),
+        );
     }
 
     let (statut, corps) = service
@@ -201,7 +234,12 @@ async fn un_consentement_doit_porter_la_version_en_vigueur() {
             json!({ "kind": "tout_et_n_importe_quoi", "version": VERSION_POLITIQUE }),
         )
         .await;
-    refuse(statut, &corps, "validation", &format!("objet inconnu accepté : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("objet inconnu accepté : {corps}"),
+    );
 }
 
 /// Un consentement donné sur une version antérieure cesse de valoir, et le fil
@@ -229,7 +267,11 @@ async fn un_consentement_perime_cesse_de_filtrer_le_fil() {
 
     service.consentir(&jeton).await;
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["femme"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["femme"] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -296,7 +338,10 @@ async fn plan_de(service: &Service, nom: &str) -> String {
         )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    corps["id"].as_str().expect("identifiant du plan").to_string()
+    corps["id"]
+        .as_str()
+        .expect("identifiant du plan")
+        .to_string()
 }
 
 /// Le fil vit quelques minutes en cache : chaque lecture se fait sur un fil

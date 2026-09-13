@@ -7,19 +7,24 @@
 //! Règle de conception du catalogue : **aucune offre n'achète de visibilité**.
 //! Payer ne fait jamais remonter un plan devant celui de quelqu'un d'autre.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::Authentifie,
     droits::{credits_pour, demandes_restantes, droits_pour, quota_journalier},
     entities::{credit_balances, subscriptions, unit_purchases},
-    error::{invalide, AppError},
+    error::{AppError, invalide},
     temps::iso8601,
-    AppState,
 };
-use axum::{extract::State, routing::{get, post}, Json, Router};
+use axum::{
+    Json, Router,
+    extract::State,
+    routing::{get, post},
+};
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const BUNDLE: &str = "com.weave.app";
 
@@ -61,12 +66,18 @@ const OFFRES: [(&str, &str, i64); 5] = [
 /// divergence de plus, et c'est précisément ce que le test cherche à empêcher.
 #[cfg(test)]
 pub fn unites_pour_test() -> Vec<(&'static str, i64)> {
-    UNITES.iter().map(|(sku, _, prix, _)| (*sku, *prix)).collect()
+    UNITES
+        .iter()
+        .map(|(sku, _, prix, _)| (*sku, *prix))
+        .collect()
 }
 
 #[cfg(test)]
 pub fn offres_pour_test() -> Vec<(&'static str, i64)> {
-    OFFRES.iter().map(|(palier, _, prix)| (*palier, *prix)).collect()
+    OFFRES
+        .iter()
+        .map(|(palier, _, prix)| (*palier, *prix))
+        .collect()
 }
 
 pub fn routes() -> Router<AppState> {
@@ -75,7 +86,10 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/billing/entitlement", get(droits_courants))
         .route("/v1/billing/subscriptions", post(enregistrer_abonnement))
         .route("/v1/billing/units", post(enregistrer_unite))
-        .route("/v1/billing/apple/notifications", post(notification_app_store))
+        .route(
+            "/v1/billing/apple/notifications",
+            post(notification_app_store),
+        )
 }
 
 /// Enregistre un achat à l'unité — consommables StoreKit.
@@ -85,16 +99,15 @@ async fn enregistrer_unite(
     Json(corps): Json<TransactionSignee>,
 ) -> Result<Json<Value>, AppError> {
     if corps.signed_transaction.len() < 10 {
-        return Err(invalide("Transaction StoreKit illisible."));
+        return Err(invalide(Msg::TransactionStoreKitIllisible));
     }
     let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
 
     let (sku, _nom, prix_centimes, dotation) = unite_depuis_produit(&transaction.product_id)
         .ok_or_else(|| {
-            invalide(&format!(
-                "Produit à l'unité inconnu : {}",
-                transaction.product_id
-            ))
+            invalide(Msg::ProduitALUniteInconnu {
+                identifiant: transaction.product_id.clone(),
+            })
         })?;
 
     // `transactionId` est unique côté Apple : la contrainte d'unicité empêche
@@ -170,7 +183,11 @@ async fn doter_la_periode(
         .await?;
 
     if deja.is_some() {
-        tracing::debug!(compte = compte_id, sku, "dotation déjà accordée pour cette période");
+        tracing::debug!(
+            compte = compte_id,
+            sku,
+            "dotation déjà accordée pour cette période"
+        );
         return Ok(());
     }
 
@@ -335,7 +352,11 @@ async fn notification_app_store(
     let expire = echeance.is_some_and(|date| date < Utc::now());
 
     let mut maj: subscriptions::ActiveModel = abonnement.into();
-    maj.tier = Set(if expire { "depart".to_string() } else { palier.to_string() });
+    maj.tier = Set(if expire {
+        "depart".to_string()
+    } else {
+        palier.to_string()
+    });
     maj.renews_at = Set(echeance.map(|d| d.naive_utc()));
     maj.expires_at = Set(echeance.map(|d| d.naive_utc()));
     maj.in_grace_period = Set(false);
@@ -348,8 +369,14 @@ async fn notification_app_store(
         // vend aussi, et remplacer le solde effacerait ce qui a été payé.
         let escales = droits_pour(palier).escales_par_mois;
         if escales > 0 {
-            doter_la_periode(&state, &compte_id, "escale", escales as i32, echeance.naive_utc())
-                .await?;
+            doter_la_periode(
+                &state,
+                &compte_id,
+                "escale",
+                escales as i32,
+                echeance.naive_utc(),
+            )
+            .await?;
         }
     }
 
@@ -477,18 +504,15 @@ fn achat_acceptable(production: bool, verification_ecrite: bool) -> bool {
 /// permet d'éprouver le parcours d'achat sans compte Apple Developer.
 fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, AppError> {
     if !achat_acceptable(state.config.is_production(), VERIFICATION_JWS_IMPLEMENTEE) {
-        return Err(invalide(
-            "Vérification des achats indisponible : la validation cryptographique \
-             des transactions App Store n'est pas encore en service.",
-        ));
+        return Err(invalide(Msg::VerificationDesAchatsIndisponible));
     }
 
-    let claims = crate::storekit::verifier(signe, &state.racine_storekit, Utc::now())
-        .map_err(|refus| {
+    let claims =
+        crate::storekit::verifier(signe, &state.racine_storekit, Utc::now()).map_err(|refus| {
             // Le motif va au journal, pas à l'appelant : on ne renseigne pas
             // qui essaie de forger sur ce qui l'a trahi.
             tracing::warn!(motif = refus.motif(), "transaction StoreKit refusée");
-            invalide("Transaction StoreKit refusée.")
+            invalide(Msg::TransactionStoreKitRefusee)
         })?;
 
     // La signature d'Apple ne dit pas POUR QUI elle a été émise.
@@ -497,10 +521,13 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
     // signé par Apple, chaîne parfaitement valide — se rejouerait ici pour
     // s'offrir l'abonnement le plus cher. C'est le `bundleId` qui distingue,
     // et lui seul.
-    let paquet = claims.get("bundleId").and_then(Value::as_str).unwrap_or_default();
+    let paquet = claims
+        .get("bundleId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if paquet != BUNDLE {
         tracing::warn!(paquet, "transaction émise pour une autre application");
-        return Err(invalide("Transaction StoreKit refusée."));
+        return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
 
     // Sandbox et production ne se mélangent pas : une transaction d'essai ne
@@ -515,7 +542,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
             attendu = %state.config.app_store.environnement,
             "transaction d'un autre environnement"
         );
-        return Err(invalide("Transaction StoreKit refusée."));
+        return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
 
     // Une transaction signée reste valable indéfiniment tant que rien ne borne
@@ -528,7 +555,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
     {
         if (Utc::now() - signee_le).num_minutes().abs() > FRAICHEUR_MINUTES {
             tracing::warn!(%signee_le, "transaction trop ancienne");
-            return Err(invalide("Transaction StoreKit refusée."));
+            return Err(invalide(Msg::TransactionStoreKitRefusee));
         }
     }
 
@@ -543,7 +570,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
         .unwrap_or_default()
         .to_string();
     if product_id.is_empty() || transaction_id.is_empty() {
-        return Err(invalide("Transaction incomplète."));
+        return Err(invalide(Msg::TransactionIncomplete));
     }
 
     Ok(Transaction {
@@ -585,15 +612,14 @@ async fn enregistrer_abonnement(
     Json(corps): Json<TransactionSignee>,
 ) -> Result<Json<Value>, AppError> {
     if corps.signed_transaction.len() < 10 {
-        return Err(invalide("Transaction StoreKit illisible."));
+        return Err(invalide(Msg::TransactionStoreKitIllisible));
     }
     let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
 
     let palier = palier_depuis_produit(&transaction.product_id).ok_or_else(|| {
-        invalide(&format!(
-            "Produit d'abonnement inconnu : {}",
-            transaction.product_id
-        ))
+        invalide(Msg::ProduitDAbonnementInconnu {
+            identifiant: transaction.product_id.clone(),
+        })
     })?;
 
     // Un mois, faute d'échéance annoncée par Apple. C'est la seule durée

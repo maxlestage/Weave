@@ -95,24 +95,34 @@ async fn l_export_joint_la_photo_et_rend_de_vraies_listes() {
     let jeton = service.jeton("c_export_photo");
 
     let (statut, corps) = service
-        .put("/v1/me/profile", Some(&jeton), json!({
-            "city": "Rennes",
-            "latitude": 48.11,
-            "longitude": -1.68,
-            "gender": "femme",
-        }))
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({
+                "city": "Rennes",
+                "latitude": 48.11,
+                "longitude": -1.68,
+                "gender": "femme",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     service.consentir(&jeton).await;
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme", "autre"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["homme", "autre"] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
     jpeg.extend_from_slice(&[7u8; 32]);
-    let (statut, corps) = service.put_octets("/v1/me/photo", &jeton, jpeg.clone()).await;
+    let (statut, corps) = service
+        .put_octets("/v1/me/photo", &jeton, jpeg.clone())
+        .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     let (statut, export) = service.get("/v1/me/export", Some(&jeton)).await;
@@ -122,7 +132,7 @@ async fn l_export_joint_la_photo_et_rend_de_vraies_listes() {
     assert_eq!(photo["typeDeContenu"], "image/jpeg");
     assert_eq!(photo["octets"], jpeg.len());
     let encodee = photo["donneesBase64"].as_str().expect("la photo encodée");
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     assert_eq!(
         STANDARD.decode(encodee).expect("base64 lisible"),
         jpeg,

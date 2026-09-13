@@ -4,7 +4,7 @@
 //! cache étant déjà une dépendance dure du produit, aucune bibliothèque
 //! supplémentaire n'est nécessaire.
 
-use crate::{cache, error::AppError, AppState};
+use crate::{AppState, cache, error::AppError};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Regle {
@@ -21,14 +21,30 @@ pub mod regles {
     use super::Regle;
 
     /// Demande de code de connexion : protège la boîte mail et le coût d'envoi.
-    pub const DEMANDE_OTP: Regle = Regle { seau: "otp-request", limite: 5, fenetre_secondes: 15 * 60 };
+    pub const DEMANDE_OTP: Regle = Regle {
+        seau: "otp-request",
+        limite: 5,
+        fenetre_secondes: 15 * 60,
+    };
     /// Vérification du code : ralentit une attaque par force brute.
-    pub const VERIF_OTP: Regle = Regle { seau: "otp-verify", limite: 10, fenetre_secondes: 15 * 60 };
+    pub const VERIF_OTP: Regle = Regle {
+        seau: "otp-verify",
+        limite: 10,
+        fenetre_secondes: 15 * 60,
+    };
     /// Publication d'un plan. Le plafond de plans ouverts fait le vrai travail.
-    pub const PUBLICATION: Regle = Regle { seau: "publish", limite: 20, fenetre_secondes: 60 * 60 };
+    pub const PUBLICATION: Regle = Regle {
+        seau: "publish",
+        limite: 20,
+        fenetre_secondes: 60 * 60,
+    };
     /// Demandes de participation. Le quota journalier du palier est
     /// l'invariant ; cette règle ne sert qu'à borner les rafales.
-    pub const DEMANDE: Regle = Regle { seau: "join", limite: 40, fenetre_secondes: 60 * 60 };
+    pub const DEMANDE: Regle = Regle {
+        seau: "join",
+        limite: 40,
+        fenetre_secondes: 60 * 60,
+    };
 
     /// Envoi de photo de profil.
     ///
@@ -36,7 +52,11 @@ pub mod regles {
     /// efface autant : l'ancienne part avec la nouvelle, si bien que rien ne
     /// s'accumule — mais rien ne bornait non plus le rythme. Dix par heure
     /// laisse largement de quoi hésiter entre trois photos.
-    pub const PHOTO: Regle = Regle { seau: "photo", limite: 10, fenetre_secondes: 60 * 60 };
+    pub const PHOTO: Regle = Regle {
+        seau: "photo",
+        limite: 10,
+        fenetre_secondes: 60 * 60,
+    };
 
     /// Export de ses données.
     ///
@@ -49,7 +69,11 @@ pub mod regles {
     /// infondées ou excessives, notamment en raison de leur caractère
     /// répétitif ». Cinq par jour ne gêne personne qui exerce son droit, et
     /// arrête une boucle.
-    pub const EXPORT: Regle = Regle { seau: "export", limite: 5, fenetre_secondes: 24 * 60 * 60 };
+    pub const EXPORT: Regle = Regle {
+        seau: "export",
+        limite: 5,
+        fenetre_secondes: 24 * 60 * 60,
+    };
 }
 
 /// Incrémente le compteur et refuse la requête si le seuil est franchi.
@@ -58,11 +82,7 @@ pub mod regles {
 /// protection, pas une condition de fonctionnement. On laisse alors passer, en
 /// le signalant — refuser toutes les connexions parce que Redis hoquette
 /// serait un remède pire que le mal.
-pub async fn consommer(
-    state: &AppState,
-    regle: Regle,
-    sujet: &str,
-) -> Result<(), AppError> {
+pub async fn consommer(state: &AppState, regle: Regle, sujet: &str) -> Result<(), AppError> {
     let cle = cache::cles::limitation(regle.seau, sujet);
     let mut conn = state.cache.clone();
 
@@ -90,11 +110,13 @@ pub async fn consommer(
     let remise_a_zero_dans = if ttl > 0 { ttl } else { regle.fenetre_secondes };
 
     if compte > regle.limite {
-        return Err(crate::error::trop_de_requetes(&format!(
-            "Limite atteinte pour « {} ». Réessayez dans {remise_a_zero_dans} s.",
-            regle.seau
-        ))
-        .dans(remise_a_zero_dans));
+        return Err(
+            crate::error::trop_de_requetes(crate::messages::Msg::LimiteAtteinte {
+                quoi: regle.seau.to_string(),
+                secondes: remise_a_zero_dans,
+            })
+            .dans(remise_a_zero_dans),
+        );
     }
 
     Ok(())
@@ -111,7 +133,11 @@ mod tests {
     /// faire refuser encore.
     #[tokio::test]
     async fn un_refus_porte_le_delai_avant_de_reessayer() {
-        const SERRE: Regle = Regle { seau: "test-serre", limite: 1, fenetre_secondes: 30 };
+        const SERRE: Regle = Regle {
+            seau: "test-serre",
+            limite: 1,
+            fenetre_secondes: 30,
+        };
 
         let service = Service::monter().await;
         let sujet = service.id("limite");
@@ -125,7 +151,9 @@ mod tests {
             .expect_err("le second doit être refusé");
 
         assert_eq!(refus.code, crate::error::Code::RateLimited);
-        let delai = refus.retry_after.expect("le délai doit accompagner le refus");
+        let delai = refus
+            .retry_after
+            .expect("le délai doit accompagner le refus");
         assert!(
             (1..=SERRE.fenetre_secondes).contains(&delai),
             "délai hors de la fenêtre : {delai} s"

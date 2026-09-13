@@ -19,21 +19,22 @@
 //! d'identité est un actif pour qui la vole, et une responsabilité pour tout le
 //! monde d'autre.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::Authentifie,
     entities::verification_requests,
-    error::{invalide, AppError},
+    error::{AppError, invalide},
     temps::iso8601,
-    AppState,
 };
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, routing::get};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
     Set,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const EN_ATTENTE: &str = "en_attente";
 pub const ACCEPTEE: &str = "acceptee";
@@ -79,14 +80,14 @@ async fn demander(
     Json(corps): Json<Demande>,
 ) -> Result<Json<Value>, AppError> {
     if compte.verified {
-        return Err(invalide("Votre profil est déjà vérifié."));
+        return Err(invalide(Msg::ProfilDejaVerifie));
     }
 
     let note = corps.note.unwrap_or_default();
     if note.chars().count() > NOTE_MAX {
-        return Err(invalide(&format!(
-            "Ce mot ne peut pas dépasser {NOTE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::MotTropLong {
+            maximum: NOTE_MAX as i64,
+        }));
     }
 
     // Redemander pendant qu'une demande court ne crée pas de doublon : la file

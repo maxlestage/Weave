@@ -531,6 +531,28 @@ public actor WeaveAPI {
 
     // MARK: - Mécanique
 
+    /// L'en-tête `Accept-Language`, tiré des langues préférées du système.
+    ///
+    /// Sans lui, le service répond en français : c'est sa langue par défaut, et
+    /// il n'a aucun autre moyen de connaître la nôtre. Or ses messages sont
+    /// rendus TELS QUELS — voir `WeaveAPIError.message` plus haut : une
+    /// application en anglais affichait « Ce plan est complet. » au milieu de
+    /// son propre texte.
+    ///
+    /// Les poids décroissent dans l'ordre de préférence du système, comme la
+    /// norme le prévoit. Trois suffisent : au-delà, le service ne parle de
+    /// toute façon aucune des suivantes.
+    private static let acceptLanguage: String = {
+        let preferees = Locale.preferredLanguages.prefix(3)
+        guard !preferees.isEmpty else { return "fr" }
+        return preferees
+            .enumerated()
+            .map { rang, etiquette in
+                rang == 0 ? etiquette : "\(etiquette);q=\(String(format: "%.1f", 1.0 - Double(rang) / 10.0))"
+            }
+            .joined(separator: ",")
+    }()
+
     private enum Method: String {
         case get = "GET"
         case post = "POST"
@@ -579,6 +601,7 @@ public actor WeaveAPI {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         request.timeoutInterval = 15
 
         if let token {
@@ -635,6 +658,7 @@ public actor WeaveAPI {
         request.timeoutInterval = 120
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.acceptLanguage, forHTTPHeaderField: "Accept-Language")
 
         let data: Data
         let response: URLResponse
@@ -656,6 +680,7 @@ public actor WeaveAPI {
     private func sendRaw(_ method: Method, _ path: String, token: String?) async throws -> Data {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method.rawValue
+        request.setValue(Self.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         request.timeoutInterval = 60
 
         if let token {
@@ -740,6 +765,7 @@ public actor WeaveAPI {
         var request = URLRequest(url: baseURL.appending(path: "/v1/auth/refresh"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         request.httpBody = try JSONEncoder().encode(["refreshToken": current.refreshToken])
 
         let (data, response) = try await urlSession.data(for: request)

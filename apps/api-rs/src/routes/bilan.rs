@@ -25,18 +25,19 @@
 //! soit dépensé : faire payer 2,99 € pour un rapport vide serait pire que de
 //! ne rien vendre du tout.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::{Authentifie, CompteAuthentifie},
     droits::{droits_pour, exiger_credit},
     entities::{accounts, join_requests, plans},
-    error::{invalide, AppError},
+    error::{AppError, invalide},
     temps::iso8601,
-    AppState,
 };
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, routing::post};
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 /// En dessous de ce nombre de plans passés, il n'y a rien à conclure.
@@ -77,11 +78,10 @@ async fn etablir(
 
     if passes.len() < PLANS_MINIMUM {
         // Refusé AVANT de dépenser le crédit.
-        return Err(invalide(&format!(
-            "Il faut au moins {PLANS_MINIMUM} plans passés pour qu'un bilan dise quelque chose. \
-             Vous en avez {}. Votre crédit n'a pas été utilisé.",
-            passes.len()
-        )));
+        return Err(invalide(Msg::BilanTropPeuDePlans {
+            minimum: PLANS_MINIMUM as i64,
+            passes: passes.len() as i64,
+        }));
     }
 
     let mut lignes = Vec::with_capacity(passes.len());
