@@ -189,14 +189,47 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
     Ok(bilan)
 }
 
-/// Un signalement visant ce compte est-il encore à instruire ?
+/// Combien de temps un signalement ouvert peut retenir une suppression.
 ///
-/// `handled_at` est la marque de clôture : tant qu'elle est nulle, le dossier
-/// est ouvert, quelle que soit la valeur de `state`.
+/// ## Pourquoi cette borne est indispensable
+///
+/// `handled_at` est la marque de clôture, et **rien ne l'écrit nulle part** :
+/// aucune route, aucun outil ne clôt un dossier. Un signalement restait donc
+/// ouvert pour toujours, et la purge du compte visé était différée pour
+/// toujours avec lui.
+///
+/// Deux conséquences, l'une légale et l'autre pire :
+///
+///   * la page publique promet que le compte « est effacé dès le dossier
+///     clos ». Un dossier qui ne peut pas se clore fait de cette exception au
+///     droit à l'effacement une exemption permanente — ce que l'article 17
+///     n'autorise pas ;
+///   * n'importe qui pouvait **empêcher définitivement** la suppression du
+///     compte d'autrui : un seul signalement suffisait, et rien ne pouvait le
+///     lever. On retourne contre quelqu'un l'outil censé le protéger.
+///
+/// Quatre-vingt-dix jours : la durée déjà retenue pour les messages d'une
+/// conversation close. Une instruction qui n'a pas eu lieu en trois mois ne
+/// justifie plus de conserver les données de quelqu'un qui a demandé leur
+/// effacement.
+const SIGNALEMENT_DIFFERE_JOURS: i64 = 90;
+
+/// Un signalement visant ce compte retient-il encore sa suppression ?
+///
+/// Ouvert ET récent. `handled_at` reste la marque de clôture — un dossier
+/// instruit ne retient plus rien —, mais elle ne suffit pas : faute de
+/// quiconque pour l'écrire, elle laisserait la suppression en suspens
+/// indéfiniment.
+///
+/// Le signalement n'est pas marqué comme traité par la borne : il ne l'a pas
+/// été, et l'écrire serait consigner une instruction qui n'a pas eu lieu. Il
+/// cesse simplement de justifier une rétention.
 async fn signalement_en_cours(db: &DatabaseConnection, compte: &str) -> Result<bool, DbErr> {
+    let limite = Utc::now().naive_utc() - Duration::days(SIGNALEMENT_DIFFERE_JOURS);
     let ouverts = reports::Entity::find()
         .filter(reports::Column::TargetId.eq(compte))
         .filter(reports::Column::HandledAt.is_null())
+        .filter(reports::Column::CreatedAt.gt(limite))
         .count(db)
         .await?;
     Ok(ouverts > 0)
@@ -257,6 +290,50 @@ pub(super) mod tests {
 
     /// La règle qui protège la modération : supprimer son compte ne doit pas
     /// suffire à effacer le dossier qu'on vient d'ouvrir contre soi.
+    /// Un signalement jamais instruit cesse de retenir une suppression.
+    ///
+    /// `handled_at` est la marque de clôture, et rien ne l'écrit nulle part :
+    /// aucune route, aucun outil ne clôt un dossier. Sans borne, la purge
+    /// était différée pour toujours — et n'importe qui pouvait empêcher
+    /// définitivement la suppression du compte d'autrui en le signalant une
+    /// fois.
+    #[tokio::test]
+    async fn un_signalement_jamais_instruit_cesse_de_retenir_la_suppression() {
+        let db = base_de_test().await;
+        compte(&db, "vise_vieux", Some(PURGE_COMPTE_JOURS + 5)).await;
+        compte(&db, "plaignant_vieux", None).await;
+
+        reports::ActiveModel {
+            id: Set("r_vieux".to_string()),
+            author_id: Set("plaignant_vieux".to_string()),
+            target_id: Set("vise_vieux".to_string()),
+            reason: Set("harcelement".to_string()),
+            details: Set(String::new()),
+            state: Set("ouvert".to_string()),
+            // Jamais instruit — et déposé il y a plus longtemps que la borne.
+            handled_at: Set(None),
+            created_at: Set(
+                Utc::now().naive_utc() - Duration::days(SIGNALEMENT_DIFFERE_JOURS + 1),
+            ),
+        }
+        .insert(&db)
+        .await
+        .expect("signalement inséré");
+
+        let bilan = executer(&db).await.expect("purge");
+        assert_eq!(bilan.comptes_differes, 0, "le signalement retient encore");
+        assert_eq!(bilan.comptes_effaces, 1);
+        assert!(
+            accounts::Entity::find_by_id("vise_vieux")
+                .one(&db)
+                .await
+                .expect("lecture")
+                .is_none(),
+            "une instruction qui n'a pas eu lieu en trois mois ne justifie plus \
+             de conserver les données de quelqu'un qui a demandé leur effacement"
+        );
+    }
+
     #[tokio::test]
     async fn un_compte_vise_par_un_signalement_ouvert_est_differe() {
         let db = base_de_test().await;
