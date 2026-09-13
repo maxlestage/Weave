@@ -1,0 +1,2216 @@
+{
+  "sourceLanguage": "fr",
+  "strings": {
+    "Abonnements": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscriptions"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscripciones"
+          }
+        }
+      }
+    },
+    "Accepter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accept"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aceptar"
+          }
+        }
+      }
+    },
+    "Achetés une fois, utilisés quand vous voulez. Ils ne se périment pas.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bought once, used whenever you like. They don't expire."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprados una vez, usados cuando quieras. No caducan."
+          }
+        }
+      }
+    },
+    "Affiché sur vos plans, et utilisé par les critères des autres.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shown on your plans, and used by other people's filters."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se muestra en tus planes, y lo usan los criterios de los demás."
+          }
+        }
+      }
+    },
+    "Annuler": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar"
+          }
+        }
+      }
+    },
+    "Annuler ce plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel this plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar este plan"
+          }
+        }
+      }
+    },
+    "Au-delà d'une, il faut les plans de groupe — compris à partir d'Escapade, ou à l'unité avec une « Tablée ».": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beyond one, you need group plans — included from Escapade upwards, or singly with a Tablée."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más de una requiere planes de grupo — incluidos a partir de Escapade, o por unidades con una Tablée."
+          }
+        }
+      }
+    },
+    "Aucun plan publié": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No plans posted"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún plan publicado"
+          }
+        }
+      }
+    },
+    "Aucun plan à venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No upcoming plans"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún plan próximo"
+          }
+        }
+      }
+    },
+    "Autour": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nearby"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca"
+          }
+        }
+      }
+    },
+    "Autour de vous": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Around you"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A tu alrededor"
+          }
+        }
+      }
+    },
+    "Bilan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilan"
+          }
+        }
+      }
+    },
+    "Bloc au mur de 19 h, niveau débutant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bouldering at the 7pm wall, beginners welcome"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloque en el muro de las 19 h, nivel principiante"
+          }
+        }
+      }
+    },
+    "Bloquer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquear"
+          }
+        }
+      }
+    },
+    "Bornées à toutes les offres, socle gratuit compris. Elles reviennent à minuit. C'est ce qui empêche d'arroser — sur Weave, une demande vaut quelque chose.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capped on every plan, the free tier included. They come back at midnight. That's what stops people spraying requests — on Weave, asking costs you something."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limitadas en todas las suscripciones, incluida la gratuita. Vuelven a medianoche. Es lo que impide lanzar la caña a todo el mundo — en Weave, pedir vale algo."
+          }
+        }
+      }
+    },
+    "C'est le moment de publier quelque chose. Un plan sans réponse reste un plan : vous ferez ce que vous aviez prévu.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now's the time to post something. A plan with no replies is still a plan: you'll do what you were going to do."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es el momento de publicar algo. Un plan sin respuestas sigue siendo un plan: harás lo que tenías previsto."
+          }
+        }
+      }
+    },
+    "Ce critère peut révéler votre orientation sexuelle. La loi le range à part : il demande votre accord explicite, que vous pouvez retirer quand vous voulez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This filter can reveal your sexual orientation. The law treats it separately: it needs your explicit consent, which you can withdraw whenever you like."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este criterio puede revelar tu orientación sexual. La ley lo trata aparte: necesita tu consentimiento explícito, que puedes retirar cuando quieras."
+          }
+        }
+      }
+    },
+    "Ce plan est complet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That plan is full."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese plan está completo."
+          }
+        }
+      }
+    },
+    "Ce que vous faites": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What you're doing"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que haces"
+          }
+        }
+      }
+    },
+    "Ce qui attire": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What draws people"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que atrae"
+          }
+        }
+      }
+    },
+    "Ce qui attire, ce qui tombe à plat, sur vos plans passés. Rien n'est comparé aux autres, et les messages reçus ne sont pas lus.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What draws people and what falls flat, across your past plans. Nothing is compared with anyone else's, and the messages you received are not read."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que atrae y lo que no cuaja, en tus planes pasados. Nada se compara con los demás, y los mensajes recibidos no se leen."
+          }
+        }
+      }
+    },
+    "Ce qui tombe à plat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What falls flat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que no cuaja"
+          }
+        }
+      }
+    },
+    "Cette demande consomme une de vos demandes du jour. Retirée avant d'avoir été lue, elle vous est rendue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This uses one of today's requests. Withdrawn before it's read, it's given back to you."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto consume una de tus peticiones de hoy. Retirada antes de ser leída, se te devuelve."
+          }
+        }
+      }
+    },
+    "Changer d'adresse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change address"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar de dirección"
+          }
+        }
+      }
+    },
+    "Combien de personnes peuvent venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How many people can come"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuántas personas pueden venir"
+          }
+        }
+      }
+    },
+    "Combien de temps à l'avance vos plans étaient publiés. À vous d'en tirer ce que vous voulez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How far ahead your plans went up. Make of it what you like."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con cuánta antelación se publicaron tus planes. Saca de ello lo que quieras."
+          }
+        }
+      }
+    },
+    "Confidentialité": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacidad"
+          }
+        }
+      }
+    },
+    "Critères du fil": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed filters"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Criterios del muro"
+          }
+        }
+      }
+    },
+    "Crédits": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créditos"
+          }
+        }
+      }
+    },
+    "Créer mon compte": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create my account"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crear mi cuenta"
+          }
+        }
+      }
+    },
+    "D'accord": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De acuerdo"
+          }
+        }
+      }
+    },
+    "Demande envoyée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request sent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Petición enviada"
+          }
+        }
+      }
+    },
+    "Demander la vérification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask to be verified"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solicitar la verificación"
+          }
+        }
+      }
+    },
+    "Demander à venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask to come"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pedir venir"
+          }
+        }
+      }
+    },
+    "Demandes restantes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requests left"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peticiones restantes"
+          }
+        }
+      }
+    },
+    "Demandes reçues par plan publié, de la plus sollicitée à la moins.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requests received per plan posted, most asked-about first."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peticiones recibidas por plan publicado, del más solicitado al menos."
+          }
+        }
+      }
+    },
+    "Des plans, pas des profils.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plans, not profiles."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Planes, no perfiles."
+          }
+        }
+      }
+    },
+    "Dites pourquoi ce plan-là.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Say why that plan."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Di por qué ese plan."
+          }
+        }
+      }
+    },
+    "Donner mon accord": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give my consent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dar mi consentimiento"
+          }
+        }
+      }
+    },
+    "Donner ou retirer votre accord pour les données sensibles — les personnes que vous cherchez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give or withdraw your consent for sensitive data — the people you're looking for."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dar o retirar tu consentimiento para los datos sensibles — las personas que buscas."
+          }
+        }
+      }
+    },
+    "Délai de publication": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How far ahead"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antelación de publicación"
+          }
+        }
+      }
+    },
+    "Elle sert à composer votre fil et à situer vos plans. Weave n'enregistre jamais de position plus précise que le kilomètre — pas même la vôtre.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It builds your feed and places your plans. Weave never stores a position finer than the kilometre — not even yours."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sirve para componer tu muro y situar tus planes. Weave nunca guarda una posición más precisa que el kilómetro — ni siquiera la tuya."
+          }
+        }
+      }
+    },
+    "En continuant, vous acceptez les conditions d'utilisation. Weave est réservé aux personnes majeures.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By continuing you accept the terms of use. Weave is for adults only."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al continuar aceptas las condiciones de uso. Weave es solo para mayores de edad."
+          }
+        }
+      }
+    },
+    "En cours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En curso"
+          }
+        }
+      }
+    },
+    "En une phrase": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In one sentence"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En una frase"
+          }
+        }
+      }
+    },
+    "Enregistrer le fichier": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save the file"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar el archivo"
+          }
+        }
+      }
+    },
+    "Envoyer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar"
+          }
+        }
+      }
+    },
+    "Envoyer la demande": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send the request"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar la petición"
+          }
+        }
+      }
+    },
+    "Escale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escale"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escale"
+          }
+        }
+      }
+    },
+    "Facultative. Elle n'est jamais servie par une adresse devinable : chaque affichage passe par un lien signé qui expire.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional. It is never served from a guessable address: every view goes through a signed link that expires."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opcional. Nunca se sirve desde una dirección adivinable: cada visualización pasa por un enlace firmado que caduca."
+          }
+        }
+      }
+    },
+    "Fermer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar"
+          }
+        }
+      }
+    },
+    "Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "They filter what you see; they never change the order. The feed is sorted by what happens soonest, then by what is nearest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filtran lo que ves; nunca cambian el orden. El muro se ordena por lo que ocurre antes, y luego por lo que está más cerca."
+          }
+        }
+      }
+    },
+    "Je grimpe depuis six mois, très mal.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I've been climbing for six months, very badly."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llevo seis meses escalando, fatal."
+          }
+        }
+      }
+    },
+    "Je viens de m'installer dans le quartier et je ne connais personne qui grimpe…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I've just moved into the area and I don't know anyone who climbs…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acabo de mudarme al barrio y no conozco a nadie que escale…"
+          }
+        }
+      }
+    },
+    "Jours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Days"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Días"
+          }
+        }
+      }
+    },
+    "La bannière affiche votre prochain plan et ce qui attend une réponse. Une notification vous prévient qu'un message est arrivé. Ni l'une ni l'autre ne dit qui écrit, ni ce qui est écrit — elles s'affichent sur un écran verrouillé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The banner shows your next plan and whatever is waiting for an answer. A notification tells you a message has arrived. Neither says who is writing, nor what — they appear on a lock screen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El aviso muestra tu próximo plan y lo que espera respuesta. Una notificación te avisa de que ha llegado un mensaje. Ninguna de las dos dice quién escribe ni qué — se muestran en una pantalla bloqueada."
+          }
+        }
+      }
+    },
+    "Le badge dit qu'une personne de l'équipe a vérifié que vous êtes bien vous. La suite se fait par e-mail : aucune pièce d'identité ne s'envoie depuis l'application.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The badge says someone on the team has checked that you are you. The rest happens by email: no identity document is ever sent from the app."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La insignia dice que alguien del equipo ha comprobado que eres tú. El resto se hace por correo: ningún documento de identidad se envía desde la aplicación."
+          }
+        }
+      }
+    },
+    "Le catalogue n'a pas pu être chargé. Vérifiez votre connexion.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The catalogue couldn't be loaded. Check your connection."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido cargar el catálogo. Comprueba tu conexión."
+          }
+        }
+      }
+    },
+    "Le critère est effacé et le fil cesse de filtrer dessus. Votre compte, vos plans et vos conversations ne changent pas.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The filter is erased and the feed stops filtering on it. Your account, your plans and your conversations are unchanged."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El criterio se borra y el muro deja de filtrar por él. Tu cuenta, tus planes y tus conversaciones no cambian."
+          }
+        }
+      }
+    },
+    "Le prix d'entrée, le niveau, l'heure de fin : ce qui évite un malentendu.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The price on the door, the level, the finish time: whatever avoids a misunderstanding."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El precio de entrada, el nivel, la hora de fin: lo que evita un malentendido."
+          }
+        }
+      }
+    },
+    "Le texte fait foi. Cet écran ne fait que vous permettre de donner et de retirer votre accord.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The text is what binds. This screen only lets you give and withdraw your consent."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El texto es el que obliga. Esta pantalla solo te permite dar y retirar tu consentimiento."
+          }
+        }
+      }
+    },
+    "Mes plans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My plans"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mis planes"
+          }
+        }
+      }
+    },
+    "Modifier ma fiche": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit my details"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar mi ficha"
+          }
+        }
+      }
+    },
+    "Nous vous écrirons à votre adresse e-mail pour la suite. Aucune pièce d'identité ne s'envoie depuis l'application.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We'll write to your email address about what happens next. No identity document is ever sent from the app."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te escribiremos a tu correo para lo que sigue. Ningún documento de identidad se envía desde la aplicación."
+          }
+        }
+      }
+    },
+    "Obtenir mes données": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get my data"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener mis datos"
+          }
+        }
+      }
+    },
+    "Offres": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plans"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscripciones"
+          }
+        }
+      }
+    },
+    "Ouvrir l'escale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the Escale"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir la Escale"
+          }
+        }
+      }
+    },
+    "Ouvrir une escale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open an Escale"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir una Escale"
+          }
+        }
+      }
+    },
+    "Où allez-vous ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Where are you going?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Adónde vas?"
+          }
+        }
+      }
+    },
+    "Où vous êtes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Where you are"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dónde estás"
+          }
+        }
+      }
+    },
+    "Par catégorie": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By category"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por categoría"
+          }
+        }
+      }
+    },
+    "Pause": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausa"
+          }
+        }
+      }
+    },
+    "Personne n'a encore demandé à venir. Ça n'enlève rien au plan.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nobody has asked to come yet. That takes nothing away from the plan."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía nadie ha pedido venir. Eso no le quita nada al plan."
+          }
+        }
+      }
+    },
+    "Première visite : deux informations, et c'est tout.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First time here: two things, and that's it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primera vez: dos datos, y ya está."
+          }
+        }
+      }
+    },
+    "Prochain plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Próximo plan"
+          }
+        }
+      }
+    },
+    "Profil vérifié": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verified profile"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil verificado"
+          }
+        }
+      }
+    },
+    "Précisions": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detalles"
+          }
+        }
+      }
+    },
+    "Publier": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Post"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publicar"
+          }
+        }
+      }
+    },
+    "Publier un plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Post a plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publicar un plan"
+          }
+        }
+      }
+    },
+    "Publiez quelque chose, ou demandez à venir à un plan.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Post something, or ask to come to a plan."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publica algo, o pide venir a un plan."
+          }
+        }
+      }
+    },
+    "Quand": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuándo"
+          }
+        }
+      }
+    },
+    "Que se passe-t-il ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What's going on?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué ocurre?"
+          }
+        }
+      }
+    },
+    "Qui vous cherchez": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Who you're looking for"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A quién buscas"
+          }
+        }
+      }
+    },
+    "Recevoir un code": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get a code"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibir un código"
+          }
+        }
+      }
+    },
+    "Restaurer mes achats": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore my purchases"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurar mis compras"
+          }
+        }
+      }
+    },
+    "Retirer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Withdraw"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirar"
+          }
+        }
+      }
+    },
+    "Retirer mon accord": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Withdraw my consent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirar mi consentimiento"
+          }
+        }
+      }
+    },
+    "Retirer votre accord ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Withdraw your consent?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Retirar tu consentimiento?"
+          }
+        }
+      }
+    },
+    "Revenir chez moi": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Come back home"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volver a mi ciudad"
+          }
+        }
+      }
+    },
+    "Rien autour de vous pour l'instant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing around you right now"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada a tu alrededor por ahora"
+          }
+        }
+      }
+    },
+    "Réglages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes"
+          }
+        }
+      }
+    },
+    "Sans cet accord, vous pouvez utiliser Weave normalement : le fil n'est simplement pas filtré par genre.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Without this consent you can use Weave as normal: the feed simply isn't filtered by gender."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin este consentimiento puedes usar Weave con normalidad: el muro simplemente no se filtra por género."
+          }
+        }
+      }
+    },
+    "Sans suite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No follow-up"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin continuación"
+          }
+        }
+      }
+    },
+    "Se déconnecter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign out"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar sesión"
+          }
+        }
+      }
+    },
+    "Suites": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow-ups"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuaciones"
+          }
+        }
+      }
+    },
+    "Supprimer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar"
+          }
+        }
+      }
+    },
+    "Supprimer mon compte": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete my account"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar mi cuenta"
+          }
+        }
+      }
+    },
+    "Supprimer votre compte ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete your account?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Eliminar tu cuenta?"
+          }
+        }
+      }
+    },
+    "Sur la période": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Over the period"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En el periodo"
+          }
+        }
+      }
+    },
+    "Sur un nouvel appareil, cela retrouve ce que vous avez déjà payé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On a new device, this finds what you've already paid for."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En un dispositivo nuevo, esto recupera lo que ya has pagado."
+          }
+        }
+      }
+    },
+    "Terminé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hecho"
+          }
+        }
+      }
+    },
+    "Tous les abonnements sont mensuels, et se résilient dans les réglages de votre compte Apple — c'est Apple qui les encaisse.\n\nAucun palier ne fait remonter vos plans, et le plafond de trois plans ouverts ne se desserre pour aucune somme. Ce qui se paie, c'est l'horizon de publication, la finesse des critères et les plans de groupe.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every subscription is monthly, and is cancelled in your Apple account settings — Apple is who collects the money.\n\nNo tier pushes your plans up the feed, and the cap of three open plans loosens for no amount of money. What you pay for is how far ahead you can post, how precise the filters are, and group plans."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas las suscripciones son mensuales, y se cancelan en los ajustes de tu cuenta de Apple — es Apple quien las cobra.\n\nNingún nivel sube tus planes en el muro, y el tope de tres planes abiertos no se afloja por ninguna cantidad. Lo que se paga es la antelación para publicar, lo finos que son los criterios y los planes de grupo."
+          }
+        }
+      }
+    },
+    "Un badge apparaît sur vos plans. Il dit qu'une personne de l'équipe a vérifié que vous êtes bien vous — rien de plus.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A badge appears on your plans. It says someone on the team has checked that you are you — nothing more."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aparece una insignia en tus planes. Dice que alguien del equipo ha comprobado que eres tú — nada más."
+          }
+        }
+      }
+    },
+    "Un fichier JSON contenant ce que vous avez écrit et ce que le service sait de vous. Il ne contient pas les messages écrits par d'autres, ni l'identité de qui vous aurait signalé : ce sont leurs données.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A JSON file holding what you wrote and what the service knows about you. It does not hold messages written by other people, nor the identity of anyone who reported you: that is their data."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un archivo JSON con lo que has escrito y lo que el servicio sabe de ti. No incluye los mensajes escritos por otras personas, ni la identidad de quien te haya denunciado: esos son sus datos."
+          }
+        }
+      }
+    },
+    "Un mot, si vous voulez (facultatif)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A note, if you like (optional)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una nota, si quieres (opcional)"
+          }
+        }
+      }
+    },
+    "Un plan sans demande n'est pas un échec personnel : le titre, l'heure et la catégorie y sont souvent pour plus que vous.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A plan with no requests isn't a personal failure: the title, the time and the category usually have more to do with it than you."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un plan sin peticiones no es un fracaso personal: el título, la hora y la categoría suelen tener más que ver que tú."
+          }
+        }
+      }
+    },
+    "Une conversation s'ouvre quand quelqu'un accepte votre demande, ou que vous acceptez la sienne.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A conversation opens when someone accepts your request, or you accept theirs."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una conversación se abre cuando alguien acepta tu petición, o tú aceptas la suya."
+          }
+        }
+      }
+    },
+    "Une phrase": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One sentence"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una frase"
+          }
+        }
+      }
+    },
+    "Une précision, si besoin": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A detail, if needed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un detalle, si hace falta"
+          }
+        }
+      }
+    },
+    "Ville": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Town"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ciudad"
+          }
+        }
+      }
+    },
+    "Voir les offres": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See the plans"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver las suscripciones"
+          }
+        }
+      }
+    },
+    "Vos données": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your data"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus datos"
+          }
+        }
+      }
+    },
+    "Vos plans, vos demandes et vos conversations seront effacés. Cette action ne s'annule pas.\n\nUn abonnement souscrit via l'App Store se résilie séparément, dans les réglages de votre compte Apple.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your plans, your requests and your conversations will be erased. This cannot be undone.\n\nA subscription taken out through the App Store is cancelled separately, in your Apple account settings."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus planes, tus peticiones y tus conversaciones se borrarán. Esto no se puede deshacer.\n\nUna suscripción contratada a través de la App Store se cancela aparte, en los ajustes de tu cuenta de Apple."
+          }
+        }
+      }
+    },
+    "Votre adresse e-mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your email address"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu dirección de correo"
+          }
+        }
+      }
+    },
+    "Votre bilan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Bilan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu Bilan"
+          }
+        }
+      }
+    },
+    "Votre fil se composera autour de cette ville pendant sept jours, et vos plans y seront visibles. Cela consomme une « Escale ».": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your feed will be built around this town for seven days, and your plans will be visible there. This uses one Escale."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu muro se compondrá en torno a esta ciudad durante siete días, y tus planes serán visibles allí. Esto consume una Escale."
+          }
+        }
+      }
+    },
+    "Votre offre actuelle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your current plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción actual"
+          }
+        }
+      }
+    },
+    "Votre photo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your photo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu foto"
+          }
+        }
+      }
+    },
+    "Votre prénom": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your first name"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu nombre"
+          }
+        }
+      }
+    },
+    "Vous": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tú"
+          }
+        }
+      }
+    },
+    "Vous avez déjà demandé à venir. On ne redemande pas deux fois.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've already asked to come. You don't ask twice."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya has pedido venir. No se pide dos veces."
+          }
+        }
+      }
+    },
+    "Vous êtes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You are"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eres"
+          }
+        }
+      }
+    },
+    "Vérification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verification"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificación"
+          }
+        }
+      }
+    },
+    "avant le départ": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "before it starts"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "antes de empezar"
+          }
+        }
+      }
+    },
+    "À l'unité": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sold singly"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por unidades"
+          }
+        }
+      }
+    },
+    "Échec": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fallido"
+          }
+        }
+      }
+    },
+    "Écrire…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe…"
+          }
+        }
+      }
+    },
+    "Écrivez-le comme vous le diriez à quelqu'un. Pas une annonce.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write it the way you'd say it to someone. Not an advert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escríbelo como se lo dirías a alguien. No como un anuncio."
+          }
+        }
+      }
+    },
+    "Établir mon bilan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Draw up my Bilan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elaborar mi Bilan"
+          }
+        }
+      }
+    },
+    "à lire": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "to read"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "por leer"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
