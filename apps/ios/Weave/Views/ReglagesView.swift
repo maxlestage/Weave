@@ -12,6 +12,7 @@ struct ReglagesView: View {
     @State private var exportEnCours = false
     @State private var fichierExporte: URL?
     @State private var demandeSuppression = false
+    @State private var pauseEnCours = false
     @State private var erreur: String?
 
     var body: some View {
@@ -99,6 +100,32 @@ struct ReglagesView: View {
                     Text("Un fichier JSON contenant ce que vous avez écrit et ce que le service sait de vous. Il ne contient pas les messages écrits par d'autres, ni l'identité de qui vous aurait signalé : ce sont leurs données.")
                 }
 
+                // Souffler sans partir. La page publique « Supprimer votre
+                // compte » renvoie ici : elle propose la pause à qui voulait
+                // seulement s'absenter, et il faut donc qu'elle existe.
+                if let moi = modele.moi {
+                    Section {
+                        Button {
+                            Task { await basculerPause(vers: moi.status != .paused) }
+                        } label: {
+                            HStack {
+                                Text(moi.status == .paused ? "Reprendre" : "Mettre en pause")
+                                if pauseEnCours {
+                                    Spacer()
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(pauseEnCours)
+                    } header: {
+                        Text("Pause")
+                    } footer: {
+                        Text(moi.status == .paused
+                            ? "Vous êtes en pause. Vos plans sont retirés du fil et personne ne peut vous écrire de demande. Reprendre les remet tels quels."
+                            : "Vos plans sortent du fil et personne ne peut plus demander à venir. Rien n'est supprimé : vos conversations vous attendent, et vos plans reviennent à la reprise.")
+                    }
+                }
+
                 Section {
                     Button("Se déconnecter", role: .destructive) {
                         Task {
@@ -151,6 +178,25 @@ struct ReglagesView: View {
             fichierExporte = cible
         } catch {
             erreur = "L'export n'a pas abouti. Réessayez dans un moment."
+        }
+    }
+
+    /// Met le compte en pause, ou le reprend.
+    ///
+    /// Le profil est rechargé ensuite : c'est lui qui porte le statut, et donc
+    /// le libellé du bouton. Le fil aussi — ses propres plans viennent d'en
+    /// sortir, ou d'y revenir.
+    private func basculerPause(vers pause: Bool) async {
+        pauseEnCours = true
+        defer { pauseEnCours = false }
+        do {
+            try await modele.api.setPaused(pause)
+            await modele.rafraichirMoi()
+            await modele.plans.refresh()
+        } catch {
+            erreur = pause
+                ? "La mise en pause n'a pas abouti. Réessayez dans un moment."
+                : "La reprise n'a pas abouti. Réessayez dans un moment."
         }
     }
 

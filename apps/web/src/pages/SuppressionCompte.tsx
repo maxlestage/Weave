@@ -123,9 +123,10 @@ const ARTICLES: readonly Article[] = [
     contenu: (
       <>
         <p>
-          Si vous voulez seulement souffler, « Mettre en pause » dans les réglages annule vos plans
-          ouverts et vous retire du fil, <strong>sans rien supprimer</strong>. Vos conversations
-          vous attendent. Vous reprenez quand vous voulez.
+          Si vous voulez seulement souffler, « Mettre en pause » dans les réglages retire vos plans
+          du fil et empêche qu'on vous écrive, <strong>sans rien supprimer</strong>. Vos
+          conversations vous attendent, et vos plans reviennent tels quels à la reprise. Vous
+          reprenez quand vous voulez.
         </p>
         <p>
           Pensez aussi à résilier votre abonnement séparément, dans les réglages de votre compte

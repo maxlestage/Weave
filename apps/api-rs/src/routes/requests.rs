@@ -32,8 +32,8 @@ use serde_json::{json, Value};
 
 /// Vingt caractères : assez pour dire pourquoi on veut venir, trop pour un
 /// « salut » envoyé à la chaîne.
-const MESSAGE_MIN: usize = 20;
-const MESSAGE_MAX: usize = 600;
+pub(crate) const MESSAGE_MIN: usize = 20;
+pub(crate) const MESSAGE_MAX: usize = 600;
 
 /// Au plus deux « Renforts » par jour. Le plafond journalier existe même en
 /// payant : c'est ce qui distingue « on ne peut pas arroser » de « on ne peut

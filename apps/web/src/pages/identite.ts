@@ -65,9 +65,42 @@ export const MISE_A_JOUR = "12 septembre 2026";
 
 /**
  * Adresse publique du site, pour les URL canoniques et le plan du site.
- * À remplacer par le domaine définitif le jour où il est branché.
+ *
+ * Lue à la construction dans `SITE_ORIGINE`, et `null` tant qu'elle n'est pas
+ * posée. Elle valait « https://weave.app » en dur — un domaine qui ne répond
+ * pas. Toutes les pages juridiques se déclaraient donc canoniques à une
+ * adresse morte, et le plan du site n'énumérait que des URL injoignables :
+ * un moteur qui suit ces indications retire les pages de son index plutôt que
+ * de les y mettre. Mieux vaut ne rien déclarer que de désigner le vide.
+ *
+ * Le jour où le domaine est branché, poser `SITE_ORIGINE` suffit à tout
+ * rallumer — sans barre oblique finale.
  */
-export const ORIGINE = "https://weave.app";
+export const SITE = {
+  /** Adresse publique du site, sans barre oblique finale. Ex. https://weave.app */
+  origine: A_COMPLETER("adresse publique du site, ex. https://weave.app"),
+} as const;
+
+/**
+ * L'origine effective : celle du site, ou celle que la construction impose.
+ *
+ * `SITE_ORIGINE` l'emporte pour les préproductions, qui vivent à une autre
+ * adresse que la production sans qu'on veuille dupliquer ce fichier.
+ *
+ * Vaut `null` tant que rien n'est renseigné, et c'est le point : l'adresse
+ * était codée en dur à « https://weave.app », un domaine qui ne répond pas.
+ * Les pages juridiques se déclaraient donc canoniques à une adresse morte, et
+ * le plan du site n'énumérait que des URL injoignables — un moteur qui suit
+ * ces indications retire les pages de son index plutôt que de les y mettre.
+ * Mieux vaut ne rien déclarer que de désigner le vide.
+ */
+export const ORIGINE: string | null = (() => {
+  const impose = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+    ?.env?.SITE_ORIGINE;
+  const choisie = impose || SITE.origine;
+  if (!choisie || choisie.startsWith("[à compléter")) return null;
+  return choisie.replace(/\/+$/, "");
+})();
 
 /** Toutes les valeurs restées à compléter, pour le test de construction. */
 export function valeursManquantes(): readonly string[] {
@@ -83,5 +116,9 @@ export function valeursManquantes(): readonly string[] {
   };
   parcourir(EDITEUR, "EDITEUR.");
   parcourir(CONTACT, "CONTACT.");
+  // L'adresse du site n'est pas une mention légale, mais elle se renseigne au
+  // même endroit et son oubli coûte le référencement des pages juridiques :
+  // elle mérite la même liste.
+  parcourir(SITE, "SITE.");
   return trouvees;
 }

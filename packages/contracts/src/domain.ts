@@ -52,7 +52,8 @@ export type PlanState =
   | "ouvert" /* publié, des places restent */
   | "complet" /* toutes les places sont prises */
   | "passe" /* l'heure du rendez-vous est dépassée */
-  | "annule";
+  | "annule"
+  | "suspendu"; /* son auteur est en pause ; le plan revient à la reprise */
 
 export interface Plan {
   readonly id: string;

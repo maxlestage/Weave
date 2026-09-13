@@ -312,6 +312,7 @@ pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
     }
 }
 
+mod contrat;
 mod parcours;
 
 #[tokio::test]

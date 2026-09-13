@@ -131,15 +131,12 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
     <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
     <title>${doc.titre} — Weave</title>
     <meta name="description" content="${doc.description}" />
-    <link rel="canonical" href="${ORIGINE}/${doc.slug}" />
+    <link rel="canonical" href="${ORIGINE ? `${ORIGINE}/${doc.slug}` : `/${doc.slug}`}" />
     <meta property="og:site_name" content="Weave" />
     <meta property="og:title" content="${doc.titre} — Weave" />
     <meta property="og:description" content="${doc.description}" />
     <meta property="og:type" content="article" />
-    <meta property="og:locale" content="fr_FR" />
-    <meta property="og:url" content="${ORIGINE}/${doc.slug}" />
-    <meta property="og:image" content="${ORIGINE}/partage.png" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:locale" content="fr_FR" />${balisesAbsolues(doc.slug)}
     <link rel="icon" href="/${icone ? nom(icone.path) : "favicon.svg"}" type="image/svg+xml" />
     <link rel="stylesheet" href="/${nom(style.path)}" />
   </head>
@@ -150,6 +147,27 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
 `;
     await Bun.write(`${sortie}/${doc.slug}/index.html`, html);
   }
+}
+
+/*
+ * Les balises qui n'ont de sens qu'absolues : `og:url` et `og:image`.
+ *
+ * Le protocole Open Graph impose des URL absolues — une adresse relative n'y
+ * est pas seulement mal vue, elle n'est pas résolue. Sans origine connue, ces
+ * balises sont donc omises : un partage sans vignette vaut mieux qu'un
+ * partage attribué à un domaine qui ne répond pas.
+ *
+ * L'URL canonique, elle, reste déclarée : le format relatif y est valide et se
+ * résout contre l'adresse de la page.
+ */
+function balisesAbsolues(slug: string): string {
+  if (!ORIGINE) return "";
+  return [
+    ``,
+    `    <meta property="og:url" content="${ORIGINE}/${slug}" />`,
+    `    <meta property="og:image" content="${ORIGINE}/partage.png" />`,
+    `    <meta name="twitter:card" content="summary_large_image" />`,
+  ].join("\n");
 }
 
 /*
@@ -164,10 +182,31 @@ async function ecrireFichiersDeReferencement() {
   const adresses = ["", ...DOCUMENTS.map((doc) => doc.slug)];
   const jour = new Date().toISOString().slice(0, 10);
 
+  // `robots.txt` est toujours écrit : il autorise l'exploration, et c'est le
+  // premier fichier qu'un moteur demande. Mais la ligne `Sitemap:` exige une
+  // adresse absolue — sans origine, elle est omise plutôt que de renvoyer le
+  // moteur vers un hôte qui ne répond pas. Le plan reste trouvable à la
+  // racine, où les moteurs le cherchent d'eux-mêmes.
   await Bun.write(
     `${sortie}/robots.txt`,
-    [`User-agent: *`, `Allow: /`, ``, `Sitemap: ${ORIGINE}/sitemap.xml`, ``].join("\n"),
+    [
+      `User-agent: *`,
+      `Allow: /`,
+      ...(ORIGINE ? [``, `Sitemap: ${ORIGINE}/sitemap.xml`] : []),
+      ``,
+    ].join("\n"),
   );
+
+  // Le plan du site, lui, n'est écrit que si l'origine est connue : la balise
+  // `<loc>` n'accepte que des URL absolues. Un plan qui n'énumère que des
+  // adresses mortes ne fait pas indexer les pages, il les fait retirer.
+  if (!ORIGINE) {
+    console.warn(
+      "  ↳ pas de sitemap.xml : SITE.origine n'est pas renseignée, et un plan\n" +
+        "    du site n'accepte que des adresses absolues.",
+    );
+    return;
+  }
 
   await Bun.write(
     `${sortie}/sitemap.xml`,
@@ -200,8 +239,10 @@ function avertirDesMentionsIncompletes() {
   const manquantes = valeursManquantes();
   if (manquantes.length === 0) return;
   console.log("");
-  console.log(`  ⚠ ${manquantes.length} mentions légales restent à renseigner`);
+  console.log(`  ⚠ ${manquantes.length} valeurs restent à renseigner`);
   console.log("    dans apps/web/src/pages/identite.ts :");
   for (const champ of manquantes) console.log(`      • ${champ}`);
-  console.log("    Elles apparaissent surlignées sur les pages publiées.");
+  console.log(
+    "    Les mentions légales manquantes apparaissent surlignées\n" + "    sur les pages publiées.",
+  );
 }
