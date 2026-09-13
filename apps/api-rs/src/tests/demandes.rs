@@ -275,3 +275,52 @@ async fn deux_acceptations_concurrentes_ne_donnent_pas_deux_fois_la_meme_place()
         "une seule place, une seule acceptation — obtenu {acceptees} (réponses : {a:?} / {b:?})"
     );
 }
+
+/// Deux retraits simultanés de la même demande ne rendent qu'une unité.
+///
+/// Le retrait lisait l'état, le contrôlait, puis écrivait : deux appels
+/// concurrents franchissaient le contrôle ensemble et REMBOURSAIENT TOUS LES
+/// DEUX. Le script Lua du cache borne le compteur à zéro — il empêche de passer
+/// sous le plancher, pas de récupérer plus qu'on n'a dépensé.
+///
+/// Le quota journalier est l'invariant central du produit : « on ne peut pas
+/// arroser, et aucun achat ne lève cette limite du jour ». Cinq retraits
+/// simultanés d'une seule demande rendaient cinq unités.
+#[tokio::test]
+async fn deux_retraits_simultanes_ne_rendent_qu_une_unite() {
+    let service = Service::monter().await;
+    service.compte("c_hote_course", "depart").await;
+    service.compte("c_invite_course", "depart").await;
+    let jeton = service.jeton("c_invite_course");
+
+    // Trois demandes envoyées : le compteur est à trois, loin du plancher que
+    // le script Lua défend. C'est au-dessus de zéro que la course se voit.
+    let mut premiere = String::new();
+    for n in 0..3 {
+        let plan = plan_de(&service, "c_hote_course", &format!("Un plan numero {n} ici")).await;
+        let (_, demande) = demander(&service, "c_invite_course", &plan).await;
+        if n == 0 {
+            premiere = demande["id"].as_str().expect("un identifiant").to_string();
+        }
+    }
+
+    let (_, avant) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(avant["requestsLeftToday"], 2, "trois demandes envoyées : {avant}");
+
+    // Quatre retraits de LA MÊME demande, lancés ensemble.
+    let chemin = format!("/v1/requests/{premiere}");
+    let (a, b, c, d) = tokio::join!(
+        service.delete(&chemin, Some(&jeton)),
+        service.delete(&chemin, Some(&jeton)),
+        service.delete(&chemin, Some(&jeton)),
+        service.delete(&chemin, Some(&jeton)),
+    );
+    let reussis = [a, b, c, d].iter().filter(|(s, _)| *s == StatusCode::OK).count();
+    assert_eq!(reussis, 1, "un seul retrait doit aboutir");
+
+    let (_, apres) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(
+        apres["requestsLeftToday"], 3,
+        "un seul retrait, donc une seule unité rendue : {apres}"
+    );
+}

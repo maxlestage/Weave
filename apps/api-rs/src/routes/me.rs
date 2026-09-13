@@ -9,7 +9,8 @@ use crate::{
     cache,
     crypto::signer_url_media,
     droits::{
-        credits_pour, demandes_restantes, exiger_credit, filtre_autorise, quota_journalier, Critere,
+        credits_pour, demandes_restantes, exiger_credit_dans, filtre_autorise, quota_journalier,
+        Critere,
     },
     entities::{accounts, preferences, profiles},
     error::{introuvable, invalide, AppError},
@@ -23,7 +24,10 @@ use axum::{
 };
 use super::consentements;
 use chrono::{Duration, Utc};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -150,34 +154,54 @@ async fn ouvrir_escale(
         return Err(invalide("Indiquez une ville."));
     }
 
-    let ligne = preferences::Entity::find()
-        .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| introuvable("Critères introuvables."))?;
+    let fin = Utc::now() + Duration::days(ESCALE_JOURS);
 
+    // Ouvrir et payer dans la MÊME transaction, l'écriture conditionnelle
+    // d'abord.
+    //
     // Une escale en cours ne se remplace pas : la seconde ferait payer un
-    // crédit pour raccourcir la première, ce que personne ne veut acheter.
-    if ligne
-        .escale_until
-        .is_some_and(|jusqua| jusqua.and_utc() > Utc::now())
-    {
-        return Err(invalide(
-            "Une escale est déjà en cours. Attendez sa fin, ou fermez-la.",
-        ));
+    // crédit pour raccourcir la première, ce que personne ne veut acheter. Ce
+    // contrôle se lisait puis s'écrivait en deux temps — deux appels
+    // concurrents le franchissaient ensemble et DÉPENSAIENT TOUS DEUX UN
+    // CRÉDIT pour une seule escale. Un double appui coûtait 5,99 € de trop.
+    //
+    // La condition est maintenant dans la requête : une seule des deux la
+    // gagne. Et le crédit se dépense dans la même transaction — si le solde
+    // est vide, tout est annulé, l'escale comprise. L'ordre inverse ouvrirait
+    // une escale que personne n'a payée.
+    let transaction = state.db.begin().await?;
+
+    let ouverte = preferences::Entity::update_many()
+        .col_expr(preferences::Column::EscaleCity, Expr::value(ville.clone()))
+        .col_expr(preferences::Column::EscaleUntil, Expr::value(fin.naive_utc()))
+        .col_expr(preferences::Column::UpdatedAt, Expr::value(Utc::now().naive_utc()))
+        .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
+        .filter(
+            sea_orm::Condition::any()
+                .add(preferences::Column::EscaleUntil.is_null())
+                .add(preferences::Column::EscaleUntil.lte(Utc::now().naive_utc())),
+        )
+        .exec(&transaction)
+        .await?;
+
+    if ouverte.rows_affected == 0 {
+        transaction.rollback().await?;
+        // Distinguer « pas de fiche » d'« escale déjà en cours » : les deux
+        // rendent zéro ligne, et la seconde est la seule qui s'explique.
+        let existe = preferences::Entity::find()
+            .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
+            .one(&state.db)
+            .await?
+            .is_some();
+        return Err(if existe {
+            invalide("Une escale est déjà en cours. Attendez sa fin, ou fermez-la.")
+        } else {
+            introuvable("Critères introuvables.")
+        });
     }
 
-    // Le crédit se dépense AVANT d'ouvrir : un décrément conditionnel qui
-    // échoue laisse l'escale fermée, alors que l'ordre inverse ouvrirait une
-    // escale que personne n'a payée.
-    exiger_credit(&state, &compte.id, "escale", "Escale").await?;
-
-    let fin = Utc::now() + Duration::days(ESCALE_JOURS);
-    let mut maj: preferences::ActiveModel = ligne.into();
-    maj.escale_city = Set(Some(ville.clone()));
-    maj.escale_until = Set(Some(fin.naive_utc()));
-    maj.updated_at = Set(Utc::now().naive_utc());
-    maj.update(&state.db).await?;
+    exiger_credit_dans(&transaction, &compte.id, "escale", "Escale").await?;
+    transaction.commit().await?;
 
     // Le fil est mis en cache : sans cet oubli, l'escale ne prendrait effet
     // qu'à l'expiration du cache, et l'achat semblerait sans effet.
