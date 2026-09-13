@@ -22,6 +22,21 @@ use std::collections::BTreeMap;
 pub const RENFORT_GRANT: i64 = 5;
 
 /// Les unités achetables à l'unité. L'ordre est celui des contrats partagés.
+/// Jusqu'où un crédit « Horizon » ouvre la publication.
+///
+/// Il n'ouvrait RIEN DU TOUT — c'est-à-dire tout. La règle était « au-delà de
+/// l'horizon du palier, dépense un crédit », sans borne supérieure : un compte
+/// gratuit muni d'un seul crédit publiait un plan pour 2050.
+///
+/// Trois choses en découlaient. Le produit ne faisait pas ce qu'il annonce —
+/// « jusqu'à soixante jours à l'avance » est écrit dans le catalogue, donc sur
+/// la page des offres. Un crédit à l'unité donnait plus que l'abonnement le
+/// plus cher, qui s'arrête à quatre-vingt-dix jours. Et un plan pouvait être
+/// posé si loin que personne n'en verrait jamais l'échéance.
+///
+/// `packages/contracts` fait foi : `UNIT_PRODUCTS.horizon`.
+pub const HORIZON_CREDIT_JOURS: i64 = 60;
+
 pub const UNIT_SKUS: [&str; 5] = ["renfort", "horizon", "tablee", "escale", "bilan"];
 
 #[derive(Debug, Clone, Copy)]

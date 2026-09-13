@@ -13,8 +13,9 @@
  */
 
 import { PLAN_TIERS, TIERS, UNIT_PRODUCTS, UNIT_SKUS, formatPrice } from "@weave/contracts";
+import { dateDuDocument } from "./documents.ts";
 import { AC, Page, Tableau, type Article } from "./Page.tsx";
-import { CONTACT, EDITEUR, MISE_A_JOUR } from "./identite.ts";
+import { CONTACT, EDITEUR } from "./identite.ts";
 
 const PAYANTS = PLAN_TIERS.map((cle) => TIERS[cle]).filter((tier) => tier.monthlyPriceCents > 0);
 
@@ -219,7 +220,7 @@ export function Cgv() {
     <Page
       titre="Conditions générales de vente"
       chapeau="Ce qui se vend, à quel prix, comment se résilier et comment se faire rembourser. Les achats passent par l'App Store : cela change qui fait quoi, et nous le disons plutôt que de l'omettre."
-      miseAJour={MISE_A_JOUR}
+      miseAJour={dateDuDocument("cgv")}
       articles={ARTICLES}
     />
   );

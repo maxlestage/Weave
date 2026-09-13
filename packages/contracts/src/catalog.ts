@@ -167,6 +167,33 @@ export const TIERS: Readonly<Record<PlanTier, Tier>> = {
 /* Achats à l'unité (consommables StoreKit)                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Le prix d'une unité, et pourquoi il est ce qu'il est.
+ *
+ * L'achat à l'unité existe parce qu'à vingt ans on ne s'abonne pas à tout. Il
+ * ne doit pas pour autant revenir moins cher que l'abonnement : un catalogue
+ * où l'on s'en sort mieux au détail vend des unités à des gens qui auraient
+ * pris un abonnement, et laisse le revenu récurrent sur la table.
+ *
+ * LA RÈGLE, tenue par un test : la somme des cinq unités dépasse l'Expédition,
+ * qui est le palier réunissant à peu près tout ce qu'elles accordent. Acheter
+ * une fois chacune coûte donc plus cher qu'un mois d'abonnement qui les donne
+ * toutes — et les redonne le mois suivant.
+ *
+ * Les conséquences, palier par palier :
+ *
+ * - deux « Renfort », « Horizon » ou « Tablée » dans le mois coûtent plus que
+ *   la Virée, qui les donne sans compter ;
+ * - une « Escale » achetée par-dessus la Virée coûte plus que l'Escapade, qui
+ *   en comprend une ;
+ * - deux « Escale » par-dessus l'Expédition coûtent plus que le Grand Tour,
+ *   qui en comprend quatre. C'était l'inverse : 14,99 + 2 × 3,99 = 22,97,
+ *   contre 24,99. On s'abonnait moins pour en avoir plus.
+ *
+ * Ce qu'elle ne cherche pas à empêcher : acheter UNE unité pour un besoin
+ * ponctuel reste moins cher que de s'abonner. C'est le propre de l'achat à
+ * l'unité, et le lui retirer reviendrait à ne plus en vendre.
+ */
 export const UNIT_SKUS = ["renfort", "horizon", "tablee", "escale", "bilan"] as const;
 export type UnitSku = (typeof UNIT_SKUS)[number];
 
@@ -184,7 +211,7 @@ export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
     sku: "renfort",
     name: "Renfort",
     description: "Cinq demandes de plus aujourd'hui.",
-    priceCents: 149,
+    priceCents: 299,
     storeKitId: `${BUNDLE}.unit.renfort`,
     grants: 1,
   },
@@ -192,7 +219,7 @@ export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
     sku: "horizon",
     name: "Horizon",
     description: "Publier un plan jusqu'à soixante jours à l'avance, une fois.",
-    priceCents: 99,
+    priceCents: 299,
     storeKitId: `${BUNDLE}.unit.horizon`,
     grants: 1,
   },
@@ -200,7 +227,7 @@ export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
     sku: "tablee",
     name: "Tablée",
     description: "Un plan de groupe, jusqu'à quatre personnes, une fois.",
-    priceCents: 149,
+    priceCents: 299,
     storeKitId: `${BUNDLE}.unit.tablee`,
     grants: 1,
   },
@@ -208,7 +235,7 @@ export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
     sku: "escale",
     name: "Escale",
     description: "Publier depuis une autre ville pendant sept jours.",
-    priceCents: 399,
+    priceCents: 599,
     storeKitId: `${BUNDLE}.unit.escale`,
     grants: 1,
   },
@@ -216,7 +243,7 @@ export const UNIT_PRODUCTS: Readonly<Record<UnitSku, UnitProduct>> = {
     sku: "bilan",
     name: "Bilan",
     description: "Un retour ponctuel sur vos plans : ce qui attire, ce qui tombe à plat.",
-    priceCents: 299,
+    priceCents: 499,
     storeKitId: `${BUNDLE}.unit.bilan`,
     grants: 1,
   },
