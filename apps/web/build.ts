@@ -42,8 +42,10 @@ if (!resultat.success) {
 }
 
 await copierRessourcesPubliques();
+await poserLesBalisesDeLAccueil();
 await ecrirePagesJuridiques(resultat);
 await ecrireFichiersDeReferencement();
+await verifierQu_AucuneAdresseN_EstEcriteEnDur();
 avertirDesMentionsIncompletes();
 
 /*
@@ -74,7 +76,24 @@ for (const { nom, brut } of tailles) {
  * porter d'empreinte : l'adresse partagée serait périmée à chaque construction.
  */
 async function copierRessourcesPubliques() {
-  await Bun.write(`${sortie}/partage.png`, Bun.file(`${racine}public/partage.png`));
+  // Chacune est demandée par une adresse fixe, écrite ailleurs que dans nos
+  // pages : un réseau social récupère `partage.png` depuis l'extérieur, iOS
+  // demande `apple-touch-icon.png` à la racine, et un navigateur ou un robot
+  // demande `favicon.svg` sans avoir lu la moindre balise. Aucune ne doit donc
+  // porter d'empreinte — l'adresse partagée serait périmée à la construction
+  // suivante.
+  //
+  // L'accueil référence par ailleurs l'icône empreinte que produit le
+  // bundler : les deux coexistent, l'une pour qui lit la page, l'autre pour
+  // qui devine l'adresse.
+  for (const fichier of [
+    "partage.png",
+    "apple-touch-icon.png",
+    "favicon.svg",
+    "site.webmanifest",
+  ]) {
+    await Bun.write(`${sortie}/${fichier}`, Bun.file(`${racine}public/${fichier}`));
+  }
 }
 
 /*
@@ -147,6 +166,52 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
 `;
     await Bun.write(`${sortie}/${doc.slug}/index.html`, html);
   }
+}
+
+/*
+ * Pose sur la page d'accueil les balises qui demandent une adresse absolue.
+ *
+ * L'accueil est produit par le bundler à partir d'`index.html`, qui ne peut
+ * rien calculer : ses `canonical`, `og:url` et `og:image` valaient donc
+ * « https://weave.app » ÉCRITS EN DUR — un domaine qui n'est pas le nôtre.
+ *
+ * C'est la page que l'on partage. Le lien aurait montré l'image d'un autre
+ * site, ou aucune, et `canonical` aurait désigné ce domaine comme la véritable
+ * adresse de nos pages — de quoi remettre à quelqu'un d'autre le référencement
+ * du site. Les pages juridiques, elles, lisaient déjà l'origine : seule
+ * l'accueil ne le faisait pas, et c'était la seule qui comptait pour cela.
+ */
+async function poserLesBalisesDeLAccueil() {
+  const chemin = `${sortie}/index.html`;
+  const html = await Bun.file(chemin).text();
+
+  const canonique = ORIGINE
+    ? `    <link rel="canonical" href="${ORIGINE}/" />`
+    : // Sans origine, pas de canonique : une adresse relative « / » sur la
+      // page d'accueil ne dit rien de plus que la page elle-même, et une
+      // adresse inventée dirait quelque chose de faux.
+      "";
+
+  // L'icône de l'écran d'accueil et le manifeste sont posés ici, et non dans
+  // `index.html`, parce que le bundler suit les `<link>` qu'il y trouve : il
+  // tenterait de résoudre ces deux fichiers comme des entrées de construction,
+  // et échouerait. Ils sont copiés tels quels, à une adresse fixe.
+  //
+  // Sans `apple-touch-icon`, « Ajouter à l'écran d'accueil » pose une capture
+  // de la page en guise d'icône. Sans manifeste, le raccourci porte le titre
+  // complet de la page plutôt que « Weave ».
+  const icones = [
+    `    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />`,
+    `    <link rel="manifest" href="/site.webmanifest" />`,
+  ];
+
+  const pose = [canonique, balisesAbsolues("").trimStart(), ...icones].filter(Boolean).join("\n");
+
+  const marque = '<meta property="og:site_name" content="Weave" />';
+  if (!html.includes(marque)) {
+    throw new Error("Accueil : ancrage des balises d'adresse introuvable.");
+  }
+  await Bun.write(chemin, html.replace(marque, `${pose}\n    ${marque}`));
 }
 
 /*
@@ -235,6 +300,54 @@ async function ecrireFichiersDeReferencement() {
  * qu'un gabarit oublié se publie tout seul — et qu'une mention légale
  * incomplète est pénalement sanctionnée.
  */
+/*
+ * Refuse la construction si une page nomme notre propre adresse en dur.
+ *
+ * L'accueil portait « https://weave.app » dans `canonical`, `og:url` et
+ * `og:image` — un domaine qui n'est pas le nôtre. Un lien partagé aurait
+ * montré l'image d'un autre site, et `canonical` aurait désigné ce domaine
+ * comme l'adresse véritable de nos pages : de quoi remettre à quelqu'un
+ * d'autre le référencement du site.
+ *
+ * C'était invisible. Les pages juridiques lisaient l'origine depuis le début,
+ * et seule l'accueil ne le faisait pas — c'est-à-dire la seule page que l'on
+ * partage. Rien ne l'aurait signalé avant qu'on colle le lien à quelqu'un.
+ *
+ * Le contrôle ne porte QUE sur les balises dont le rôle est de nommer notre
+ * adresse. Les liens sortants d'une page — la CNIL, l'assistance d'Apple —
+ * sont du contenu : ils désignent autrui, et c'est bien ce qu'on leur demande.
+ */
+async function verifierQu_AucuneAdresseN_EstEcriteEnDur() {
+  const pages = [
+    "index.html",
+    ...(await import("./src/pages/documents.ts")).DOCUMENTS.map((d) => `${d.slug}/index.html`),
+  ];
+
+  // `rel="canonical"`, puis les propriétés Open Graph et Twitter qui portent
+  // une adresse. Chacune répond à la question « où cette page vit-elle ? ».
+  const balises =
+    /<link[^>]+rel="canonical"[^>]+href="([^"]+)"|<meta[^>]+(?:property|name)="(?:og:url|og:image|twitter:image)"[^>]+content="([^"]+)"/g;
+
+  const fautes: string[] = [];
+  for (const page of pages) {
+    const html = await Bun.file(`${sortie}/${page}`).text();
+    for (const [, href, content] of html.matchAll(balises)) {
+      const adresse = href ?? content ?? "";
+      if (!adresse.startsWith("http")) continue;
+      if (ORIGINE && adresse.startsWith(ORIGINE)) continue;
+      fautes.push(`${page} : ${adresse}`);
+    }
+  }
+
+  if (fautes.length > 0) {
+    console.error("");
+    console.error("  ✗ Ces balises nomment notre adresse sans passer par SITE.origine :");
+    for (const faute of fautes) console.error(`      ${faute}`);
+    console.error("    Une adresse partagée se déduit de l'origine, elle ne s'écrit pas.");
+    process.exit(1);
+  }
+}
+
 function avertirDesMentionsIncompletes() {
   const manquantes = valeursManquantes();
   if (manquantes.length === 0) return;
@@ -245,4 +358,19 @@ function avertirDesMentionsIncompletes() {
   console.log(
     "    Les mentions légales manquantes apparaissent surlignées\n" + "    sur les pages publiées.",
   );
+
+  // `SITE.origine` ne se contente pas de manquer à une mention : sans elle,
+  // aucune adresse absolue n'est écrite, et le protocole Open Graph n'en
+  // résout aucune de relative. Un lien partagé sort donc sans vignette, sans
+  // titre et sans description — une ligne de texte nue. Cela se voit sur la
+  // page publiée, mais pas ici, et c'est le genre de chose qu'on découvre en
+  // collant le lien à quelqu'un.
+  if (!ORIGINE) {
+    console.log("");
+    console.log("  ⚠ SITE.origine n'est pas posée : les liens partagés sortiront nus.");
+    console.log("    Pas de vignette, pas de titre, pas de description — le protocole");
+    console.log("    Open Graph ne résout aucune adresse relative. Ni plan du site.");
+    console.log("    Posez SITE_ORIGINE à la construction, par exemple :");
+    console.log("      SITE_ORIGINE=https://votre-domaine.fr bun run build");
+  }
 }
