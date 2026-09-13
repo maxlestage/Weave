@@ -26,6 +26,16 @@ use serde_json::{json, Value};
 
 /// Une phrase, pas une biographie.
 const BIO_MAX_CARACTERES: usize = 160;
+
+/// Les genres acceptés, pour la fiche comme pour les critères.
+///
+/// `packages/contracts/src/invariants.ts` fait foi ; le test du contrat tient
+/// l'accord. Un vocabulaire fixe est ce qui rend la correspondance possible :
+/// le fil retient un plan quand le genre de son auteur figure parmi ceux que
+/// le lecteur cherche, comparés caractère par caractère. La colonne acceptait
+/// n'importe quelle chaîne de quarante caractères — deux orthographes d'une
+/// même chose ne se seraient jamais rencontrées.
+pub(crate) const GENRES: [&str; 4] = ["femme", "homme", "non_binaire", "autre"];
 /// Weave est réservé aux majeurs ; au-delà de 99 ans, le critère n'a plus de
 /// sens comme filtre.
 const AGE_MINIMUM: i32 = 18;
@@ -113,8 +123,12 @@ async fn deposer_fiche(
     if ville.is_empty() || ville.chars().count() > 80 {
         return Err(invalide("Indiquez une ville."));
     }
-    if corps.gender.chars().count() > 40 {
-        return Err(invalide("Genre invalide."));
+    if !GENRES.contains(&corps.gender.as_str()) {
+        return Err(invalide(&format!(
+            "Genre inconnu : {}. Valeurs acceptées : {}.",
+            corps.gender,
+            GENRES.join(", ")
+        )));
     }
     if !(-90.0..=90.0).contains(&corps.latitude) || !(-180.0..=180.0).contains(&corps.longitude) {
         return Err(invalide("Coordonnées invalides."));
@@ -256,8 +270,17 @@ async fn ajuster_criteres(
             )));
         }
     }
-    if corps.seeking.as_ref().is_some_and(|l| l.len() > 6) {
-        return Err(invalide("Six choix au plus."));
+    if let Some(recherche) = &corps.seeking {
+        if recherche.len() > GENRES.len() {
+            return Err(invalide(&format!("{} choix au plus.", GENRES.len())));
+        }
+        // Un genre hors vocabulaire ne correspondrait à personne : la
+        // comparaison du fil est exacte. Mieux vaut le refuser que de laisser
+        // quelqu'un chercher dans le vide sans jamais comprendre pourquoi son
+        // fil est resté vide.
+        if let Some(inconnu) = recherche.iter().find(|g| !GENRES.contains(&g.as_str())) {
+            return Err(invalide(&format!("Genre inconnu : {inconnu}.")));
+        }
     }
     if let Some(categories) = &corps.categories {
         if categories.len() > 8 {

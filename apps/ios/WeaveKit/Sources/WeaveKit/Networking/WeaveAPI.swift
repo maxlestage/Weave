@@ -268,6 +268,43 @@ public actor WeaveAPI {
         await store.clear()
     }
 
+    /// Dépose ou met à jour sa fiche : une ville, un genre, une phrase.
+    ///
+    /// C'est l'étape qui manquait. L'inscription ne demandait que le prénom et
+    /// la date de naissance ; le compte restait donc « onboarding », sans
+    /// fiche — et sans fiche, le serveur rend un fil vide et refuse toute
+    /// publication avec « Renseignez d'abord votre ville. »
+    ///
+    /// La position est arrondie au kilomètre par le serveur : Weave ne
+    /// conserve jamais de position plus précise, pas même pour soi.
+    public func submitProfile(
+        city: String,
+        latitude: Double,
+        longitude: Double,
+        gender: Gender,
+        bio: String? = nil
+    ) async throws {
+        struct Body: Encodable {
+            let city: String
+            let latitude: Double
+            let longitude: Double
+            let gender: String
+            let bio: String?
+        }
+        let texte = bio?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let _: EmptyResponse = try await request(
+            .put,
+            "/v1/me/profile",
+            encodable: Body(
+                city: city.trimmingCharacters(in: .whitespacesAndNewlines),
+                latitude: latitude,
+                longitude: longitude,
+                gender: gender.rawValue,
+                bio: (texte?.isEmpty ?? true) ? nil : texte
+            )
+        )
+    }
+
     // MARK: - Se protéger
 
     /// Bloque quelqu'un.
@@ -614,16 +651,22 @@ public struct PreferencesPatch: Encodable, Sendable {
     public let maxAge: Int?
     public let maxDistanceKm: Int?
     public let categories: [PlanCategory]?
+    /// Les genres recherchés. Le champ existait côté serveur et manquait ici :
+    /// l'application ne pouvait pas dire qui l'on cherche, et la
+    /// correspondance par genre restait donc inatteignable.
+    public let seeking: [Gender]?
 
     public init(
         minAge: Int? = nil,
         maxAge: Int? = nil,
         maxDistanceKm: Int? = nil,
-        categories: [PlanCategory]? = nil
+        categories: [PlanCategory]? = nil,
+        seeking: [Gender]? = nil
     ) {
         self.minAge = minAge
         self.maxAge = maxAge
         self.maxDistanceKm = maxDistanceKm
+        self.seeking = seeking
         self.categories = categories
     }
 }
