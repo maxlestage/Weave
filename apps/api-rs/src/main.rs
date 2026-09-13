@@ -15,6 +15,7 @@ mod error;
 mod limitation;
 mod live_activity;
 mod migrations;
+mod partage;
 mod purge;
 mod storekit;
 mod routes;
@@ -154,6 +155,13 @@ async fn main() -> anyhow::Result<()> {
     } else {
         AllowOrigin::any()
     };
+
+    // L'adresse publique, posée sur les pages si la construction ne l'avait
+    // pas. Heroku ne transmet pas les variables de configuration aux
+    // constructions de conteneur : le site sortait donc sans `og:url` ni
+    // `og:image`, et tout lien partagé sans vignette ni titre — alors que
+    // l'adresse est connue du déploiement depuis le premier jour.
+    partage::poser_l_origine(config.web_dist.as_deref(), &config.web_origin);
 
     let port = config.port;
     let driver = config.db.driver.as_str();
