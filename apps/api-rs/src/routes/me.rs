@@ -325,6 +325,10 @@ async fn lire_criteres(
         "minAge": pref.min_age,
         "maxAge": pref.max_age,
         "maxDistanceKm": pref.max_distance_km,
+        // Le rayon réellement appliqué au fil. Sans « critères précis », il est
+        // rabattu sur un cran — et l'afficher évite de montrer « 27 km » à
+        // quelqu'un dont le fil en retient 25 sans le lui dire.
+        "effectiveDistanceKm": crate::droits::rayon_effectif(&compte.tier, pref.max_distance_km),
         "seeking": liste_json(&pref.seeking_json),
         "categories": liste_json(&pref.categories_json),
         "days": jours_json(&pref.days_json),

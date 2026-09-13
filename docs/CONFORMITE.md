@@ -66,6 +66,14 @@ et `audit_events` en `SET NULL` — la trace de l'action survit, son auteur
 devient anonyme. Un test vérifie que la cascade s'applique réellement, y
 compris sous SQLite, où les clés étrangères ne sont pas actives par défaut.
 
+**Les traces techniques** — `audit_events` : identifiant de compte, action,
+adresse IP — sont effacées au bout de douze mois, la durée que le tableau des
+traitements annonce. Rien ne les effaçait : la seconde moitié de la promesse
+était vraie (la suppression du compte détache la trace de son auteur, par
+`ON DELETE SET NULL`), la première ne l'était pas. Une durée annoncée que rien
+n'applique n'est pas une durée : c'est une conservation sans terme, que
+l'article 5 n'autorise pas, sur les données les plus traçantes du service.
+
 **L'exception à retenir** : un compte visé par un signalement non traité n'est
 pas purgé. Sinon, supprimer son compte suffirait à effacer les preuves d'un
 comportement qu'on vient de signaler. Le compte reste hors circulation dans
@@ -224,6 +232,29 @@ plutôt qu'à la prochaine fois que la personne touche à ses critères.
 bas des pages juridiques viennent du même endroit, et un test tient leur
 accord : deux dates écrites séparément auraient fini par attester de deux
 textes différents.
+
+## Ce que les paliers limitent vraiment
+
+Chaque critère vendu par palier est relu **à la lecture du fil**, et pas
+seulement contrôlé à l'écriture. Sans cela, un abonnement qui expire laisserait
+en place les critères posés du temps où il courait : on continuerait de
+bénéficier de ce qu'on ne paie plus, et il aurait suffi de s'abonner un mois.
+
+| Critère | Ce que le palier change |
+| --- | --- |
+| genre recherché | proposé à partir de la Virée, et soumis au consentement de l'article 9 |
+| catégorie, jour | proposés à partir de l'Escapade (« critères précis ») |
+| distance | au kilomètre près à partir de l'Escapade ; ailleurs, rabattue sur 10, 25, 50 ou 100 km |
+
+La distance était l'exception : elle se réglait au kilomètre près **à tous les
+paliers**, y compris le gratuit, alors que « distance fine » figure trois fois
+au catalogue. On vendait un critère qui existait déjà partout.
+
+Le réglage choisi n'est jamais écrasé en base — seulement rabattu à la lecture.
+Un abonnement qui s'interrompt ne fait donc pas perdre ce qu'on avait réglé, et
+le rayon exact revient dès que l'offre le permet. `/v1/me/preferences` rend les
+deux valeurs, pour que l'application n'affiche pas un rayon que le fil
+n'applique pas.
 
 ## Sous-traitants
 

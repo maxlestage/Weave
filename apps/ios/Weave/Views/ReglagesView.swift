@@ -6,6 +6,9 @@ struct ReglagesView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var distance = 25
+    /// Le rayon que le fil applique vraiment, rabattu sur un cran sans
+    /// « critères précis ».
+    @State private var distanceAppliquee = 25
     @State private var ageMin = 18
     @State private var ageMax = 32
     /// Les critères ne s'appliquent qu'une fois lus.
@@ -74,6 +77,7 @@ struct ReglagesView: View {
                                 try? await modele.api.updatePreferences(
                                     PreferencesPatch(maxDistanceKm: valeur)
                                 )
+                                await chargerCriteresDeForce()
                                 await modele.plans.refresh()
                             }
                         }
@@ -82,7 +86,14 @@ struct ReglagesView: View {
                 } header: {
                     Text("Critères du fil")
                 } footer: {
-                    Text("Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.")
+                    // Dire le rabat, plutôt que d'afficher un réglage que le
+                    // fil n'applique pas. Le taire ferait croire à un rayon
+                    // qu'on n'a pas.
+                    if distanceAppliquee != distance {
+                        Text("Votre offre retient les paliers de 10, 25, 50 et 100 km : le fil s'arrête à \(distanceAppliquee) km. Votre réglage est conservé et redevient exact avec « critères précis ». Les critères filtrent ce que vous voyez ; ils ne changent jamais l'ordre.")
+                    } else {
+                        Text("Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.")
+                    }
                 }
                 // Qui l'on cherche relève de l'article 9 : la section existe
                 // toujours, mais sans accord elle ne propose pas de cocher —
@@ -437,6 +448,7 @@ struct ReglagesView: View {
         guard let criteres = try? await modele.api.preferences() else { return }
 
         distance = criteres.maxDistanceKm
+        distanceAppliquee = criteres.effectiveDistanceKm
         ageMin = criteres.minAge
         ageMax = criteres.maxAge
         escaleVille = criteres.escaleCity
