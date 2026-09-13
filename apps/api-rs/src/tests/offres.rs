@@ -737,3 +737,150 @@ async fn un_palier_sans_bilan_exige_toujours_le_credit() {
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
     assert_ne!(statut, StatusCode::OK, "« Virée » ne comprend pas le bilan : {corps}");
 }
+
+/// Les critères vendus par palier sont refusés à qui ne les a pas.
+///
+/// « filtres » — « base », « étendus », « précis » — était annoncé au catalogue
+/// et n'était lu nulle part : les critères du fil acceptaient les mêmes
+/// réglages à tous les paliers. Quelqu'un payant pour des « critères précis »
+/// avait exactement ce que le socle gratuit offrait déjà.
+#[tokio::test]
+async fn les_criteres_vendus_sont_refuses_au_socle_gratuit() {
+    let service = Service::monter().await;
+    service.compte("c_socle", "depart").await;
+    let jeton = service.jeton("c_socle");
+
+    // Ce que le socle garde : restreindre l'âge et la distance viderait le fil
+    // de tout réglage utile.
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "minAge": 25, "maxDistanceKm": 40 }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    for (champ, valeur) in [
+        ("categories", json!(["balade"])),
+        ("days", json!([6, 7])),
+        ("seeking", json!(["femme"])),
+    ] {
+        let (statut, corps) = service
+            .patch("/v1/me/preferences", Some(&jeton), json!({ champ: valeur }))
+            .await;
+        assert_ne!(statut, StatusCode::OK, "« {champ} » accepté au socle : {corps}");
+    }
+
+    // Vider reste possible : sinon, quelqu'un dont l'abonnement expire ne
+    // pourrait plus défaire ce qu'il avait posé.
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "categories": [] }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "vider a été refusé : {corps}");
+}
+
+/// Un abonnement qui retombe ne laisse pas le bénéfice derrière lui.
+///
+/// Les critères sont contrôlés à l'écriture, mais le palier peut changer
+/// ensuite. Sans relecture à travers la règle, il aurait suffi de s'abonner un
+/// mois pour garder les critères précis indéfiniment.
+#[tokio::test]
+async fn un_palier_retombe_ne_laisse_pas_les_criteres_derriere_lui() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let compte = service.compte("c_retombe", "escapade").await;
+    let jeton = service.jeton("c_retombe");
+
+    service
+        .put("/v1/me/profile", Some(&jeton), json!({
+            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+        }))
+        .await;
+
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "categories": ["balade"] }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
+    assert_eq!(criteres["categories"], json!(["balade"]), "le critère devait être posé");
+
+    // L'abonnement expire : le palier retombe au socle.
+    service
+        .db
+        .execute_unprepared(&format!("UPDATE subscriptions SET tier='depart' WHERE accountId='{compte}'"))
+        .await
+        .unwrap();
+    crate::auth::oublier_compte(&service.etat, &compte).await;
+
+    // Le critère reste inscrit en base — on ne l'efface pas —, mais le fil ne
+    // s'en sert plus.
+    let (statut, corps) = service.get("/v1/plans", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+}
+
+/// Le filtre par jour retient ce qu'il doit, et écarte le reste.
+///
+/// « Escapade » vend « Critères précis : catégorie, jour, distance fine ». Le
+/// filtre par catégorie existait ; celui par jour n'existait nulle part. On
+/// vendait un critère qui n'était pas écrit.
+#[tokio::test]
+async fn le_filtre_par_jour_retient_le_bon_jour() {
+    use chrono::Datelike;
+
+    let service = Service::monter().await;
+    service.compte("c_jours", "escapade").await;
+    service.compte("c_hote_jours", "depart").await;
+    let jeton = service.jeton("c_jours");
+
+    for nom in ["c_jours", "c_hote_jours"] {
+        service
+            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
+                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+            }))
+            .await;
+    }
+
+    // Deux plans à deux jours différents, tous deux à venir.
+    let dans_deux = chrono::Utc::now() + chrono::Duration::days(2);
+    let dans_trois = chrono::Utc::now() + chrono::Duration::days(3);
+    for (titre, quand) in [("Le plan du premier jour", dans_deux), ("Le plan du second jour", dans_trois)] {
+        let (statut, corps) = service
+            .post("/v1/plans", Some(&service.jeton("c_hote_jours")), json!({
+                "title": titre,
+                "category": "balade",
+                "startsAt": quand.to_rfc3339(),
+            }))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+    }
+
+    // Sans filtre, les deux sont là.
+    let (_, fil) = service.get("/v1/plans", Some(&jeton)).await;
+    assert_eq!(fil["plans"].as_array().unwrap().len(), 2, "{fil}");
+
+    // Avec le jour du premier seulement, il ne reste que lui.
+    let jour_retenu = dans_deux.weekday().number_from_monday() as i32;
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "days": [jour_retenu] }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (_, fil) = service.get("/v1/plans", Some(&jeton)).await;
+    let plans = fil["plans"].as_array().expect("une liste");
+    assert_eq!(plans.len(), 1, "le filtre par jour n'a pas trié : {fil}");
+    assert_eq!(plans[0]["title"], "Le plan du premier jour");
+}
+
+/// Un jour hors de la semaine est refusé.
+#[tokio::test]
+async fn un_jour_hors_semaine_est_refuse() {
+    let service = Service::monter().await;
+    service.compte("c_jour_faux", "escapade").await;
+    let jeton = service.jeton("c_jour_faux");
+
+    for faux in [0, 8, -1, 42] {
+        let (statut, corps) = service
+            .patch("/v1/me/preferences", Some(&jeton), json!({ "days": [faux] }))
+            .await;
+        assert_ne!(statut, StatusCode::OK, "« {faux} » accepté comme jour : {corps}");
+    }
+}
