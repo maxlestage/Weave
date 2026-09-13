@@ -4,22 +4,25 @@
 //! tentatives. Il n'y a pas de mot de passe à voler, à réutiliser ou à oublier.
 
 use crate::{
-    auth::{emettre_jeton, oublier_compte, Authentifie},
+    AppState,
+    auth::{Authentifie, emettre_jeton, oublier_compte},
     cache,
-    crypto::{code_otp, hacher_secret, hash_email, jeton_opaque, normaliser_email, sha256_hex, verifier_secret},
+    crypto::{
+        code_otp, hacher_secret, hash_email, jeton_opaque, normaliser_email, sha256_hex,
+        verifier_secret,
+    },
     entities::{
         accounts, audit_events, conversations, devices, join_requests, otp_challenges, plans,
         preferences, refresh_tokens, subscriptions,
     },
-    error::{invalide, non_autorise, AppError, Code},
+    error::{AppError, Code, invalide, non_autorise},
     limitation::{consommer, regles},
     temps::{age_depuis, iso8601},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{ConnectInfo, State},
     routing::{delete, post},
-    Json, Router,
 };
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::{
@@ -27,7 +30,7 @@ use sea_orm::{
     Set,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::net::SocketAddr;
 
 /// Dix minutes : assez pour aller chercher le code dans sa boîte, assez court
@@ -37,6 +40,7 @@ const OTP_TTL_MINUTES: i64 = 10;
 const OTP_MAX_TENTATIVES: i32 = 5;
 /// Weave est réservé aux majeurs.
 pub const AGE_MINIMUM: i32 = 18;
+use crate::messages::Msg;
 /// Le délai légal avant purge des données d'un compte supprimé.
 ///
 /// Réexporté depuis `purge`, qui l'applique. Il était écrit ici aussi, et les
@@ -76,7 +80,7 @@ async fn renouveler(
         .filter(refresh_tokens::Column::TokenHash.eq(empreinte.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| non_autorise("Session expirée. Reconnectez-vous."))?;
+        .ok_or_else(|| non_autorise(Msg::SessionExpiree))?;
 
     // Un jeton déjà tourné qu'on nous représente : quelqu'un rejoue une vieille
     // copie. Le porteur légitime a rotationné depuis, donc soit c'est un vol,
@@ -89,7 +93,7 @@ async fn renouveler(
     // fonctionnait jusqu'à son expiration, et le vol ne se voyait jamais.
     if stocke.rotated_to.is_some() {
         revoquer_famille(&state, &stocke.account_id, adresse.ip()).await?;
-        return Err(non_autorise("Session expirée. Reconnectez-vous."));
+        return Err(non_autorise(Msg::SessionExpiree));
     }
 
     // La revendication, en une seule écriture conditionnelle.
@@ -108,7 +112,7 @@ async fn renouveler(
         .exec(&state.db)
         .await?;
     if revendique.rows_affected != 1 {
-        return Err(non_autorise("Session expirée. Reconnectez-vous."));
+        return Err(non_autorise(Msg::SessionExpiree));
     }
 
     let session = ouvrir_session(&state, &stocke.account_id, stocke.device_id.as_deref()).await?;
@@ -118,7 +122,7 @@ async fn renouveler(
         .and_then(Value::as_str)
         .ok_or_else(|| {
             tracing::error!("session ouverte sans jeton de renouvellement");
-            AppError::new(Code::Internal, "Une erreur interne est survenue.")
+            AppError::new(Code::Internal, Msg::ErreurInterne.t())
         })?;
 
     // Le successeur, posé après coup : c'est lui qui permettra de reconnaître
@@ -154,9 +158,7 @@ async fn fermer_session(
         .filter(refresh_tokens::Column::AccountId.eq(compte.id.as_str()));
 
     a_revoquer = match &corps.refresh_token {
-        Some(jeton) => {
-            a_revoquer.filter(refresh_tokens::Column::TokenHash.eq(sha256_hex(jeton)))
-        }
+        Some(jeton) => a_revoquer.filter(refresh_tokens::Column::TokenHash.eq(sha256_hex(jeton))),
         None => a_revoquer.filter(refresh_tokens::Column::RevokedAt.is_null()),
     };
 
@@ -183,7 +185,7 @@ async fn supprimer_compte(
     let ligne = accounts::Entity::find_by_id(compte.id.as_str())
         .one(&state.db)
         .await?
-        .ok_or_else(|| non_autorise("Session expirée. Reconnectez-vous."))?;
+        .ok_or_else(|| non_autorise(Msg::SessionExpiree))?;
 
     let mut sortant: accounts::ActiveModel = ligne.into();
     sortant.status = Set("deleting".to_string());
@@ -286,7 +288,10 @@ async fn supprimer_compte(
     // qui n'existe plus est exactement ce que la politique de confidentialité
     // s'interdit. Les lignes d'appareil, elles, partent avec la purge.
     devices::Entity::update_many()
-        .col_expr(devices::Column::ApnsToken, sea_orm::sea_query::Expr::value(Option::<String>::None))
+        .col_expr(
+            devices::Column::ApnsToken,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
         .col_expr(
             devices::Column::PushToStartToken,
             sea_orm::sea_query::Expr::value(Option::<String>::None),
@@ -300,7 +305,9 @@ async fn supprimer_compte(
     }
     oublier_compte(&state, &compte.id).await;
 
-    Ok(Json(json!({ "ok": true, "purgeAfterDays": PURGE_COMPTE_JOURS })))
+    Ok(Json(
+        json!({ "ok": true, "purgeAfterDays": PURGE_COMPTE_JOURS }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -328,7 +335,7 @@ async fn demander_code(
 
     let email = normaliser_email(&corps.email);
     if !email.contains('@') || email.len() > 320 {
-        return Err(invalide("Adresse e-mail invalide."));
+        return Err(invalide(Msg::AdresseEmailInvalide));
     }
     let empreinte = hash_email(&email);
     // Deux compteurs : l'adresse IP borne les rafales, l'empreinte de l'e-mail
@@ -338,7 +345,7 @@ async fn demander_code(
     let code = code_otp();
     let code_hache = hacher_secret(&code).map_err(|erreur| {
         tracing::error!(erreur = %erreur, "hachage du code impossible");
-        AppError::new(Code::Internal, "Une erreur interne est survenue.")
+        AppError::new(Code::Internal, Msg::ErreurInterne.t())
     })?;
 
     otp_challenges::ActiveModel {
@@ -381,12 +388,10 @@ struct VerificationCode {
 /// Rend le motif à dire, ou `None` si la connexion est légitime. Un compte en
 /// pause en fait partie : c'est un état réversible, et c'est en se reconnectant
 /// qu'on en sort.
-fn refus_de_session(statut: &str) -> Option<&'static str> {
+fn refus_de_session(statut: &str) -> Option<Msg> {
     match statut {
-        "suspended" => Some("Ce compte est suspendu."),
-        "deleting" => {
-            Some("Ce compte est en cours de suppression. Écrivez à l'assistance pour l'annuler.")
-        }
+        "suspended" => Some(Msg::CompteSuspendu),
+        "deleting" => Some(Msg::CompteEnSuppression),
         _ => None,
     }
 }
@@ -408,7 +413,7 @@ async fn verifier_code(
         .order_by_desc(otp_challenges::Column::CreatedAt)
         .one(&state.db)
         .await?
-        .ok_or_else(|| non_autorise("Code expiré ou déjà utilisé."))?;
+        .ok_or_else(|| non_autorise(Msg::CodeExpire))?;
 
     use sea_orm::sea_query::ExprTrait;
 
@@ -435,13 +440,11 @@ async fn verifier_code(
         .exec(&state.db)
         .await?;
     if tentative.rows_affected != 1 {
-        return Err(non_autorise(
-            "Trop de tentatives sur ce code. Demandez-en un nouveau.",
-        ));
+        return Err(non_autorise(Msg::TropDeTentativesSurCeCode));
     }
 
     if !verifier_secret(&corps.code, &defi.code_hash) {
-        return Err(non_autorise("Code incorrect."));
+        return Err(non_autorise(Msg::CodeIncorrect));
     }
 
     let defi_actif = defi;
@@ -468,8 +471,15 @@ async fn verifier_code(
                 ));
             };
             cree = true;
-            creer_compte(&state, &email, &empreinte, nom, naissance, corps.timezone.as_deref())
-                .await?
+            creer_compte(
+                &state,
+                &email,
+                &empreinte,
+                nom,
+                naissance,
+                corps.timezone.as_deref(),
+            )
+            .await?
         }
     };
 
@@ -487,7 +497,7 @@ async fn verifier_code(
         .exec(&state.db)
         .await?;
     if consomme.rows_affected != 1 {
-        return Err(non_autorise("Code expiré ou déjà utilisé."));
+        return Err(non_autorise(Msg::CodeExpire));
     }
 
     // Le statut se vérifie ici, et pas plus tôt : le code doit être consommé
@@ -525,16 +535,16 @@ async fn creer_compte(
     fuseau: Option<&str>,
 ) -> Result<accounts::Model, AppError> {
     let date = NaiveDate::parse_from_str(naissance, "%Y-%m-%d")
-        .map_err(|_| invalide("Date de naissance invalide."))?;
+        .map_err(|_| invalide(Msg::DateDeNaissanceInvalide))?;
     let naissance_utc = date
         .and_hms_opt(0, 0, 0)
-        .ok_or_else(|| invalide("Date de naissance invalide."))?
+        .ok_or_else(|| invalide(Msg::DateDeNaissanceInvalide))?
         .and_utc();
 
     if age_depuis(naissance_utc, Utc::now()) < AGE_MINIMUM {
-        return Err(invalide(&format!(
-            "Weave est réservé aux personnes de {AGE_MINIMUM} ans et plus."
-        )));
+        return Err(invalide(Msg::AgeMinimumRequis {
+            minimum: AGE_MINIMUM.into(),
+        }));
     }
 
     let id = cuid2::create_id();
@@ -595,7 +605,11 @@ async fn pseudo_unique(state: &AppState, nom: &str) -> Result<String, AppError> 
         })
         .take(16)
         .collect();
-    let base = if base.is_empty() { "fil".to_string() } else { base };
+    let base = if base.is_empty() {
+        "fil".to_string()
+    } else {
+        base
+    };
 
     for essai in 0..20 {
         let candidat = if essai == 0 {
@@ -650,9 +664,7 @@ async fn revoquer_famille(
         account_id: Set(Some(compte_id.to_string())),
         action: Set("refresh_reuse".to_string()),
         subject: Set(None),
-        meta_json: Set(
-            json!({ "sessionsRevoquees": coupees.rows_affected }).to_string(),
-        ),
+        meta_json: Set(json!({ "sessionsRevoquees": coupees.rows_affected }).to_string()),
         ip: Set(Some(ip.to_string())),
         created_at: Set(maintenant),
     }

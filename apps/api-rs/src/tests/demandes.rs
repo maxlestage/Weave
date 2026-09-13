@@ -5,29 +5,41 @@
 //! qu'il retient.
 
 use super::Service;
-use sea_orm::ConnectionTrait;
 use axum::http::StatusCode;
+use sea_orm::ConnectionTrait;
 use serde_json::json;
 
 /// Publie un plan et rend son identifiant.
 async fn plan_de(service: &Service, hote: &str, titre: &str) -> String {
     let (statut, corps) = service
-        .post("/v1/plans", Some(&service.jeton(hote)), json!({
-            "title": titre,
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton(hote)),
+            json!({
+                "title": titre,
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     corps["id"].as_str().unwrap().to_string()
 }
 
-async fn demander(service: &Service, invite: &str, plan_id: &str) -> (StatusCode, serde_json::Value) {
+async fn demander(
+    service: &Service,
+    invite: &str,
+    plan_id: &str,
+) -> (StatusCode, serde_json::Value) {
     service
-        .post("/v1/requests", Some(&service.jeton(invite)), json!({
-            "planId": plan_id,
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton(invite)),
+            json!({
+                "planId": plan_id,
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await
 }
 
@@ -71,12 +83,20 @@ async fn retirer_une_demande_rend_son_unite() {
     let demande_id = demande["id"].as_str().expect("un identifiant");
 
     let (statut, _) = service
-        .delete(&format!("/v1/requests/{demande_id}"), Some(&service.jeton("c_invite_retrait")))
+        .delete(
+            &format!("/v1/requests/{demande_id}"),
+            Some(&service.jeton("c_invite_retrait")),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
-    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_invite_retrait"))).await;
-    assert_eq!(corps["requestsLeftToday"], 5, "l'unité n'a pas été rendue : {corps}");
+    let (_, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_invite_retrait")))
+        .await;
+    assert_eq!(
+        corps["requestsLeftToday"], 5,
+        "l'unité n'a pas été rendue : {corps}"
+    );
 }
 
 #[tokio::test]
@@ -91,7 +111,10 @@ async fn on_ne_retire_pas_la_demande_d_un_autre() {
     let demande_id = demande["id"].as_str().unwrap();
 
     let (statut, _) = service
-        .delete(&format!("/v1/requests/{demande_id}"), Some(&service.jeton("c_tiers_vol")))
+        .delete(
+            &format!("/v1/requests/{demande_id}"),
+            Some(&service.jeton("c_tiers_vol")),
+        )
         .await;
     assert_eq!(statut, StatusCode::FORBIDDEN);
 }
@@ -107,12 +130,19 @@ async fn une_demande_deja_tranchee_ne_se_retire_plus() {
     let demande_id = demande["id"].as_str().unwrap().to_string();
 
     let (statut, _) = service
-        .post(&format!("/v1/requests/{demande_id}/accept"), Some(&service.jeton("c_hote_tranche")), json!({}))
+        .post(
+            &format!("/v1/requests/{demande_id}/accept"),
+            Some(&service.jeton("c_hote_tranche")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (statut, _) = service
-        .delete(&format!("/v1/requests/{demande_id}"), Some(&service.jeton("c_invite_tranche")))
+        .delete(
+            &format!("/v1/requests/{demande_id}"),
+            Some(&service.jeton("c_invite_tranche")),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 }
@@ -130,12 +160,21 @@ async fn refuser_une_demande_ne_rend_pas_l_unite() {
     let demande_id = demande["id"].as_str().unwrap().to_string();
 
     let (statut, _) = service
-        .post(&format!("/v1/requests/{demande_id}/decline"), Some(&service.jeton("c_hote_refus")), json!({}))
+        .post(
+            &format!("/v1/requests/{demande_id}/decline"),
+            Some(&service.jeton("c_hote_refus")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
-    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_invite_refus"))).await;
-    assert_eq!(corps["requestsLeftToday"], 4, "le refus a rendu l'unité : {corps}");
+    let (_, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_invite_refus")))
+        .await;
+    assert_eq!(
+        corps["requestsLeftToday"], 4,
+        "le refus a rendu l'unité : {corps}"
+    );
 }
 
 #[tokio::test]
@@ -149,7 +188,11 @@ async fn seul_l_hote_refuse() {
     let demande_id = demande["id"].as_str().unwrap();
 
     let (statut, _) = service
-        .post(&format!("/v1/requests/{demande_id}/decline"), Some(&service.jeton("c_invite_seul")), json!({}))
+        .post(
+            &format!("/v1/requests/{demande_id}/decline"),
+            Some(&service.jeton("c_invite_seul")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::FORBIDDEN);
 }
@@ -168,7 +211,10 @@ async fn les_demandes_recues_ne_se_lisent_qu_en_hote() {
     assert_eq!(statut, StatusCode::OK);
 
     let (statut, corps) = service
-        .get(&format!("/v1/plans/{plan}/requests"), Some(&service.jeton("c_hote_recu")))
+        .get(
+            &format!("/v1/plans/{plan}/requests"),
+            Some(&service.jeton("c_hote_recu")),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     let recues = corps.as_array().expect("un tableau");
@@ -177,9 +223,16 @@ async fn les_demandes_recues_ne_se_lisent_qu_en_hote() {
     assert!(recues[0]["message"].as_str().unwrap().contains("tente"));
 
     let (statut, _) = service
-        .get(&format!("/v1/plans/{plan}/requests"), Some(&service.jeton("c_curieux")))
+        .get(
+            &format!("/v1/plans/{plan}/requests"),
+            Some(&service.jeton("c_curieux")),
+        )
         .await;
-    assert_eq!(statut, StatusCode::FORBIDDEN, "un tiers a lu les demandes reçues");
+    assert_eq!(
+        statut,
+        StatusCode::FORBIDDEN,
+        "un tiers a lu les demandes reçues"
+    );
 }
 
 #[tokio::test]
@@ -187,7 +240,12 @@ async fn mes_plans_comptent_les_places_et_les_demandes() {
     let service = Service::monter().await;
     service.compte("c_hote_miens", "depart").await;
     service.compte("c_invite_miens", "depart").await;
-    let plan = plan_de(&service, "c_hote_miens", "Un plan dont on compte les places").await;
+    let plan = plan_de(
+        &service,
+        "c_hote_miens",
+        "Un plan dont on compte les places",
+    )
+    .await;
 
     let (statut, _) = demander(&service, "c_invite_miens", &plan).await;
     assert_eq!(statut, StatusCode::OK);
@@ -211,13 +269,22 @@ async fn un_renfort_sans_credit_est_refuse_et_ne_grignote_pas_le_plafond() {
     let compte = service.compte("c_renfort", "depart").await;
 
     let (statut, corps) = service
-        .post("/v1/requests/renfort", Some(&service.jeton("c_renfort")), json!({}))
+        .post(
+            "/v1/requests/renfort",
+            Some(&service.jeton("c_renfort")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::PAYMENT_REQUIRED, "{corps}");
 
     // La place réservée a bien été rendue : le quota du jour est inchangé.
-    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_renfort"))).await;
-    assert_eq!(fiche["requestsLeftToday"], 5, "le plafond a été grignoté : {fiche}");
+    let (_, fiche) = service
+        .get("/v1/me", Some(&service.jeton("c_renfort")))
+        .await;
+    assert_eq!(
+        fiche["requestsLeftToday"], 5,
+        "le plafond a été grignoté : {fiche}"
+    );
 
     // Avec un crédit, il passe.
     service
@@ -230,11 +297,18 @@ async fn un_renfort_sans_credit_est_refuse_et_ne_grignote_pas_le_plafond() {
         .unwrap();
 
     let (statut, corps) = service
-        .post("/v1/requests/renfort", Some(&service.jeton("c_renfort")), json!({}))
+        .post(
+            "/v1/requests/renfort",
+            Some(&service.jeton("c_renfort")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["granted"], 5);
-    assert_eq!(corps["requestsLeftToday"], 10, "le renfort n'a pas augmenté le quota");
+    assert_eq!(
+        corps["requestsLeftToday"], 10,
+        "le renfort n'a pas augmenté le quota"
+    );
 }
 
 /// La dernière place d'un plan ne doit être accordée qu'une fois.
@@ -297,7 +371,12 @@ async fn deux_retraits_simultanes_ne_rendent_qu_une_unite() {
     // le script Lua défend. C'est au-dessus de zéro que la course se voit.
     let mut premiere = String::new();
     for n in 0..3 {
-        let plan = plan_de(&service, "c_hote_course", &format!("Un plan numero {n} ici")).await;
+        let plan = plan_de(
+            &service,
+            "c_hote_course",
+            &format!("Un plan numero {n} ici"),
+        )
+        .await;
         let (_, demande) = demander(&service, "c_invite_course", &plan).await;
         if n == 0 {
             premiere = demande["id"].as_str().expect("un identifiant").to_string();
@@ -305,7 +384,10 @@ async fn deux_retraits_simultanes_ne_rendent_qu_une_unite() {
     }
 
     let (_, avant) = service.get("/v1/me", Some(&jeton)).await;
-    assert_eq!(avant["requestsLeftToday"], 2, "trois demandes envoyées : {avant}");
+    assert_eq!(
+        avant["requestsLeftToday"], 2,
+        "trois demandes envoyées : {avant}"
+    );
 
     // Quatre retraits de LA MÊME demande, lancés ensemble.
     let chemin = format!("/v1/requests/{premiere}");
@@ -315,7 +397,10 @@ async fn deux_retraits_simultanes_ne_rendent_qu_une_unite() {
         service.delete(&chemin, Some(&jeton)),
         service.delete(&chemin, Some(&jeton)),
     );
-    let reussis = [a, b, c, d].iter().filter(|(s, _)| *s == StatusCode::OK).count();
+    let reussis = [a, b, c, d]
+        .iter()
+        .filter(|(s, _)| *s == StatusCode::OK)
+        .count();
     assert_eq!(reussis, 1, "un seul retrait doit aboutir");
 
     let (_, apres) = service.get("/v1/me", Some(&jeton)).await;
@@ -361,7 +446,9 @@ async fn mes_plans_et_leurs_demandes_ne_melangent_pas_les_lignes() {
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     // Mes plans : chacun ses propres comptes.
-    let (_, miens) = service.get("/v1/plans/mine", Some(&service.jeton("c_mel_hote"))).await;
+    let (_, miens) = service
+        .get("/v1/plans/mine", Some(&service.jeton("c_mel_hote")))
+        .await;
     let ligne = |id: &str| {
         miens
             .as_array()
@@ -377,16 +464,29 @@ async fn mes_plans_et_leurs_demandes_ne_melangent_pas_les_lignes() {
     assert_eq!(vide["seatsLeft"], 4, "le plan sans demande : {vide}");
 
     let plein = ligne(&couru);
-    assert_eq!(plein["pendingRequests"], 2, "deux demandes restent en attente : {plein}");
-    assert_eq!(plein["seatsLeft"], 3, "une acceptation prend une place : {plein}");
+    assert_eq!(
+        plein["pendingRequests"], 2,
+        "deux demandes restent en attente : {plein}"
+    );
+    assert_eq!(
+        plein["seatsLeft"], 3,
+        "une acceptation prend une place : {plein}"
+    );
 
     // Les demandes reçues : chacune son auteur.
     let (statut, recues) = service
-        .get(&format!("/v1/plans/{couru}/requests"), Some(&service.jeton("c_mel_hote")))
+        .get(
+            &format!("/v1/plans/{couru}/requests"),
+            Some(&service.jeton("c_mel_hote")),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{recues}");
     let recues = recues.as_array().expect("une liste");
-    assert_eq!(recues.len(), 2, "seules les demandes en attente sont rendues : {recues:?}");
+    assert_eq!(
+        recues.len(),
+        2,
+        "seules les demandes en attente sont rendues : {recues:?}"
+    );
 
     for demande in recues {
         let auteur = demande["author"]["id"].as_str().unwrap_or_default();
@@ -402,20 +502,30 @@ async fn mes_plans_et_leurs_demandes_ne_melangent_pas_les_lignes() {
     }
 
     // Deux demandes, deux auteurs distincts.
-    let auteurs: std::collections::HashSet<&str> =
-        recues.iter().filter_map(|d| d["author"]["id"].as_str()).collect();
-    assert_eq!(auteurs.len(), 2, "le même auteur rendu deux fois : {recues:?}");
+    let auteurs: std::collections::HashSet<&str> = recues
+        .iter()
+        .filter_map(|d| d["author"]["id"].as_str())
+        .collect();
+    assert_eq!(
+        auteurs.len(),
+        2,
+        "le même auteur rendu deux fois : {recues:?}"
+    );
 }
 
 /// Un plan de groupe publié par « c_mel_hote ».
 async fn plan_de_groupe(service: &Service, titre: &str) -> String {
     let (statut, corps) = service
-        .post("/v1/plans", Some(&service.jeton("c_mel_hote")), json!({
-            "title": titre,
-            "category": "balade",
-            "capacity": 4,
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_mel_hote")),
+            json!({
+                "title": titre,
+                "category": "balade",
+                "capacity": 4,
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     corps["id"].as_str().expect("un identifiant").to_string()

@@ -5,29 +5,33 @@
 //! l'identifiant stable que fournit iOS, et deux déclarations successives
 //! doivent mettre à jour la même ligne, pas en créer une seconde.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::Authentifie,
     cache,
     entities::{devices, live_activity_sessions},
-    error::{introuvable, invalide, AppError},
+    error::{AppError, introuvable, invalide},
     live_activity,
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/devices", put(declarer))
         .route("/v1/live-activity/sessions", post(declarer_activite))
-        .route("/v1/live-activity/sessions/{token}", delete(terminer_activite))
+        .route(
+            "/v1/live-activity/sessions/{token}",
+            delete(terminer_activite),
+        )
         .route("/v1/live-activity/state", get(etat_activite))
         .route("/v1/live-activity/start", post(demarrer_activite))
         .route("/v1/watch/summary", get(resume_montre))
@@ -50,10 +54,10 @@ async fn declarer_activite(
     Json(corps): Json<DeclarationActivite>,
 ) -> Result<Json<Value>, AppError> {
     if corps.vendor_id.len() < 4 || corps.vendor_id.len() > 128 {
-        return Err(invalide("Identifiant d'appareil invalide."));
+        return Err(invalide(Msg::IdentifiantDAppareilInvalide));
     }
     if corps.update_token.len() < 10 || corps.update_token.len() > 400 {
-        return Err(invalide("Jeton de mise à jour invalide."));
+        return Err(invalide(Msg::JetonDeMiseAJourInvalide));
     }
 
     let appareil = devices::Entity::find()
@@ -61,7 +65,7 @@ async fn declarer_activite(
         .filter(devices::Column::VendorId.eq(corps.vendor_id.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Appareil inconnu. Enregistrez-le d'abord."))?;
+        .ok_or_else(|| introuvable(Msg::AppareilInconnu))?;
 
     let peremption = live_activity::peremption_session();
 
@@ -138,7 +142,9 @@ async fn etat_activite(
     Authentifie(compte): Authentifie,
 ) -> Result<Json<Value>, AppError> {
     let etat = live_activity::publier(&state, &compte.id).await?;
-    Ok(Json(serde_json::to_value(etat).unwrap_or_else(|_| json!({}))))
+    Ok(Json(
+        serde_json::to_value(etat).unwrap_or_else(|_| json!({})),
+    ))
 }
 
 /// Démarrer la Live Activity à distance, par « push-to-start ».
@@ -170,12 +176,14 @@ async fn resume_montre(
         .await
         // Le cache peut être indisponible ; la montre doit quand même recevoir
         // une charge lisible plutôt qu'une erreur.
-        .unwrap_or_else(|| json!({
-            "pendingRequests": 0,
-            "awaitingReply": 0,
-            "nextPlan": null,
-            "generatedAt": crate::temps::iso8601(Utc::now()),
-        }));
+        .unwrap_or_else(|| {
+            json!({
+                "pendingRequests": 0,
+                "awaitingReply": 0,
+                "nextPlan": null,
+                "generatedAt": crate::temps::iso8601(Utc::now()),
+            })
+        });
     Ok(Json(resume))
 }
 
@@ -198,7 +206,7 @@ async fn declarer(
     Json(corps): Json<DeclarationAppareil>,
 ) -> Result<Json<Value>, AppError> {
     if corps.vendor_id.len() < 4 || corps.vendor_id.len() > 128 {
-        return Err(invalide("Identifiant d'appareil invalide."));
+        return Err(invalide(Msg::IdentifiantDAppareilInvalide));
     }
 
     // Cet appareil n'appartient plus à personne d'autre.

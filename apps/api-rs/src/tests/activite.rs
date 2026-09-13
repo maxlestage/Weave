@@ -12,23 +12,31 @@ use serde_json::json;
 
 async fn appareil(service: &Service, nom: &str, vendor: &str) {
     let (statut, corps) = service
-        .put("/v1/devices", Some(&service.jeton(nom)), json!({
-            "vendorId": vendor,
-            "platform": "ios",
-            "apnsToken": "un-jeton-apns-de-test-suffisamment-long",
-            "pushToStartToken": "un-jeton-push-to-start-de-test-assez-long",
-        }))
+        .put(
+            "/v1/devices",
+            Some(&service.jeton(nom)),
+            json!({
+                "vendorId": vendor,
+                "platform": "ios",
+                "apnsToken": "un-jeton-apns-de-test-suffisamment-long",
+                "pushToStartToken": "un-jeton-push-to-start-de-test-assez-long",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 }
 
 async fn plan_de(service: &Service, nom: &str, titre: &str) -> String {
     let (statut, corps) = service
-        .post("/v1/plans", Some(&service.jeton(nom)), json!({
-            "title": titre,
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton(nom)),
+            json!({
+                "title": titre,
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     corps["id"].as_str().unwrap().to_string()
@@ -42,10 +50,14 @@ async fn l_etat_porte_le_prochain_plan_et_les_deux_compteurs() {
 
     let plan = plan_de(&service, "c_hote_la", "Une balade sur les quais").await;
     let (statut, _) = service
-        .post("/v1/requests", Some(&service.jeton("c_invite_la")), json!({
-            "planId": plan,
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton("c_invite_la")),
+            json!({
+                "planId": plan,
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
@@ -61,7 +73,10 @@ async fn l_etat_porte_le_prochain_plan_et_les_deux_compteurs() {
 
     // Vu de l'invité : pas encore de plan, une attente.
     let (_, corps) = service
-        .get("/v1/live-activity/state", Some(&service.jeton("c_invite_la")))
+        .get(
+            "/v1/live-activity/state",
+            Some(&service.jeton("c_invite_la")),
+        )
         .await;
     assert_eq!(corps["planTitle"], json!(null));
     assert_eq!(corps["pendingRequests"], 0);
@@ -79,15 +94,22 @@ async fn l_etat_ne_nomme_personne() {
 
     let plan = plan_de(&service, "c_hote_muet", "Un plan dont on ne dira rien").await;
     let (statut, _) = service
-        .post("/v1/requests", Some(&service.jeton("c_invite_muet")), json!({
-            "planId": plan,
-            "message": "Un message que personne ne doit lire sur un ecran verrouille.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton("c_invite_muet")),
+            json!({
+                "planId": plan,
+                "message": "Un message que personne ne doit lire sur un ecran verrouille.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (_, corps) = service
-        .get("/v1/live-activity/state", Some(&service.jeton("c_hote_muet")))
+        .get(
+            "/v1/live-activity/state",
+            Some(&service.jeton("c_hote_muet")),
+        )
         .await;
 
     let rendu = corps.to_string();
@@ -123,10 +145,14 @@ async fn declarer_une_activite_exige_un_appareil_connu() {
     service.compte("c_sans_appareil", "depart").await;
 
     let (statut, _) = service
-        .post("/v1/live-activity/sessions", Some(&service.jeton("c_sans_appareil")), json!({
-            "vendorId": "vendor-inconnu-0001",
-            "updateToken": "un-jeton-de-mise-a-jour-assez-long",
-        }))
+        .post(
+            "/v1/live-activity/sessions",
+            Some(&service.jeton("c_sans_appareil")),
+            json!({
+                "vendorId": "vendor-inconnu-0001",
+                "updateToken": "un-jeton-de-mise-a-jour-assez-long",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }
@@ -139,13 +165,20 @@ async fn declarer_une_activite_rend_l_etat_courant() {
     plan_de(&service, "c_activite", "Un plan a afficher sur l ecran").await;
 
     let (statut, corps) = service
-        .post("/v1/live-activity/sessions", Some(&service.jeton("c_activite")), json!({
-            "vendorId": "vendor-activite-0001",
-            "updateToken": "un-jeton-de-mise-a-jour-assez-long",
-        }))
+        .post(
+            "/v1/live-activity/sessions",
+            Some(&service.jeton("c_activite")),
+            json!({
+                "vendorId": "vendor-activite-0001",
+                "updateToken": "un-jeton-de-mise-a-jour-assez-long",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    assert_eq!(corps["state"]["planTitle"], "Un plan a afficher sur l ecran");
+    assert_eq!(
+        corps["state"]["planTitle"],
+        "Un plan a afficher sur l ecran"
+    );
 }
 
 /// ActivityKit re-déclare la même activité après un redémarrage : cela doit
@@ -158,10 +191,14 @@ async fn declarer_deux_fois_le_meme_jeton_ne_cree_qu_une_session() {
 
     for _ in 0..2 {
         let (statut, corps) = service
-            .post("/v1/live-activity/sessions", Some(&service.jeton("c_redeclare")), json!({
-                "vendorId": "vendor-redeclare-001",
-                "updateToken": "un-jeton-redeclare-assez-long-pour-passer",
-            }))
+            .post(
+                "/v1/live-activity/sessions",
+                Some(&service.jeton("c_redeclare")),
+                json!({
+                    "vendorId": "vendor-redeclare-001",
+                    "updateToken": "un-jeton-redeclare-assez-long-pour-passer",
+                }),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
@@ -173,7 +210,9 @@ async fn declarer_deux_fois_le_meme_jeton_ne_cree_qu_une_session() {
             .db
             .query_one_raw(Statement::from_string(
                 service.db.get_database_backend(),
-                format!("SELECT COUNT(*) AS v FROM live_activity_sessions WHERE accountId='{compte}'"),
+                format!(
+                    "SELECT COUNT(*) AS v FROM live_activity_sessions WHERE accountId='{compte}'"
+                ),
             ))
             .await
             .unwrap()
@@ -196,10 +235,14 @@ async fn terminer_une_activite_ne_ferme_que_les_siennes() {
 
     let jeton_partage = "un-jeton-que-deux-comptes-invoquent-1234";
     let (statut, _) = service
-        .post("/v1/live-activity/sessions", Some(&service.jeton("c_fin_a")), json!({
-            "vendorId": "vendor-fin-a-0001",
-            "updateToken": jeton_partage,
-        }))
+        .post(
+            "/v1/live-activity/sessions",
+            Some(&service.jeton("c_fin_a")),
+            json!({
+                "vendorId": "vendor-fin-a-0001",
+                "updateToken": jeton_partage,
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
@@ -240,7 +283,11 @@ async fn demarrer_sans_appareil_ne_demarre_rien() {
     service.compte("c_rien_a_demarrer", "depart").await;
 
     let (statut, corps) = service
-        .post("/v1/live-activity/start", Some(&service.jeton("c_rien_a_demarrer")), json!({}))
+        .post(
+            "/v1/live-activity/start",
+            Some(&service.jeton("c_rien_a_demarrer")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["started"], 0);
@@ -256,7 +303,11 @@ async fn demarrer_avec_un_appareil_et_un_plan() {
     plan_de(&service, "c_demarre", "Un plan qui vaut une banniere").await;
 
     let (statut, corps) = service
-        .post("/v1/live-activity/start", Some(&service.jeton("c_demarre")), json!({}))
+        .post(
+            "/v1/live-activity/start",
+            Some(&service.jeton("c_demarre")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["started"], 1);
@@ -270,10 +321,14 @@ async fn le_resume_de_montre_est_compact_et_anonyme() {
 
     let plan = plan_de(&service, "c_montre", "Un plan a lire au poignet").await;
     let (statut, _) = service
-        .post("/v1/requests", Some(&service.jeton("c_invite_montre")), json!({
-            "planId": plan,
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton("c_invite_montre")),
+            json!({
+                "planId": plan,
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
@@ -290,7 +345,12 @@ async fn le_resume_de_montre_est_compact_et_anonyme() {
     cles.sort();
     assert_eq!(
         cles,
-        vec!["awaitingReply", "generatedAt", "nextPlan", "pendingRequests"]
+        vec![
+            "awaitingReply",
+            "generatedAt",
+            "nextPlan",
+            "pendingRequests"
+        ]
     );
     // Quelques centaines d'octets, pas plus : c'est une montre.
     assert!(corps.to_string().len() < 400, "résumé trop gros : {corps}");
@@ -310,14 +370,21 @@ async fn un_plan_annule_disparait_de_l_etat() {
     assert_eq!(avant["planTitle"], "Un plan qui ne se fera pas");
 
     let (statut, _) = service
-        .delete(&format!("/v1/plans/{plan}"), Some(&service.jeton("c_annule")))
+        .delete(
+            &format!("/v1/plans/{plan}"),
+            Some(&service.jeton("c_annule")),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (_, apres) = service
         .get("/v1/live-activity/state", Some(&service.jeton("c_annule")))
         .await;
-    assert_eq!(apres["planTitle"], json!(null), "le plan annulé s'affiche encore");
+    assert_eq!(
+        apres["planTitle"],
+        json!(null),
+        "le plan annulé s'affiche encore"
+    );
 }
 
 /// Fermer une activité efface sa ligne, elle ne la marque pas close.
@@ -336,13 +403,20 @@ async fn fermer_une_activite_efface_sa_ligne() {
 
     let jeton = "un-jeton-de-session-a-effacer-0001";
     let (statut, _) = service
-        .post("/v1/live-activity/sessions", Some(&service.jeton("c_fin_efface")), json!({
-            "vendorId": "vendor-efface-0001",
-            "updateToken": jeton,
-        }))
+        .post(
+            "/v1/live-activity/sessions",
+            Some(&service.jeton("c_fin_efface")),
+            json!({
+                "vendorId": "vendor-efface-0001",
+                "updateToken": jeton,
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
-    assert_eq!(lignes_de_session(&service, &service.id("c_fin_efface")).await, 1);
+    assert_eq!(
+        lignes_de_session(&service, &service.id("c_fin_efface")).await,
+        1
+    );
 
     let (statut, _) = service
         .delete(

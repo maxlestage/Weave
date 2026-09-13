@@ -32,8 +32,8 @@
 //! mène pas à la racine attendue, qui est la seule propriété dont dépend tout
 //! le reste.
 
-use base64::{engine::general_purpose::STANDARD, Engine};
-use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use serde_json::Value;
 use x509_parser::prelude::*;
 
@@ -108,7 +108,8 @@ pub fn verifier(
         return Err(Refus::Malforme);
     };
 
-    let entete: Value = serde_json::from_slice(&url_safe(entete_b64)?).map_err(|_| Refus::Malforme)?;
+    let entete: Value =
+        serde_json::from_slice(&url_safe(entete_b64)?).map_err(|_| Refus::Malforme)?;
 
     // ES256 et rien d'autre. Accepter « none » — ou laisser l'en-tête choisir
     // l'algorithme — est la faille classique des vérificateurs de JWS : celui
@@ -131,7 +132,11 @@ pub fn verifier(
     let mut chaine_der = Vec::with_capacity(chaine_b64.len());
     for element in chaine_b64 {
         let brut = element.as_str().ok_or(Refus::CertificatIllisible)?;
-        chaine_der.push(STANDARD.decode(brut).map_err(|_| Refus::CertificatIllisible)?);
+        chaine_der.push(
+            STANDARD
+                .decode(brut)
+                .map_err(|_| Refus::CertificatIllisible)?,
+        );
     }
 
     // La racine attendue doit être le dernier maillon, et exactement lui.
@@ -151,8 +156,8 @@ pub fn verifier(
         certificats.push(certificat);
     }
 
-    let instant = ASN1Time::from_timestamp(maintenant.timestamp())
-        .map_err(|_| Refus::CertificatPerime)?;
+    let instant =
+        ASN1Time::from_timestamp(maintenant.timestamp()).map_err(|_| Refus::CertificatPerime)?;
     for certificat in &certificats {
         if !certificat.validity().is_valid_at(instant) {
             return Err(Refus::CertificatPerime);
@@ -180,10 +185,11 @@ pub fn verifier(
     }
 
     // La signature du jeton, par la clé du certificat de tête.
-    let cle = VerifyingKey::from_sec1_bytes(certificats[0].public_key().subject_public_key.as_ref())
-        .map_err(|_| Refus::SignatureInvalide)?;
-    let signature = Signature::from_slice(&url_safe(signature_b64)?)
-        .map_err(|_| Refus::SignatureInvalide)?;
+    let cle =
+        VerifyingKey::from_sec1_bytes(certificats[0].public_key().subject_public_key.as_ref())
+            .map_err(|_| Refus::SignatureInvalide)?;
+    let signature =
+        Signature::from_slice(&url_safe(signature_b64)?).map_err(|_| Refus::SignatureInvalide)?;
     let signe = format!("{entete_b64}.{charge_b64}");
     cle.verify(signe.as_bytes(), &signature)
         .map_err(|_| Refus::SignatureInvalide)?;
@@ -206,7 +212,7 @@ mod tests {
     use super::*;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use chrono::Utc;
-    use p256::ecdsa::{signature::Signer, SigningKey};
+    use p256::ecdsa::{SigningKey, signature::Signer};
     use p256::pkcs8::DecodePrivateKey;
 
     /// Une chaîne fabriquée pour les tests : racine, intermédiaire, feuille.
@@ -234,13 +240,15 @@ mod tests {
 
     fn fabriquer_chaine() -> Chaine {
         use rcgen::{
-            BasicConstraints, CertificateParams, Issuer, IsCa, KeyPair, KeyUsagePurpose,
+            BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair, KeyUsagePurpose,
             PKCS_ECDSA_P256_SHA256,
         };
 
         let autorite = |nom: &str| {
             let mut params = CertificateParams::new(vec![]).expect("paramètres");
-            params.distinguished_name.push(rcgen::DnType::CommonName, nom);
+            params
+                .distinguished_name
+                .push(rcgen::DnType::CommonName, nom);
             params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
             params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
             params
@@ -248,7 +256,9 @@ mod tests {
 
         let cle_racine = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("clé racine");
         let params_racine = autorite("Racine de test");
-        let racine = params_racine.self_signed(&cle_racine).expect("racine signée");
+        let racine = params_racine
+            .self_signed(&cle_racine)
+            .expect("racine signée");
         let emetteur_racine = Issuer::new(params_racine, cle_racine);
 
         let cle_inter = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("clé intermédiaire");
@@ -311,7 +321,11 @@ mod tests {
     #[test]
     fn une_chaine_qui_ne_mene_pas_a_la_racine_epinglee_est_refusee() {
         let chaine = fabriquer_chaine();
-        let jws = signer(&chaine, serde_json::json!({ "productId": "grandtour" }), "ES256");
+        let jws = signer(
+            &chaine,
+            serde_json::json!({ "productId": "grandtour" }),
+            "ES256",
+        );
 
         assert_eq!(
             verifier(&jws, RACINE_APPLE, Utc::now()),
@@ -338,12 +352,15 @@ mod tests {
     #[test]
     fn une_charge_retouchee_est_refusee() {
         let chaine = fabriquer_chaine();
-        let jws = signer(&chaine, serde_json::json!({ "productId": "viree" }), "ES256");
+        let jws = signer(
+            &chaine,
+            serde_json::json!({ "productId": "viree" }),
+            "ES256",
+        );
 
         let mut parties: Vec<&str> = jws.split('.').collect();
-        let retouchee = URL_SAFE_NO_PAD.encode(
-            serde_json::json!({ "productId": "grandtour" }).to_string(),
-        );
+        let retouchee =
+            URL_SAFE_NO_PAD.encode(serde_json::json!({ "productId": "grandtour" }).to_string());
         parties[1] = &retouchee;
 
         assert_eq!(
@@ -375,7 +392,11 @@ mod tests {
     #[test]
     fn une_chaine_perimee_est_refusee() {
         let chaine = fabriquer_chaine();
-        let jws = signer(&chaine, serde_json::json!({ "productId": "viree" }), "ES256");
+        let jws = signer(
+            &chaine,
+            serde_json::json!({ "productId": "viree" }),
+            "ES256",
+        );
 
         // La feuille vaut un jour de part et d'autre : deux jours plus tard,
         // elle est périmée.
@@ -428,14 +449,16 @@ mod tests {
         use sha2::{Digest, Sha256};
         let empreinte = hex::encode(Sha256::digest(RACINE_APPLE));
         assert_eq!(
-            empreinte,
-            "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
+            empreinte, "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
             "la racine jointe n'est plus celle d'Apple"
         );
 
         let (_, certificat) = X509Certificate::from_der(RACINE_APPLE).expect("racine lisible");
         assert!(
-            certificat.subject().to_string().contains("Apple Root CA - G3"),
+            certificat
+                .subject()
+                .to_string()
+                .contains("Apple Root CA - G3"),
             "sujet inattendu : {}",
             certificat.subject()
         );

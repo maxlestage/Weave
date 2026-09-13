@@ -6,9 +6,9 @@
 //! monde et rendrait illisibles les médias déjà servis.
 
 use argon2::{Algorithm, Argon2, Params, Version};
-use password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
+use password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash};
 use rand::RngExt;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -128,7 +128,10 @@ pub fn verifier_signature_media(
     if expire_le < chrono::Utc::now().timestamp() {
         return false;
     }
-    egal_en_temps_constant(&signer(secret, &charge(cle_objet, expire_le, flou)), signature)
+    egal_en_temps_constant(
+        &signer(secret, &charge(cle_objet, expire_le, flou)),
+        signature,
+    )
 }
 
 /// Équivalent de `encodeURIComponent` : les clés d'objet peuvent contenir des
@@ -137,8 +140,18 @@ fn encoder_composant(valeur: &str) -> String {
     valeur
         .bytes()
         .map(|o| match o {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*'
-            | b'\'' | b'(' | b')' => (o as char).to_string(),
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'!'
+            | b'~'
+            | b'*'
+            | b'\''
+            | b'('
+            | b')' => (o as char).to_string(),
             _ => format!("%{o:02X}"),
         })
         .collect()
@@ -199,25 +212,55 @@ mod tests {
 
     #[test]
     fn l_url_signee_encode_les_barres_et_les_espaces() {
-        let url = signer_url_media("https://exemple.test/media/", SECRET_MEDIA, "photos/abc def.jpg", 3600, 12);
+        let url = signer_url_media(
+            "https://exemple.test/media/",
+            SECRET_MEDIA,
+            "photos/abc def.jpg",
+            3600,
+            12,
+        );
         assert!(url.starts_with("https://exemple.test/media/photos%2Fabc%20def.jpg?exp="));
         assert!(url.contains("&blur=12&sig="));
     }
 
     #[test]
     fn une_signature_expiree_est_refusee() {
-        assert!(!verifier_signature_media(SECRET_MEDIA, "photos/abc def.jpg", 1, 12, SIGNATURE_ATTENDUE));
+        assert!(!verifier_signature_media(
+            SECRET_MEDIA,
+            "photos/abc def.jpg",
+            1,
+            12,
+            SIGNATURE_ATTENDUE
+        ));
     }
 
     #[test]
     fn une_signature_alteree_est_refusee() {
         let futur = chrono::Utc::now().timestamp() + 600;
         let bonne = signer(SECRET_MEDIA, &charge("photos/x.jpg", futur, 0));
-        assert!(verifier_signature_media(SECRET_MEDIA, "photos/x.jpg", futur, 0, &bonne));
+        assert!(verifier_signature_media(
+            SECRET_MEDIA,
+            "photos/x.jpg",
+            futur,
+            0,
+            &bonne
+        ));
         // Le niveau de flou fait partie de la charge : le changer doit invalider.
-        assert!(!verifier_signature_media(SECRET_MEDIA, "photos/x.jpg", futur, 8, &bonne));
+        assert!(!verifier_signature_media(
+            SECRET_MEDIA,
+            "photos/x.jpg",
+            futur,
+            8,
+            &bonne
+        ));
         // Comme la clé de l'objet.
-        assert!(!verifier_signature_media(SECRET_MEDIA, "photos/y.jpg", futur, 0, &bonne));
+        assert!(!verifier_signature_media(
+            SECRET_MEDIA,
+            "photos/y.jpg",
+            futur,
+            0,
+            &bonne
+        ));
     }
 
     #[test]

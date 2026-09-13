@@ -5,22 +5,23 @@
 //! quota journalier — à tous les paliers, sans exception. C'est l'invariant
 //! qui empêche d'arroser.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::Authentifie,
     cache,
     crypto::signer_url_media,
-    droits::{demandes_restantes, exiger_credit, quota_journalier, RENFORT_GRANT},
+    droits::{RENFORT_GRANT, demandes_restantes, exiger_credit, quota_journalier},
     entities::{accounts, blocks, conversations, join_requests, plans, profiles},
-    error::{introuvable, invalide, AppError, Code},
+    error::{AppError, Code, introuvable, invalide},
     limitation::{consommer, regles},
     live_activity,
     temps::{age_depuis, iso8601, jour_local, secondes_avant_minuit},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{delete, get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -28,7 +29,7 @@ use sea_orm::{
     QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Vingt caractères : assez pour dire pourquoi on veut venir, trop pour un
 /// « salut » envoyé à la chaîne.
@@ -166,9 +167,9 @@ async fn appliquer_renfort(
     .await?;
 
     if applique.is_none() {
-        return Err(invalide(&format!(
-            "Au plus {MAX_RENFORTS_PAR_JOUR} renforts par jour. Vos demandes reviennent à minuit."
-        )));
+        return Err(invalide(Msg::TropDeRenforts {
+            maximum: MAX_RENFORTS_PAR_JOUR,
+        }));
     }
 
     // La place est réservée avant que le crédit soit dépensé — l'inverse
@@ -197,13 +198,10 @@ async fn retirer(
     let demande = join_requests::Entity::find_by_id(demande_id.as_str())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Demande introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::DemandeIntrouvable))?;
 
     if demande.author_id != compte.id {
-        return Err(AppError::new(
-            Code::Forbidden,
-            "Cette demande n'est pas la vôtre.",
-        ));
+        return Err(AppError::new(Code::Forbidden, Msg::DemandePasLaVotre.t()));
     }
     let envoyee_le = demande.sent_at;
 
@@ -218,7 +216,10 @@ async fn retirer(
     //
     // Seul l'appel qui a réellement changé l'état rembourse.
     let retiree = join_requests::Entity::update_many()
-        .col_expr(join_requests::Column::State, sea_orm::sea_query::Expr::value("retiree"))
+        .col_expr(
+            join_requests::Column::State,
+            sea_orm::sea_query::Expr::value("retiree"),
+        )
         .col_expr(
             join_requests::Column::DecidedAt,
             sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
@@ -229,7 +230,7 @@ async fn retirer(
         .await?;
 
     if retiree.rows_affected == 0 {
-        return Err(invalide("Cette demande a déjà reçu une réponse."));
+        return Err(invalide(Msg::DemandeDejaRepondue));
     }
 
     // Se raviser vite ne doit pas coûter la journée. Le jour est celui de
@@ -259,18 +260,18 @@ async fn refuser(
     let demande = join_requests::Entity::find_by_id(demande_id.as_str())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Demande introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::DemandeIntrouvable))?;
 
     let plan = plans::Entity::find_by_id(demande.plan_id.as_str())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Plan introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::PlanIntrouvable))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+        return Err(AppError::new(Code::Forbidden, Msg::PlanPasLeVotre.t()));
     }
     if demande.state != "envoyee" {
-        return Err(invalide("Cette demande est déjà tranchée."));
+        return Err(invalide(Msg::DemandeDejaTranchee));
     }
 
     let auteur_id = demande.author_id.clone();
@@ -303,38 +304,38 @@ async fn demander(
 
     let message = corps.message.trim().to_string();
     if message.chars().count() < MESSAGE_MIN {
-        return Err(invalide(&format!(
-            "Écrivez au moins {MESSAGE_MIN} caractères : c'est ce qui distingue une demande d'un geste."
-        )));
+        return Err(invalide(Msg::MessageTropCourt {
+            minimum: MESSAGE_MIN as i64,
+        }));
     }
     if message.chars().count() > MESSAGE_MAX {
-        return Err(invalide(&format!(
-            "Le message ne peut pas dépasser {MESSAGE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::MessageTropLong {
+            maximum: MESSAGE_MAX as i64,
+        }));
     }
 
     let plan = plans::Entity::find_by_id(corps.plan_id.clone())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Ce plan n'existe plus."))?;
+        .ok_or_else(|| introuvable(Msg::PlanDisparu))?;
 
     if plan.author_id == compte.id {
-        return Err(invalide("C'est votre propre plan."));
+        return Err(invalide(Msg::VotreProprePlan));
     }
 
     let auteur = accounts::Entity::find_by_id(plan.author_id.clone())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Ce plan n'existe plus."))?;
+        .ok_or_else(|| introuvable(Msg::PlanDisparu))?;
 
     if plan.state != "ouvert" || auteur.status != "active" {
         return Err(AppError::new(
             Code::PlanClosed,
-            "Ce plan n'accepte plus de demandes.",
+            Msg::PlanNAcceptePlusDeDemandes.t(),
         ));
     }
     if plan.starts_at.and_utc() <= Utc::now() {
-        return Err(AppError::new(Code::PlanClosed, "Ce plan a déjà eu lieu."));
+        return Err(AppError::new(Code::PlanClosed, Msg::PlanDejaEuLieu.t()));
     }
 
     let acceptees = join_requests::Entity::find()
@@ -343,7 +344,7 @@ async fn demander(
         .count(&state.db)
         .await?;
     if acceptees >= plan.capacity as u64 {
-        return Err(AppError::new(Code::PlanClosed, "Ce plan est complet."));
+        return Err(AppError::new(Code::PlanClosed, Msg::PlanComplet.t()));
     }
 
     // Un blocage dans un sens ou dans l'autre rend la demande impossible, sans
@@ -366,7 +367,7 @@ async fn demander(
         .one(&state.db)
         .await?;
     if blocage.is_some() {
-        return Err(introuvable("Ce plan n'existe plus."));
+        return Err(introuvable(Msg::PlanDisparu));
     }
 
     let deja = join_requests::Entity::find()
@@ -377,7 +378,7 @@ async fn demander(
     if deja.is_some() {
         return Err(AppError::new(
             Code::AlreadyRequested,
-            "Vous avez déjà demandé à venir. On ne redemande pas deux fois.",
+            Msg::DejaDemandeAVenir.t(),
         ));
     }
 
@@ -454,23 +455,23 @@ async fn accepter(
     let demande = join_requests::Entity::find_by_id(id.clone())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Demande introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::DemandeIntrouvable))?;
 
     let plan = plans::Entity::find_by_id(demande.plan_id.clone())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Demande introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::DemandeIntrouvable))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+        return Err(AppError::new(Code::Forbidden, Msg::PlanPasLeVotre.t()));
     }
     if demande.state != "envoyee" {
-        return Err(invalide("Cette demande est déjà tranchée."));
+        return Err(invalide(Msg::DemandeDejaTranchee));
     }
     if plan.state != "ouvert" {
         return Err(AppError::new(
             Code::PlanClosed,
-            "Ce plan n'accepte plus de demandes.",
+            Msg::PlanNAcceptePlusDeDemandes.t(),
         ));
     }
 
@@ -502,7 +503,7 @@ async fn accepter(
         transaction.rollback().await?;
         return Err(AppError::new(
             Code::PlanClosed,
-            "Toutes les places sont prises.",
+            Msg::ToutesLesPlacesSontPrises.t(),
         ));
     }
 
@@ -515,7 +516,7 @@ async fn accepter(
         transaction.rollback().await?;
         return Err(AppError::new(
             Code::PlanClosed,
-            "Toutes les places sont prises.",
+            Msg::ToutesLesPlacesSontPrises.t(),
         ));
     }
     let restant_apres = plan.capacity as u64 - acceptees - 1;
@@ -536,7 +537,7 @@ async fn accepter(
         .await?;
     if accepte.rows_affected != 1 {
         transaction.rollback().await?;
-        return Err(invalide("Cette demande est déjà tranchée."));
+        return Err(invalide(Msg::DemandeDejaTranchee));
     }
 
     if restant_apres == 0 {
@@ -586,5 +587,7 @@ async fn accepter(
     }
     live_activity::publier_au_mieux(&state, &compte.id).await;
 
-    Ok(Json(json!({ "ok": true, "conversationId": conversation.id })))
+    Ok(Json(
+        json!({ "ok": true, "conversationId": conversation.id }),
+    ))
 }
