@@ -10,7 +10,16 @@
       name="description"
       content="Weave est une application de rencontre où l'on ne se décrit pas : on publie ce qu'on compte faire, et les autres demandent à venir en disant pourquoi. Pas de cartes à balayer, pas de classement payant."
     />
-    <link rel="canonical" href="https://weave.app/" />
+    <!--
+      L'adresse canonique, `og:url` et `og:image` sont posées à la construction,
+      à partir de `SITE.origine`.
+
+      Elles valaient « https://weave.app » en dur — un domaine qui n'est pas le
+      nôtre. Cette page est celle que l'on partage : le lien aurait montré
+      l'image d'un autre site, ou aucune, et `canonical` aurait désigné le
+      domaine d'autrui comme la vraie adresse de nos pages. Les pages juridiques
+      lisaient déjà l'origine ; seule la page d'accueil ne le faisait pas.
+    -->
     <meta property="og:site_name" content="Weave" />
     <meta property="og:title" content="Weave — des plans, pas des profils" />
     <meta
@@ -19,15 +28,12 @@
     />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="fr_FR" />
-    <meta property="og:url" content="https://weave.app/" />
-    <meta property="og:image" content="https://weave.app/partage.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
       content="Weave — des plans, pas des profils. Six fils de couleur tissés."
     />
-    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="./public/favicon.svg" type="image/svg+xml" />
     <!--
       Données structurées : ce qu'un moteur affiche dans ses résultats. Le type
