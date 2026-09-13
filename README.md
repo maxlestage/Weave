@@ -142,7 +142,11 @@ comptes tiers, pas du code d'architecture :
       plans et demandes, un message n'y apparaissait pas
 - [ ] Stockage objet des médias, avec modération des photos avant publication
 - [ ] Vérification cryptographique complète des transactions StoreKit
-      (clé App Store Connect)
+      (chaîne `x5c` contre la racine Apple, signature ES256, `bundleId`).
+      **En attendant, la production refuse tout achat** : le drapeau
+      `VERIFICATION_JWS_IMPLEMENTEE` de `routes/billing.rs` est le seul
+      endroit à changer, et il ne doit passer à `true` qu'avec le code qui
+      vérifie
 - [x] Purges RGPD et expiration des Live Activities — tournent d'elles-mêmes,
       un verrou dans le cache garantissant un seul passage par jour
 - [x] Export des données personnelles au format lisible par machine —
