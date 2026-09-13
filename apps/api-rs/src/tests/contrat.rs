@@ -128,3 +128,80 @@ fn les_categories_de_plan_sont_les_memes_des_deux_cotes() {
         de_l_api.len()
     );
 }
+
+/// Les états de plan, eux aussi, doivent être les mêmes des deux côtés.
+///
+/// L'API écrivait « suspendu » — l'état d'un plan dont l'auteur est en pause —
+/// sans que le contrat ni le modèle iOS le déclarent. Or `PlanState` y est une
+/// énumération `Codable` non facultative : le décodage de « Mes plans »
+/// échouait d'un bloc, et l'écran entier tombait, pour un état qu'aucun des
+/// deux autres côtés ne connaissait.
+#[test]
+fn les_etats_de_plan_ecrits_par_l_api_sont_declares_au_contrat() {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../packages/contracts/src/domain.ts");
+    let source = std::fs::read_to_string(&chemin)
+        .unwrap_or_else(|e| panic!("contrat illisible en {} : {e}", chemin.display()));
+
+    let debut = source
+        .find("export type PlanState =")
+        .expect("les états de plan ont disparu du contrat");
+    let fin = source[debut..].find(';').expect("déclaration fermée") + debut;
+    let declaration = &source[debut..fin];
+
+    // Ce que l'API écrit réellement en base, relu dans ses propres sources
+    // plutôt que recopié ici : une liste tenue à la main dériverait comme le
+    // reste, et c'est précisément ce que ce fichier existe pour empêcher.
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut ecrits = std::collections::BTreeSet::new();
+    for etat in ETATS_CONNUS {
+        if sources_contiennent(&racine, &format!("\"{etat}\"")) {
+            ecrits.insert(*etat);
+        }
+    }
+
+    let absents: Vec<&str> = ecrits
+        .iter()
+        .copied()
+        .filter(|etat| !declaration.contains(&format!("\"{etat}\"")))
+        .collect();
+
+    assert!(
+        absents.is_empty(),
+        "l'API écrit des états que le contrat ne déclare pas : {absents:?}\n\
+         Le modèle iOS décode `PlanState` sans repli : un état inconnu fait \
+         échouer l'écran entier."
+    );
+}
+
+/// Les états qu'un plan peut prendre, tous côtés confondus.
+///
+/// Écrite ici parce qu'il faut bien un point de départ pour chercher. Le test
+/// ne vérifie pas cette liste : il vérifie que ceux qu'il retrouve dans les
+/// sources de l'API figurent au contrat.
+const ETATS_CONNUS: &[&str] = &["ouvert", "complet", "passe", "annule", "suspendu"];
+
+fn sources_contiennent(racine: &std::path::Path, aiguille: &str) -> bool {
+    let Ok(entrees) = std::fs::read_dir(racine) else {
+        return false;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.is_dir() {
+            // Les tests écrivent des états pour les éprouver : ils ne disent
+            // pas ce que l'API rend à ses clients.
+            if chemin.file_name().is_some_and(|n| n == "tests") {
+                continue;
+            }
+            if sources_contiennent(&chemin, aiguille) {
+                return true;
+            }
+        } else if chemin.extension().is_some_and(|e| e == "rs")
+            && std::fs::read_to_string(&chemin)
+                .is_ok_and(|contenu| contenu.contains(aiguille))
+        {
+            return true;
+        }
+    }
+    false
+}

@@ -171,12 +171,30 @@ async fn mettre_en_pause(
     }
 
     // En pause, ses plans ouverts sortent du fil des autres : rien ne sert de
-    // laisser visible un rendez-vous auquel on ne répondra pas.
+    // laisser visible un rendez-vous auquel on ne répondra pas. Ils y
+    // reviennent en reprenant — « suspendu » est un aller-retour, pas une
+    // annulation.
+    //
+    // La reprise ne les restituait pas : les plans restaient « suspendu »
+    // indéfiniment, un état qu'aucune autre ligne ne relit et que rien ne
+    // défait. Mettre son compte en pause revenait donc à perdre ses plans pour
+    // de bon, alors que la page publique promet de reprendre quand on veut.
     if corps.paused {
         plans::Entity::update_many()
             .col_expr(plans::Column::State, sea_orm::sea_query::Expr::value("suspendu"))
             .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
             .filter(plans::Column::State.eq("ouvert"))
+            .exec(&state.db)
+            .await?;
+    } else {
+        // Seuls les rendez-vous encore à venir reviennent. Un plan dont
+        // l'heure est passée pendant la pause n'a plus lieu d'être rouvert :
+        // il serait republié pour une date révolue.
+        plans::Entity::update_many()
+            .col_expr(plans::Column::State, sea_orm::sea_query::Expr::value("ouvert"))
+            .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
+            .filter(plans::Column::State.eq("suspendu"))
+            .filter(plans::Column::StartsAt.gt(Utc::now().naive_utc()))
             .exec(&state.db)
             .await?;
     }

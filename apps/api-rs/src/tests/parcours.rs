@@ -311,3 +311,54 @@ async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
     let (statut, _) = service.get(&deflouté, None).await;
     assert_eq!(statut, StatusCode::FORBIDDEN, "changer le flou doit invalider");
 }
+
+/// Une pause est un aller-retour : les plans reviennent à la reprise.
+///
+/// La mise en pause faisait passer les plans ouverts à « suspendu » — et rien,
+/// nulle part, ne les en sortait. Mettre son compte en pause revenait donc à
+/// perdre ses plans pour de bon, alors que la page publique promet de
+/// reprendre quand on veut, « sans rien supprimer ».
+#[tokio::test]
+async fn reprendre_apres_une_pause_rend_ses_plans() {
+    let service = Service::monter().await;
+    service.compte("c_pause_plans", "depart").await;
+    let jeton = service.jeton("c_pause_plans");
+
+    let (statut, corps) = service
+        .post("/v1/plans", Some(&jeton), json!({
+            "title": "Un plan qui doit survivre a la pause",
+            "category": "balade",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(3)).to_rfc3339(),
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    async fn etats(service: &Service, jeton: &str) -> Vec<String> {
+        let (_, mine) = service.get("/v1/plans/mine", Some(jeton)).await;
+        mine.as_array()
+            .expect("une liste")
+            .iter()
+            .map(|p| p["state"].as_str().unwrap_or("?").to_string())
+            .collect()
+    }
+
+    let (statut, corps) = service
+        .post("/v1/me/pause", Some(&jeton), json!({ "paused": true }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        etats(&service, &jeton).await,
+        vec!["suspendu"],
+        "la pause devait retirer le plan du fil"
+    );
+
+    let (statut, corps) = service
+        .post("/v1/me/pause", Some(&jeton), json!({ "paused": false }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        etats(&service, &jeton).await,
+        vec!["ouvert"],
+        "le plan n'est pas revenu : la pause aura coûté un plan"
+    );
+}
