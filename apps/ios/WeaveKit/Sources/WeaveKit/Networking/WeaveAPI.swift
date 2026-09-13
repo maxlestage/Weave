@@ -176,6 +176,41 @@ public actor WeaveAPI {
         try await request(.get, "/v1/me")
     }
 
+    /// Relit ses critères.
+    ///
+    /// Cette lecture manquait : `PreferencesPatch` n'est qu'`Encodable`, et
+    /// l'écran des réglages affichait donc des valeurs écrites en dur quels
+    /// que soient les réglages réels.
+    public func preferences() async throws -> Preferences {
+        try await request(.get, "/v1/me/preferences")
+    }
+
+    /// Ouvre une « Escale » : le fil se compose autour d'une autre ville
+    /// pendant sept jours. Dépense un crédit « Escale ».
+    public func openEscale(city: String) async throws -> Escale {
+        try await request(
+            .post, "/v1/me/escale",
+            body: ["city": city.trimmingCharacters(in: .whitespacesAndNewlines)]
+        )
+    }
+
+    /// Ferme une escale avant son terme.
+    ///
+    /// Le crédit n'est pas rendu : il a été dépensé, et l'escale a servi.
+    /// Fermer sert à revenir chez soi plus tôt, pas à annuler un achat.
+    public func closeEscale() async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/me/escale")
+    }
+
+    /// Établit un « Bilan » sur ses plans passés. Dépense un crédit « Bilan ».
+    ///
+    /// Le serveur refuse — sans rien dépenser — quand il n'y a pas assez de
+    /// plans passés pour conclure quoi que ce soit. L'erreur porte alors le
+    /// message à afficher.
+    public func requestBilan() async throws -> Bilan {
+        try await request(.post, "/v1/me/bilan")
+    }
+
     public func updatePreferences(_ preferences: PreferencesPatch) async throws {
         let _: EmptyResponse = try await request(.patch, "/v1/me/preferences", encodable: preferences)
     }
