@@ -4,7 +4,7 @@
 //! décide si une session dure : sans elle, le jeton d'accès expire au bout de
 //! quinze minutes et rien ne le remplace.
 
-use super::{Service, SECRET};
+use super::{SECRET, Service};
 use crate::auth::emettre_jeton;
 use axum::http::StatusCode;
 use serde_json::json;
@@ -16,20 +16,33 @@ async fn session(service: &Service, nom: &str) -> (String, String) {
         .post("/v1/auth/otp/request", None, json!({ "email": email }))
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    let code = corps["devCode"].as_str().expect("le code hors production").to_string();
+    let code = corps["devCode"]
+        .as_str()
+        .expect("le code hors production")
+        .to_string();
 
     let (statut, corps) = service
-        .post("/v1/auth/otp/verify", None, json!({
-            "email": email,
-            "code": code,
-            "displayName": "Camille",
-            "birthDate": "1994-03-08",
-        }))
+        .post(
+            "/v1/auth/otp/verify",
+            None,
+            json!({
+                "email": email,
+                "code": code,
+                "displayName": "Camille",
+                "birthDate": "1994-03-08",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     (
-        corps["session"]["accessToken"].as_str().unwrap().to_string(),
-        corps["session"]["refreshToken"].as_str().unwrap().to_string(),
+        corps["session"]["accessToken"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+        corps["session"]["refreshToken"]
+            .as_str()
+            .unwrap()
+            .to_string(),
     )
 }
 
@@ -39,7 +52,11 @@ async fn une_session_se_renouvelle() {
     let (_, renouvellement) = session(&service, "renouvelle").await;
 
     let (statut, corps) = service
-        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement }))
+        .post(
+            "/v1/auth/refresh",
+            None,
+            json!({ "refreshToken": renouvellement }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -57,12 +74,20 @@ async fn un_jeton_de_renouvellement_ne_sert_qu_une_fois() {
     let (_, renouvellement) = session(&service, "rotation").await;
 
     let (statut, _) = service
-        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement.clone() }))
+        .post(
+            "/v1/auth/refresh",
+            None,
+            json!({ "refreshToken": renouvellement.clone() }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (statut, corps) = service
-        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement }))
+        .post(
+            "/v1/auth/refresh",
+            None,
+            json!({ "refreshToken": renouvellement }),
+        )
         .await;
     assert_eq!(
         statut,
@@ -75,7 +100,11 @@ async fn un_jeton_de_renouvellement_ne_sert_qu_une_fois() {
 async fn un_jeton_inconnu_ne_renouvelle_rien() {
     let service = Service::monter().await;
     let (statut, _) = service
-        .post("/v1/auth/refresh", None, json!({ "refreshToken": "aucun-jeton-de-ce-nom-nexiste-ici" }))
+        .post(
+            "/v1/auth/refresh",
+            None,
+            json!({ "refreshToken": "aucun-jeton-de-ce-nom-nexiste-ici" }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNAUTHORIZED);
 }
@@ -86,14 +115,26 @@ async fn fermer_une_session_revoque_son_jeton() {
     let (acces, renouvellement) = session(&service, "ferme").await;
 
     let (statut, _) = service
-        .post("/v1/auth/logout", Some(&acces), json!({ "refreshToken": renouvellement.clone() }))
+        .post(
+            "/v1/auth/logout",
+            Some(&acces),
+            json!({ "refreshToken": renouvellement.clone() }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (statut, _) = service
-        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement }))
+        .post(
+            "/v1/auth/refresh",
+            None,
+            json!({ "refreshToken": renouvellement }),
+        )
         .await;
-    assert_eq!(statut, StatusCode::UNAUTHORIZED, "la session fermée renouvelle encore");
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "la session fermée renouvelle encore"
+    );
 }
 
 /// Sans jeton précisé, ce sont toutes les sessions du compte qui tombent :
@@ -108,9 +149,14 @@ async fn fermer_sans_preciser_revoque_tout() {
         .post("/v1/auth/refresh", None, json!({ "refreshToken": premier }))
         .await;
     assert_eq!(statut, StatusCode::OK);
-    let second = corps["session"]["refreshToken"].as_str().unwrap().to_string();
+    let second = corps["session"]["refreshToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let (statut, _) = service.post("/v1/auth/logout", Some(&acces), json!({})).await;
+    let (statut, _) = service
+        .post("/v1/auth/logout", Some(&acces), json!({}))
+        .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (statut, _) = service
@@ -134,11 +180,15 @@ async fn supprimer_son_compte_le_sort_de_la_circulation() {
 
     // Un plan ouvert, et une demande en attente dessus.
     let (statut, plan) = service
-        .post("/v1/plans", Some(&acces), json!({
-            "title": "Une balade que personne ne fera",
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&acces),
+            json!({
+                "title": "Une balade que personne ne fera",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{plan}");
     let plan_id = plan["id"].as_str().unwrap().to_string();
@@ -146,10 +196,14 @@ async fn supprimer_son_compte_le_sort_de_la_circulation() {
     let invite = service.compte("c_invite_partant", "depart").await;
     let jeton_invite = emettre_jeton(SECRET, &invite, 900).expect("jeton émis");
     let (statut, _) = service
-        .post("/v1/requests", Some(&jeton_invite), json!({
-            "planId": plan_id,
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&jeton_invite),
+            json!({
+                "planId": plan_id,
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
@@ -187,7 +241,10 @@ async fn supprimer_son_compte_le_sort_de_la_circulation() {
     // lui répondra.
     let (statut, corps) = service.get("/v1/me", Some(&jeton_invite)).await;
     assert_eq!(statut, StatusCode::OK);
-    assert_eq!(corps["requestsLeftToday"], 4, "quota rendu ou non : {corps}");
+    assert_eq!(
+        corps["requestsLeftToday"], 4,
+        "quota rendu ou non : {corps}"
+    );
 }
 
 /// Rejouer un jeton déjà tourné doit couper toutes les sessions du compte.
@@ -207,13 +264,20 @@ async fn rejouer_un_jeton_deja_tourne_coupe_toutes_les_sessions() {
         .post("/v1/auth/refresh", None, json!({ "refreshToken": premier }))
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    let second = corps["session"]["refreshToken"].as_str().unwrap().to_string();
+    let second = corps["session"]["refreshToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Le voleur rejoue la copie qu'il détient.
     let (statut, _) = service
         .post("/v1/auth/refresh", None, json!({ "refreshToken": premier }))
         .await;
-    assert_eq!(statut, StatusCode::UNAUTHORIZED, "un jeton tourné ne vaut plus");
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "un jeton tourné ne vaut plus"
+    );
 
     // Et le jeton du porteur légitime ne vaut plus rien non plus : on ne sait
     // pas lequel des deux est le voleur, donc on coupe tout.
@@ -303,7 +367,10 @@ async fn le_plafond_de_tentatives_tient_meme_en_rafale() {
         .post("/v1/auth/otp/verify", None, mauvais.clone())
         .await;
     assert!(
-        corps["message"].as_str().unwrap_or("").contains("Trop de tentatives"),
+        corps["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Trop de tentatives"),
         "après la rafale, le code doit être épuisé — obtenu : {corps}"
     );
 }
@@ -325,11 +392,15 @@ async fn un_compte_en_suppression_ne_peut_plus_agir() {
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     let (statut, corps) = service
-        .post("/v1/plans", Some(&acces), json!({
-            "title": "Un plan publie apres la suppression",
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&acces),
+            json!({
+                "title": "Un plan publie apres la suppression",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(
         statut,
@@ -397,10 +468,17 @@ async fn se_reconnecter_sur_un_compte_supprime_est_refuse_et_explique() {
         .post("/v1/auth/otp/request", None, json!({ "email": email }))
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    let code = corps["devCode"].as_str().expect("le code hors production").to_string();
+    let code = corps["devCode"]
+        .as_str()
+        .expect("le code hors production")
+        .to_string();
 
     let (statut, corps) = service
-        .post("/v1/auth/otp/verify", None, json!({ "email": email, "code": code }))
+        .post(
+            "/v1/auth/otp/verify",
+            None,
+            json!({ "email": email, "code": code }),
+        )
         .await;
     assert_eq!(
         statut,
@@ -408,7 +486,10 @@ async fn se_reconnecter_sur_un_compte_supprime_est_refuse_et_explique() {
         "une session s'est ouverte sur un compte supprimé : {corps}"
     );
     assert!(
-        corps["message"].as_str().unwrap_or_default().contains("suppression"),
+        corps["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("suppression"),
         "le refus doit dire pourquoi : {corps}"
     );
 }
@@ -454,19 +535,27 @@ async fn supprimer_son_compte_clot_les_conversations_et_fait_taire_les_appareils
     // acceptation. Elle porte des clés étrangères qu'une insertion directe ne
     // saurait pas honorer.
     let (statut, plan) = service
-        .post("/v1/plans", Some(&acces), json!({
-            "title": "Un cafe avant de sen aller",
-            "category": "repas",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&acces),
+            json!({
+                "title": "Un cafe avant de sen aller",
+                "category": "repas",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{plan}");
 
     let (statut, demande) = service
-        .post("/v1/requests", Some(&acces_reste), json!({
-            "planId": plan["id"].as_str().unwrap(),
-            "message": "Ce cafe me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&acces_reste),
+            json!({
+                "planId": plan["id"].as_str().unwrap(),
+                "message": "Ce cafe me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{demande}");
 
@@ -478,7 +567,10 @@ async fn supprimer_son_compte_clot_les_conversations_et_fait_taire_les_appareils
         )
         .await;
     assert_eq!(statut, StatusCode::OK, "{accepte}");
-    let conversation = accepte["conversationId"].as_str().expect("conversation").to_string();
+    let conversation = accepte["conversationId"]
+        .as_str()
+        .expect("conversation")
+        .to_string();
 
     let (statut, corps) = service.delete("/v1/auth/account", Some(&acces)).await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
@@ -519,7 +611,10 @@ async fn supprimer_son_compte_clot_les_conversations_et_fait_taire_les_appareils
         "le correspondant a pu écrire à un compte supprimé : {corps}"
     );
     assert!(
-        corps["message"].as_str().unwrap_or_default().contains("close"),
+        corps["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("close"),
         "le refus doit se lire dans l'application : {corps}"
     );
 }

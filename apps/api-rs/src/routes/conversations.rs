@@ -2,28 +2,29 @@
 //!
 //! Sans accusé de lecture : savoir si l'autre a lu n'aide personne à décider.
 
+use crate::messages::Msg;
 use crate::{
+    AppState,
     auth::Authentifie,
     crypto::signer_url_media,
     entities::{accounts, conversations, messages, plans, profiles},
-    error::{introuvable, invalide, AppError, Code},
-    limitation::{consommer, Regle},
+    error::{AppError, Code, introuvable, invalide},
+    limitation::{Regle, consommer},
     live_activity,
     temps::{age_depuis, iso8601},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get},
-    Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Borne haute très large, uniquement anti-abus : une conversation entamée ne
 /// doit jamais buter sur un plafond.
@@ -83,7 +84,13 @@ async fn les_miennes(
     let plans_ids: Vec<String> = lignes.iter().map(|l| l.plan_id.clone()).collect();
     let autres_ids: Vec<String> = lignes
         .iter()
-        .map(|l| if l.host_id == compte.id { l.guest_id.clone() } else { l.host_id.clone() })
+        .map(|l| {
+            if l.host_id == compte.id {
+                l.guest_id.clone()
+            } else {
+                l.host_id.clone()
+            }
+        })
         .collect();
     let conversations_ids: Vec<String> = lignes.iter().map(|l| l.id.clone()).collect();
 
@@ -111,7 +118,8 @@ async fn les_miennes(
     // demander les messages qui tombent à cette date-là. Deux messages d'une
     // MÊME conversation à la même milliseconde en rendraient un des deux —
     // c'est l'aperçu d'une liste, et cela n'est pas arrivé.
-    let dates: Vec<chrono::NaiveDateTime> = lignes.iter().filter_map(|l| l.last_message_at).collect();
+    let dates: Vec<chrono::NaiveDateTime> =
+        lignes.iter().filter_map(|l| l.last_message_at).collect();
     let mut derniers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if !dates.is_empty() {
         for (conversation, corps) in messages::Entity::find()
@@ -163,7 +171,10 @@ async fn les_miennes(
         };
 
         let dernier: Option<&String> = derniers.get(&ligne.id);
-        let non_lus = non_lus_par_conversation.get(&ligne.id).copied().unwrap_or(0);
+        let non_lus = non_lus_par_conversation
+            .get(&ligne.id)
+            .copied()
+            .unwrap_or(0);
 
         rendues.push(json!({
             "id": ligne.id,
@@ -219,7 +230,6 @@ async fn photos_signees(
         .collect())
 }
 
-
 #[derive(Deserialize)]
 struct AvantQuand {
     /// Curseur de pagination : ne rendre que ce qui précède cette date.
@@ -243,8 +253,8 @@ async fn lire(
         .filter(messages::Column::ConversationId.eq(conversation.id.as_str()));
 
     if let Some(avant) = &page.before {
-        let borne = DateTime::parse_from_rfc3339(avant)
-            .map_err(|_| invalide("Le curseur « before » attend une date ISO 8601."))?;
+        let borne =
+            DateTime::parse_from_rfc3339(avant).map_err(|_| invalide(Msg::CurseurAvantIso8601))?;
         requete = requete.filter(messages::Column::SentAt.lt(borne.naive_utc()));
     }
 
@@ -306,13 +316,12 @@ async fn clore(
             let id = conversation.id.clone();
             let ferme_par = compte.id.clone();
             Box::pin(async move {
-                let mut close: conversations::ActiveModel = conversations::Entity::find_by_id(
-                    id.as_str(),
-                )
-                .one(tx)
-                .await?
-                .ok_or(sea_orm::DbErr::RecordNotFound(id.clone()))?
-                .into();
+                let mut close: conversations::ActiveModel =
+                    conversations::Entity::find_by_id(id.as_str())
+                        .one(tx)
+                        .await?
+                        .ok_or(sea_orm::DbErr::RecordNotFound(id.clone()))?
+                        .into();
                 close.closed_at = Set(Some(fermeture));
                 close.closed_by = Set(Some(ferme_par));
                 close.update(tx).await?;
@@ -333,7 +342,7 @@ async fn clore(
         .await
         .map_err(|erreur| {
             tracing::error!(erreur = %erreur, "clôture de conversation impossible");
-            AppError::new(Code::Internal, "Une erreur interne est survenue.")
+            AppError::new(Code::Internal, Msg::ErreurInterne.t())
         })?;
 
     live_activity::publier_au_mieux(&state, &compte.id).await;
@@ -356,17 +365,17 @@ async fn ecrire(
 
     let conversation = conversation_de(&state, &id, &compte.id).await?;
     if conversation.closed_at.is_some() {
-        return Err(invalide("Cette conversation est close."));
+        return Err(invalide(Msg::ConversationClose));
     }
 
     let texte = corps.body.trim().to_string();
     if texte.is_empty() {
-        return Err(invalide("Un message vide ne dit rien."));
+        return Err(invalide(Msg::MessageVide));
     }
     if texte.chars().count() > MESSAGE_MAX {
-        return Err(invalide(&format!(
-            "Un message ne peut pas dépasser {MESSAGE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::MessageDeDemandeTropLong {
+            maximum: MESSAGE_MAX as i64,
+        }));
     }
 
     // Les deux écritures vont ensemble : une conversation dont `lastMessageAt`
@@ -426,12 +435,12 @@ async fn conversation_de(
     let conversation = conversations::Entity::find_by_id(id.to_string())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Conversation introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::ConversationIntrouvable))?;
 
     if conversation.host_id != compte_id && conversation.guest_id != compte_id {
         return Err(AppError::new(
             Code::Forbidden,
-            "Cette conversation n'est pas la vôtre.",
+            Msg::ConversationPasLaVotre.t(),
         ));
     }
     Ok(conversation)

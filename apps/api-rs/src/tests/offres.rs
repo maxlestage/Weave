@@ -4,7 +4,7 @@
 //! enregistrer ce qu'Apple lui transmet. Aucune offre n'achète de visibilité —
 //! ce qui se vend, c'est l'horizon de publication et les plans de groupe.
 
-use super::{refuse, Service};
+use super::{Service, refuse};
 use axum::http::StatusCode;
 use sea_orm::ConnectionTrait;
 use serde_json::json;
@@ -25,13 +25,17 @@ async fn un_achat_a_l_unite_credite_le_solde() {
     service.compte("c_acheteur", "depart").await;
 
     let (statut, corps) = service
-        .post("/v1/billing/units", Some(&service.jeton("c_acheteur")), json!({
-            "signedTransaction": transaction(json!({
-                "productId": "com.weave.app.unit.renfort",
-                "transactionId": "tx-renfort-001",
-                "environment": "Sandbox",
-            })),
-        }))
+        .post(
+            "/v1/billing/units",
+            Some(&service.jeton("c_acheteur")),
+            json!({
+                "signedTransaction": transaction(json!({
+                    "productId": "com.weave.app.unit.renfort",
+                    "transactionId": "tx-renfort-001",
+                    "environment": "Sandbox",
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["alreadyApplied"], false);
@@ -55,17 +59,28 @@ async fn une_meme_transaction_ne_credite_qu_une_fois() {
     }));
 
     let (statut, premier) = service
-        .post("/v1/billing/units", Some(&service.jeton("c_rejoue")), json!({ "signedTransaction": signee.clone() }))
+        .post(
+            "/v1/billing/units",
+            Some(&service.jeton("c_rejoue")),
+            json!({ "signedTransaction": signee.clone() }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{premier}");
     assert_eq!(premier["credits"]["escale"], 1);
 
     let (statut, second) = service
-        .post("/v1/billing/units", Some(&service.jeton("c_rejoue")), json!({ "signedTransaction": signee }))
+        .post(
+            "/v1/billing/units",
+            Some(&service.jeton("c_rejoue")),
+            json!({ "signedTransaction": signee }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{second}");
     assert_eq!(second["alreadyApplied"], true);
-    assert_eq!(second["credits"]["escale"], 1, "le solde a doublé : {second}");
+    assert_eq!(
+        second["credits"]["escale"], 1,
+        "le solde a doublé : {second}"
+    );
 }
 
 #[tokio::test]
@@ -74,12 +89,16 @@ async fn un_produit_inconnu_est_refuse() {
     service.compte("c_produit", "depart").await;
 
     let (statut, _) = service
-        .post("/v1/billing/units", Some(&service.jeton("c_produit")), json!({
-            "signedTransaction": transaction(json!({
-                "productId": "com.weave.app.unit.licorne",
-                "transactionId": "tx-licorne",
-            })),
-        }))
+        .post(
+            "/v1/billing/units",
+            Some(&service.jeton("c_produit")),
+            json!({
+                "signedTransaction": transaction(json!({
+                    "productId": "com.weave.app.unit.licorne",
+                    "transactionId": "tx-licorne",
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 }
@@ -92,17 +111,25 @@ async fn un_renfort_achete_se_depense() {
     service.compte("c_boucle", "depart").await;
 
     let (statut, _) = service
-        .post("/v1/billing/units", Some(&service.jeton("c_boucle")), json!({
-            "signedTransaction": transaction(json!({
-                "productId": "com.weave.app.unit.renfort",
-                "transactionId": "tx-boucle-001",
-            })),
-        }))
+        .post(
+            "/v1/billing/units",
+            Some(&service.jeton("c_boucle")),
+            json!({
+                "signedTransaction": transaction(json!({
+                    "productId": "com.weave.app.unit.renfort",
+                    "transactionId": "tx-boucle-001",
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let (statut, corps) = service
-        .post("/v1/requests/renfort", Some(&service.jeton("c_boucle")), json!({}))
+        .post(
+            "/v1/requests/renfort",
+            Some(&service.jeton("c_boucle")),
+            json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["requestsLeftToday"], 10);
@@ -116,13 +143,17 @@ async fn une_notification_orpheline_est_ignoree() {
     let service = Service::monter().await;
 
     let (statut, corps) = service
-        .post("/v1/billing/apple/notifications", None, json!({
-            "signedPayload": transaction(json!({
-                "productId": "com.weave.app.sub.escapade.monthly",
-                "transactionId": "tx-inconnue",
-                "originalTransactionId": "orig-inconnue",
-            })),
-        }))
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": transaction(json!({
+                    "productId": "com.weave.app.sub.escapade.monthly",
+                    "transactionId": "tx-inconnue",
+                    "originalTransactionId": "orig-inconnue",
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["ignored"], true);
@@ -144,26 +175,37 @@ async fn un_abonnement_expire_retombe_au_palier_de_depart() {
         .unwrap();
 
     // Le palier d'avant : vingt-cinq demandes par jour.
-    let (_, avant) = service.get("/v1/me", Some(&service.jeton("c_expire"))).await;
+    let (_, avant) = service
+        .get("/v1/me", Some(&service.jeton("c_expire")))
+        .await;
     assert_eq!(avant["tier"], "escapade");
     assert_eq!(avant["requestsLeftToday"], 25);
 
     let hier = (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis();
     let (statut, corps) = service
-        .post("/v1/billing/apple/notifications", None, json!({
-            "signedPayload": transaction(json!({
-                "productId": "com.weave.app.sub.escapade.monthly",
-                "transactionId": "tx-expire",
-                "originalTransactionId": "orig-expire",
-                "expiresDate": hier,
-            })),
-        }))
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": transaction(json!({
+                    "productId": "com.weave.app.sub.escapade.monthly",
+                    "transactionId": "tx-expire",
+                    "originalTransactionId": "orig-expire",
+                    "expiresDate": hier,
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(corps["ignored"], false);
 
-    let (_, apres) = service.get("/v1/me", Some(&service.jeton("c_expire"))).await;
-    assert_eq!(apres["tier"], "depart", "le palier expiré a survécu : {apres}");
+    let (_, apres) = service
+        .get("/v1/me", Some(&service.jeton("c_expire")))
+        .await;
+    assert_eq!(
+        apres["tier"], "depart",
+        "le palier expiré a survécu : {apres}"
+    );
     assert_eq!(apres["requestsLeftToday"], 5);
 }
 
@@ -184,29 +226,39 @@ async fn un_renouvellement_recharge_la_dotation_sans_effacer_les_achats() {
 
     // Une escale achetée à l'unité, avant le renouvellement.
     let (statut, _) = service
-        .post("/v1/billing/units", Some(&service.jeton("c_renouvelle")), json!({
-            "signedTransaction": transaction(json!({
-                "productId": "com.weave.app.unit.escale",
-                "transactionId": "tx-escale-avant",
-            })),
-        }))
+        .post(
+            "/v1/billing/units",
+            Some(&service.jeton("c_renouvelle")),
+            json!({
+                "signedTransaction": transaction(json!({
+                    "productId": "com.weave.app.unit.escale",
+                    "transactionId": "tx-escale-avant",
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
     let demain = (chrono::Utc::now() + chrono::Duration::days(30)).timestamp_millis();
     let (statut, corps) = service
-        .post("/v1/billing/apple/notifications", None, json!({
-            "signedPayload": transaction(json!({
-                "productId": "com.weave.app.sub.escapade.monthly",
-                "transactionId": "tx-renouvelle",
-                "originalTransactionId": "orig-renouvelle",
-                "expiresDate": demain,
-            })),
-        }))
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": transaction(json!({
+                    "productId": "com.weave.app.sub.escapade.monthly",
+                    "transactionId": "tx-renouvelle",
+                    "originalTransactionId": "orig-renouvelle",
+                    "expiresDate": demain,
+                })),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
-    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_renouvelle"))).await;
+    let (_, fiche) = service
+        .get("/v1/me", Some(&service.jeton("c_renouvelle")))
+        .await;
     assert_eq!(fiche["tier"], "escapade");
     // Une escale achetée, plus celle que le palier Escapade donne chaque mois.
     assert_eq!(
@@ -241,7 +293,9 @@ async fn deux_credits_concurrents_s_additionnent() {
     a.expect("premier crédit");
     b.expect("second crédit");
 
-    let (statut, corps) = service.get("/v1/me", Some(&service.jeton("c_credits"))).await;
+    let (statut, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_credits")))
+        .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(
         corps["credits"]["horizon"], 10,
@@ -265,13 +319,19 @@ async fn une_dotation_de_periode_ne_sert_qu_une_fois() {
 
     for essai in 1..=3 {
         crate::routes::billing::doter_la_periode_pour_test(
-            &service.etat, &compte, "escale", 1, echeance,
+            &service.etat,
+            &compte,
+            "escale",
+            1,
+            echeance,
         )
         .await
         .unwrap_or_else(|e| panic!("dotation {essai} : {e:?}"));
     }
 
-    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_dotation"))).await;
+    let (_, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_dotation")))
+        .await;
     assert_eq!(
         corps["credits"]["escale"], 1,
         "trois notifications pour le même mois ont donné {} escales",
@@ -281,12 +341,18 @@ async fn une_dotation_de_periode_ne_sert_qu_une_fois() {
     // Le mois suivant, en revanche, dote de nouveau.
     let mois_suivant = (chrono::Utc::now() + chrono::Duration::days(60)).naive_utc();
     crate::routes::billing::doter_la_periode_pour_test(
-        &service.etat, &compte, "escale", 1, mois_suivant,
+        &service.etat,
+        &compte,
+        "escale",
+        1,
+        mois_suivant,
     )
     .await
     .expect("dotation du mois suivant");
 
-    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_dotation"))).await;
+    let (_, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_dotation")))
+        .await;
     assert_eq!(corps["credits"]["escale"], 2, "le mois suivant doit doter");
 }
 
@@ -307,12 +373,18 @@ async fn une_dotation_mensuelle_n_efface_pas_ce_qui_a_ete_achete() {
 
     let echeance = (chrono::Utc::now() + chrono::Duration::days(30)).naive_utc();
     crate::routes::billing::doter_la_periode_pour_test(
-        &service.etat, &compte, "escale", 1, echeance,
+        &service.etat,
+        &compte,
+        "escale",
+        1,
+        echeance,
     )
     .await
     .expect("dotation");
 
-    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_achat_escale"))).await;
+    let (_, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_achat_escale")))
+        .await;
     assert_eq!(
         corps["credits"]["escale"], 3,
         "les escales achetées ont été perdues : {}",
@@ -336,16 +408,25 @@ async fn une_escale_achetee_ouvre_le_fil_sur_une_autre_ville() {
     let jeton = service.jeton("c_escale");
 
     service
-        .put("/v1/me/profile", Some(&jeton), json!({
-            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
-        }))
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({
+                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+            }),
+        )
         .await;
 
     // Sans crédit, l'escale est refusée : c'est ce qui la fait valoir 3,99 €.
     let (statut, corps) = service
         .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lyon" }))
         .await;
-    refuse(statut, &corps, "entitlement_required", &format!("une escale sans crédit : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "entitlement_required",
+        &format!("une escale sans crédit : {corps}"),
+    );
 
     crate::routes::billing::crediter_pour_test(&service.etat, &compte, "escale", 1)
         .await
@@ -373,7 +454,12 @@ async fn une_escale_achetee_ouvre_le_fil_sur_une_autre_ville() {
     let (statut, corps) = service
         .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lille" }))
         .await;
-    refuse(statut, &corps, "validation", &format!("deux escales à la fois : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("deux escales à la fois : {corps}"),
+    );
 
     // Le crédit du second achat n'a pas été consommé par ce refus.
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
@@ -393,18 +479,26 @@ async fn le_fil_dune_escale_montre_lautre_ville() {
         ("c_lyonnais", "Lyon", 45.76, 4.84),
     ] {
         service
-            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
-                "city": ville, "latitude": lat, "longitude": lon, "gender": "autre",
-            }))
+            .put(
+                "/v1/me/profile",
+                Some(&service.jeton(nom)),
+                json!({
+                    "city": ville, "latitude": lat, "longitude": lon, "gender": "autre",
+                }),
+            )
             .await;
     }
 
     let (statut, corps) = service
-        .post("/v1/plans", Some(&service.jeton("c_lyonnais")), json!({
-            "title": "Un verre sur les quais de Saone",
-            "category": "sortie",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_lyonnais")),
+            json!({
+                "title": "Un verre sur les quais de Saone",
+                "category": "sortie",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -422,7 +516,11 @@ async fn le_fil_dune_escale_montre_lautre_ville() {
 
     let (_, fil) = service.get("/v1/plans", Some(&jeton)).await;
     let plans = fil["plans"].as_array().expect("une liste");
-    assert_eq!(plans.len(), 1, "l'escale n'a pas ouvert le fil sur Lyon : {fil}");
+    assert_eq!(
+        plans.len(),
+        1,
+        "l'escale n'a pas ouvert le fil sur Lyon : {fil}"
+    );
     assert_eq!(plans[0]["city"], "Lyon");
 }
 
@@ -445,9 +543,13 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
         ("c_demandeur", "Nantes", 47.21, -1.55),
     ] {
         service
-            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
-                "city": ville, "latitude": lat, "longitude": lon, "gender": "autre",
-            }))
+            .put(
+                "/v1/me/profile",
+                Some(&service.jeton(nom)),
+                json!({
+                    "city": ville, "latitude": lat, "longitude": lon, "gender": "autre",
+                }),
+            )
             .await;
     }
 
@@ -459,11 +561,15 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
         ("Un tournoi de flechettes obscur", "jeux"),
     ] {
         let (statut, corps) = service
-            .post("/v1/plans", Some(&jeton), json!({
-                "title": titre,
-                "category": categorie,
-                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-            }))
+            .post(
+                "/v1/plans",
+                Some(&jeton),
+                json!({
+                    "title": titre,
+                    "category": categorie,
+                    "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+                }),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
         publies.push(corps["id"].as_str().unwrap().to_string());
@@ -472,10 +578,14 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
     // Une demande sur les deux premiers seulement.
     for plan in publies.iter().take(2) {
         let (statut, corps) = service
-            .post("/v1/requests", Some(&service.jeton("c_demandeur")), json!({
-                "planId": plan,
-                "message": "Ce plan me tente beaucoup, je serais ravi de venir.",
-            }))
+            .post(
+                "/v1/requests",
+                Some(&service.jeton("c_demandeur")),
+                json!({
+                    "planId": plan,
+                    "message": "Ce plan me tente beaucoup, je serais ravi de venir.",
+                }),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
@@ -488,7 +598,12 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
     // La règle du crédit est tenue ailleurs, par
     // `un_palier_sans_bilan_exige_toujours_le_credit` — vérifié en la retirant.
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    refuse(statut, &corps, "validation", &format!("un bilan sur des plans à venir : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("un bilan sur des plans à venir : {corps}"),
+    );
 
     crate::routes::billing::crediter_pour_test(&service.etat, &auteur, "bilan", 1)
         .await
@@ -497,7 +612,12 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
     // Les plans sont encore à venir : le bilan doit refuser, et ne pas
     // consommer le crédit — un plan à venir n'a pas fini de recevoir.
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    refuse(statut, &corps, "validation", &format!("un bilan sur des plans à venir : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("un bilan sur des plans à venir : {corps}"),
+    );
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
     assert_eq!(moi["credits"]["bilan"], 1, "un refus a mangé le crédit");
 
@@ -520,7 +640,10 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
     // Ce qui attire vient en tête, ce qui tombe à plat en tête de l'autre.
     assert_eq!(bilan["cequiAttire"][0]["demandes"], 1);
     assert_eq!(bilan["ceQuiTombeAPlat"][0]["demandes"], 0);
-    assert_eq!(bilan["ceQuiTombeAPlat"][0]["titre"], "Un tournoi de flechettes obscur");
+    assert_eq!(
+        bilan["ceQuiTombeAPlat"][0]["titre"],
+        "Un tournoi de flechettes obscur"
+    );
 
     // Et le crédit est dépensé, cette fois.
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
@@ -544,12 +667,18 @@ async fn un_bilan_sans_matiere_ne_coute_pas_le_credit() {
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
     refuse(statut, &corps, "validation", &format!("{corps}"));
     assert!(
-        corps["message"].as_str().unwrap_or_default().contains("n'a pas été utilisé"),
+        corps["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("n'a pas été utilisé"),
         "le refus doit dire que le crédit est intact : {corps}"
     );
 
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
-    assert_eq!(moi["credits"]["bilan"], 1, "le crédit a été consommé pour rien");
+    assert_eq!(
+        moi["credits"]["bilan"], 1,
+        "le crédit a été consommé pour rien"
+    );
 }
 
 /// Une transaction forgée est refusée par la route.
@@ -559,7 +688,7 @@ async fn un_bilan_sans_matiere_ne_coute_pas_le_credit() {
 /// annonçant le produit de son choix et s'offrir l'abonnement le plus cher.
 #[tokio::test]
 async fn une_transaction_forgee_est_refusee() {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
     let service = Service::monter().await;
     service.compte("c_forgeur", "depart").await;
@@ -570,17 +699,34 @@ async fn une_transaction_forgee_est_refusee() {
         "originalTransactionId": "forgee-1",
         "bundleId": "com.weave.app",
     });
-    let forgee = format!("entete.{}.signature", URL_SAFE_NO_PAD.encode(charge.to_string()));
+    let forgee = format!(
+        "entete.{}.signature",
+        URL_SAFE_NO_PAD.encode(charge.to_string())
+    );
 
     let (statut, corps) = service
-        .post("/v1/billing/subscriptions", Some(&service.jeton("c_forgeur")), json!({
-            "signedTransaction": forgee,
-        }))
+        .post(
+            "/v1/billing/subscriptions",
+            Some(&service.jeton("c_forgeur")),
+            json!({
+                "signedTransaction": forgee,
+            }),
+        )
         .await;
-    refuse(statut, &corps, "validation", &format!("une transaction forgée a été acceptée : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("une transaction forgée a été acceptée : {corps}"),
+    );
 
-    let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_forgeur"))).await;
-    assert_eq!(moi["tier"], "depart", "le palier a été accordé sans paiement");
+    let (_, moi) = service
+        .get("/v1/me", Some(&service.jeton("c_forgeur")))
+        .await;
+    assert_eq!(
+        moi["tier"], "depart",
+        "le palier a été accordé sans paiement"
+    );
 }
 
 /// Un achat fait dans une AUTRE application ne compte pas ici.
@@ -603,9 +749,13 @@ async fn une_transaction_emise_pour_une_autre_application_est_refusee() {
     }));
 
     let (statut, corps) = service
-        .post("/v1/billing/subscriptions", Some(&service.jeton("c_rejeu")), json!({
-            "signedTransaction": signee,
-        }))
+        .post(
+            "/v1/billing/subscriptions",
+            Some(&service.jeton("c_rejeu")),
+            json!({
+                "signedTransaction": signee,
+            }),
+        )
         .await;
     assert_ne!(
         statut,
@@ -614,7 +764,10 @@ async fn une_transaction_emise_pour_une_autre_application_est_refusee() {
     );
 
     let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_rejeu"))).await;
-    assert_eq!(moi["tier"], "depart", "le palier a été accordé sur l'achat d'autrui");
+    assert_eq!(
+        moi["tier"], "depart",
+        "le palier a été accordé sur l'achat d'autrui"
+    );
 }
 
 /// Une transaction trop ancienne est refusée.
@@ -635,11 +788,20 @@ async fn une_transaction_trop_ancienne_est_refusee() {
     }));
 
     let (statut, corps) = service
-        .post("/v1/billing/subscriptions", Some(&service.jeton("c_vieille")), json!({
-            "signedTransaction": signee,
-        }))
+        .post(
+            "/v1/billing/subscriptions",
+            Some(&service.jeton("c_vieille")),
+            json!({
+                "signedTransaction": signee,
+            }),
+        )
         .await;
-    refuse(statut, &corps, "validation", &format!("une transaction d'il y a deux jours : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("une transaction d'il y a deux jours : {corps}"),
+    );
 }
 
 /// Un palier qui comprend le bilan ne fait pas payer deux fois.
@@ -659,19 +821,31 @@ async fn un_palier_qui_comprend_le_bilan_ne_fait_pas_payer_deux_fois() {
 
     for nom in ["c_expedition", "c_curieux_exp"] {
         service
-            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
-                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
-            }))
+            .put(
+                "/v1/me/profile",
+                Some(&service.jeton(nom)),
+                json!({
+                    "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+                }),
+            )
             .await;
     }
 
-    for titre in ["Un cafe sur la place", "Une balade au bord de leau", "Un concert au hangar"] {
+    for titre in [
+        "Un cafe sur la place",
+        "Une balade au bord de leau",
+        "Un concert au hangar",
+    ] {
         let (statut, corps) = service
-            .post("/v1/plans", Some(&jeton), json!({
-                "title": titre,
-                "category": "sortie",
-                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-            }))
+            .post(
+                "/v1/plans",
+                Some(&jeton),
+                json!({
+                    "title": titre,
+                    "category": "sortie",
+                    "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+                }),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
@@ -685,10 +859,17 @@ async fn un_palier_qui_comprend_le_bilan_ne_fait_pas_payer_deux_fois() {
 
     // Aucun crédit acheté, et pourtant le bilan doit sortir.
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
-    assert_eq!(moi["credits"]["bilan"], 0, "le test doit partir sans crédit");
+    assert_eq!(
+        moi["credits"]["bilan"], 0,
+        "le test doit partir sans crédit"
+    );
 
     let (statut, bilan) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    assert_eq!(statut, StatusCode::OK, "le bilan inclus a été refusé : {bilan}");
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "le bilan inclus a été refusé : {bilan}"
+    );
     assert_eq!(bilan["plansPasses"], 3);
 
     // Le second du même mois, lui, se paie : l'abonnement en comprend un.
@@ -717,18 +898,30 @@ async fn un_palier_sans_bilan_exige_toujours_le_credit() {
     let jeton = service.jeton("c_viree_bilan");
 
     service
-        .put("/v1/me/profile", Some(&jeton), json!({
-            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
-        }))
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({
+                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+            }),
+        )
         .await;
 
-    for titre in ["Un premier plan a soi", "Un deuxieme plan a soi", "Un troisieme plan a soi"] {
+    for titre in [
+        "Un premier plan a soi",
+        "Un deuxieme plan a soi",
+        "Un troisieme plan a soi",
+    ] {
         service
-            .post("/v1/plans", Some(&jeton), json!({
-                "title": titre,
-                "category": "sortie",
-                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-            }))
+            .post(
+                "/v1/plans",
+                Some(&jeton),
+                json!({
+                    "title": titre,
+                    "category": "sortie",
+                    "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+                }),
+            )
             .await;
     }
     service
@@ -740,7 +933,12 @@ async fn un_palier_sans_bilan_exige_toujours_le_credit() {
         .unwrap();
 
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    refuse(statut, &corps, "entitlement_required", &format!("« Virée » ne comprend pas le bilan : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "entitlement_required",
+        &format!("« Virée » ne comprend pas le bilan : {corps}"),
+    );
 }
 
 /// Les critères vendus par palier sont refusés à qui ne les a pas.
@@ -758,7 +956,11 @@ async fn les_criteres_vendus_sont_refuses_au_socle_gratuit() {
     // Ce que le socle garde : restreindre l'âge et la distance viderait le fil
     // de tout réglage utile.
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "minAge": 25, "maxDistanceKm": 40 }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "minAge": 25, "maxDistanceKm": 40 }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -770,13 +972,22 @@ async fn les_criteres_vendus_sont_refuses_au_socle_gratuit() {
         let (statut, corps) = service
             .patch("/v1/me/preferences", Some(&jeton), json!({ champ: valeur }))
             .await;
-        refuse(statut, &corps, "entitlement_required", &format!("« {champ} » accepté au socle : {corps}"));
+        refuse(
+            statut,
+            &corps,
+            "entitlement_required",
+            &format!("« {champ} » accepté au socle : {corps}"),
+        );
     }
 
     // Vider reste possible : sinon, quelqu'un dont l'abonnement expire ne
     // pourrait plus défaire ce qu'il avait posé.
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "categories": [] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "categories": [] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "vider a été refusé : {corps}");
 }
@@ -795,23 +1006,37 @@ async fn un_palier_retombe_ne_laisse_pas_les_criteres_derriere_lui() {
     let jeton = service.jeton("c_retombe");
 
     service
-        .put("/v1/me/profile", Some(&jeton), json!({
-            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
-        }))
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({
+                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+            }),
+        )
         .await;
 
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "categories": ["balade"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "categories": ["balade"] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
-    assert_eq!(criteres["categories"], json!(["balade"]), "le critère devait être posé");
+    assert_eq!(
+        criteres["categories"],
+        json!(["balade"]),
+        "le critère devait être posé"
+    );
 
     // L'abonnement expire : le palier retombe au socle.
     service
         .db
-        .execute_unprepared(&format!("UPDATE subscriptions SET tier='depart' WHERE accountId='{compte}'"))
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET tier='depart' WHERE accountId='{compte}'"
+        ))
         .await
         .unwrap();
     crate::auth::oublier_compte(&service.etat, &compte).await;
@@ -838,22 +1063,33 @@ async fn le_filtre_par_jour_retient_le_bon_jour() {
 
     for nom in ["c_jours", "c_hote_jours"] {
         service
-            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
-                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
-            }))
+            .put(
+                "/v1/me/profile",
+                Some(&service.jeton(nom)),
+                json!({
+                    "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+                }),
+            )
             .await;
     }
 
     // Deux plans à deux jours différents, tous deux à venir.
     let dans_deux = chrono::Utc::now() + chrono::Duration::days(2);
     let dans_trois = chrono::Utc::now() + chrono::Duration::days(3);
-    for (titre, quand) in [("Le plan du premier jour", dans_deux), ("Le plan du second jour", dans_trois)] {
+    for (titre, quand) in [
+        ("Le plan du premier jour", dans_deux),
+        ("Le plan du second jour", dans_trois),
+    ] {
         let (statut, corps) = service
-            .post("/v1/plans", Some(&service.jeton("c_hote_jours")), json!({
-                "title": titre,
-                "category": "balade",
-                "startsAt": quand.to_rfc3339(),
-            }))
+            .post(
+                "/v1/plans",
+                Some(&service.jeton("c_hote_jours")),
+                json!({
+                    "title": titre,
+                    "category": "balade",
+                    "startsAt": quand.to_rfc3339(),
+                }),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
@@ -865,7 +1101,11 @@ async fn le_filtre_par_jour_retient_le_bon_jour() {
     // Avec le jour du premier seulement, il ne reste que lui.
     let jour_retenu = dans_deux.weekday().number_from_monday() as i32;
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "days": [jour_retenu] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "days": [jour_retenu] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -884,9 +1124,18 @@ async fn un_jour_hors_semaine_est_refuse() {
 
     for faux in [0, 8, -1, 42] {
         let (statut, corps) = service
-            .patch("/v1/me/preferences", Some(&jeton), json!({ "days": [faux] }))
+            .patch(
+                "/v1/me/preferences",
+                Some(&jeton),
+                json!({ "days": [faux] }),
+            )
             .await;
-        refuse(statut, &corps, "validation", &format!("« {faux} » accepté comme jour : {corps}"));
+        refuse(
+            statut,
+            &corps,
+            "validation",
+            &format!("« {faux} » accepté comme jour : {corps}"),
+        );
     }
 }
 
@@ -919,10 +1168,17 @@ async fn le_credit_horizon_s_arrete_a_ce_qu_il_annonce() {
 
     // Au-delà du palier mais dans la borne du crédit : accepté, un crédit part.
     let (statut, corps) = service.post("/v1/plans", Some(&jeton), plan(30)).await;
-    assert_eq!(statut, StatusCode::OK, "le crédit n'a pas ouvert l'horizon : {corps}");
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "le crédit n'a pas ouvert l'horizon : {corps}"
+    );
 
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
-    assert_eq!(moi["credits"]["horizon"], 4, "le crédit n'a pas été dépensé : {moi}");
+    assert_eq!(
+        moi["credits"]["horizon"], 4,
+        "le crédit n'a pas été dépensé : {moi}"
+    );
 
     // Au-delà de la borne : refusé, et SANS prélever de crédit — on ne fait pas
     // payer un refus.
@@ -936,7 +1192,10 @@ async fn le_credit_horizon_s_arrete_a_ce_qu_il_annonce() {
     );
 
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
-    assert_eq!(moi["credits"]["horizon"], 4, "un refus a coûté un crédit : {moi}");
+    assert_eq!(
+        moi["credits"]["horizon"], 4,
+        "un refus a coûté un crédit : {moi}"
+    );
 }
 
 /// « Distance fine » est vendue à partir de l'Escapade, et se réglait au
@@ -952,17 +1211,37 @@ async fn la_distance_fine_ne_vaut_qu_aux_paliers_qui_l_achetent() {
 
     // Au palier gratuit et à la Virée, le rayon se rabat sur un cran.
     for palier in ["depart", "viree"] {
-        assert_eq!(rayon_effectif(palier, 27), 25, "{palier} : 27 km devrait valoir 25");
-        assert_eq!(rayon_effectif(palier, 63), 50, "{palier} : 63 km devrait valoir 50");
+        assert_eq!(
+            rayon_effectif(palier, 27),
+            25,
+            "{palier} : 27 km devrait valoir 25"
+        );
+        assert_eq!(
+            rayon_effectif(palier, 63),
+            50,
+            "{palier} : 63 km devrait valoir 50"
+        );
         // Jamais moins que le plus petit cran : rabattre vers le bas viderait
         // le fil de quelqu'un qui n'a rien demandé.
-        assert_eq!(rayon_effectif(palier, 3), 10, "{palier} : un rayon minuscule remonte au cran");
+        assert_eq!(
+            rayon_effectif(palier, 3),
+            10,
+            "{palier} : un rayon minuscule remonte au cran"
+        );
     }
 
     // À partir de l'Escapade, le réglage vaut au kilomètre près.
     for palier in ["escapade", "expedition", "grandtour"] {
-        assert_eq!(rayon_effectif(palier, 27), 27, "{palier} achète la distance fine");
-        assert_eq!(rayon_effectif(palier, 63), 63, "{palier} achète la distance fine");
+        assert_eq!(
+            rayon_effectif(palier, 27),
+            27,
+            "{palier} achète la distance fine"
+        );
+        assert_eq!(
+            rayon_effectif(palier, 63),
+            63,
+            "{palier} achète la distance fine"
+        );
     }
 }
 
@@ -977,12 +1256,19 @@ async fn le_rayon_choisi_survit_a_la_perte_de_l_offre() {
     let jeton = service.jeton("c_rayon");
 
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "maxDistanceKm": 27 }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "maxDistanceKm": 27 }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
-    assert_eq!(criteres["maxDistanceKm"], 27, "le réglage a été écrasé : {criteres}");
+    assert_eq!(
+        criteres["maxDistanceKm"], 27,
+        "le réglage a été écrasé : {criteres}"
+    );
     assert_eq!(
         criteres["effectiveDistanceKm"], 25,
         "le fil doit dire ce qu'il applique vraiment : {criteres}"
@@ -1023,15 +1309,22 @@ async fn le_fil_retient_le_rayon_rabattu_et_non_celui_enregistre() {
 async fn fil_voit(service: &Service, nom: &str, plan: &str) -> bool {
     let jeton = service.jeton(nom);
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "maxDistanceKm": 27 }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "maxDistanceKm": 27 }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     // Le fil vit quelques minutes en cache : sans cet oubli, on relirait la
     // composition d'avant le réglage.
-    crate::cache::oublier(&service.etat.cache, &crate::cache::cles::fil(&service.id(nom)))
-        .await
-        .ok();
+    crate::cache::oublier(
+        &service.etat.cache,
+        &crate::cache::cles::fil(&service.id(nom)),
+    )
+    .await
+    .ok();
 
     let (statut, corps) = service.get("/v1/plans", Some(&jeton)).await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
@@ -1091,7 +1384,10 @@ async fn deux_escales_simultanees_ne_depensent_qu_un_credit() {
         service.post("/v1/me/escale", Some(&jeton), corps.clone()),
         service.post("/v1/me/escale", Some(&jeton), corps.clone()),
     );
-    let reussies = [a, b, c].iter().filter(|(s, _)| *s == StatusCode::OK).count();
+    let reussies = [a, b, c]
+        .iter()
+        .filter(|(s, _)| *s == StatusCode::OK)
+        .count();
     assert_eq!(reussies, 1, "une seule ouverture doit aboutir");
 
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
@@ -1122,4 +1418,3 @@ async fn une_escale_sans_credit_n_ouvre_rien() {
         "une escale a été ouverte sans être payée : {criteres}"
     );
 }
-

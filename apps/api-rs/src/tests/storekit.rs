@@ -10,10 +10,10 @@
 //! d'Apple ; tout le reste du chemin est celui de la production.
 
 use base64::{
-    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
     Engine,
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
 };
-use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 use p256::pkcs8::DecodePrivateKey;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, KeyUsagePurpose,
@@ -93,9 +93,9 @@ pub fn transaction_signee(mut claims: Value) -> String {
     objet
         .entry("environment")
         .or_insert_with(|| Value::String("sandbox".to_string()));
-    objet.entry("signedDate").or_insert_with(|| {
-        Value::Number(chrono::Utc::now().timestamp_millis().into())
-    });
+    objet
+        .entry("signedDate")
+        .or_insert_with(|| Value::Number(chrono::Utc::now().timestamp_millis().into()));
 
     let ca = autorite();
     let entete = serde_json::json!({

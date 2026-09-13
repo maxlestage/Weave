@@ -64,9 +64,15 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
         // rapprochait. Une divergence ferait annoncer un âge et en appliquer
         // un autre, sur la règle qui compte le plus pour ce produit.
         ("MIN_AGE", crate::routes::auth::AGE_MINIMUM as i64),
-        ("MAX_OPEN_PLANS", crate::routes::plans::MAX_PLANS_OUVERTS as i64),
+        (
+            "MAX_OPEN_PLANS",
+            crate::routes::plans::MAX_PLANS_OUVERTS as i64,
+        ),
         ("RENFORT_GRANT", crate::droits::RENFORT_GRANT),
-        ("DEFAULT_RADIUS_KM", crate::routes::fil::RAYON_DEFAUT_KM as i64),
+        (
+            "DEFAULT_RADIUS_KM",
+            crate::routes::fil::RAYON_DEFAUT_KM as i64,
+        ),
         ("MAX_RADIUS_KM", crate::routes::me::RAYON_MAXIMUM_KM as i64),
         // `FEED_TTL_SECONDS` reste hors de cette liste : le contrat l'écrit
         // « 5 * 60 », que ce test refuse d'évaluer — et à raison. C'est par
@@ -77,18 +83,39 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
             "MESSAGE_RETENTION_DAYS",
             crate::routes::conversations::RETENTION_MESSAGES_JOURS,
         ),
-        ("PLAN_TITLE_MIN_CHARS", crate::routes::plans::TITRE_MIN as i64),
-        ("PLAN_TITLE_MAX_CHARS", crate::routes::plans::TITRE_MAX as i64),
+        (
+            "PLAN_TITLE_MIN_CHARS",
+            crate::routes::plans::TITRE_MIN as i64,
+        ),
+        (
+            "PLAN_TITLE_MAX_CHARS",
+            crate::routes::plans::TITRE_MAX as i64,
+        ),
         ("PLAN_NOTE_MAX_CHARS", crate::routes::plans::NOTE_MAX as i64),
-        ("PLAN_MIN_LEAD_MINUTES", crate::routes::plans::DELAI_MINIMUM_MINUTES),
-        ("PLAN_CAPACITY_SOLO", crate::routes::plans::CAPACITE_SOLO as i64),
+        (
+            "PLAN_MIN_LEAD_MINUTES",
+            crate::routes::plans::DELAI_MINIMUM_MINUTES,
+        ),
+        (
+            "PLAN_CAPACITY_SOLO",
+            crate::routes::plans::CAPACITE_SOLO as i64,
+        ),
         (
             "PLAN_CAPACITY_GROUP_MAX",
             crate::routes::plans::CAPACITE_GROUPE_MAX as i64,
         ),
-        ("REQUEST_MIN_CHARS", crate::routes::requests::MESSAGE_MIN as i64),
-        ("REQUEST_MAX_CHARS", crate::routes::requests::MESSAGE_MAX as i64),
-        ("BIO_MAX_CHARS", crate::routes::me::BIO_MAX_CARACTERES as i64),
+        (
+            "REQUEST_MIN_CHARS",
+            crate::routes::requests::MESSAGE_MIN as i64,
+        ),
+        (
+            "REQUEST_MAX_CHARS",
+            crate::routes::requests::MESSAGE_MAX as i64,
+        ),
+        (
+            "BIO_MAX_CHARS",
+            crate::routes::me::BIO_MAX_CARACTERES as i64,
+        ),
     ];
 
     let mut ecarts = Vec::new();
@@ -150,7 +177,8 @@ fn les_categories_de_plan_sont_les_memes_des_deux_cotes() {
     de_l_api.sort();
 
     assert_eq!(
-        du_contrat, de_l_api,
+        du_contrat,
+        de_l_api,
         "les catégories divergent : le contrat en déclare {} et l'API en accepte {}",
         du_contrat.len(),
         de_l_api.len()
@@ -225,8 +253,7 @@ fn sources_contiennent(racine: &std::path::Path, aiguille: &str) -> bool {
                 return true;
             }
         } else if chemin.extension().is_some_and(|e| e == "rs")
-            && std::fs::read_to_string(&chemin)
-                .is_ok_and(|contenu| contenu.contains(aiguille))
+            && std::fs::read_to_string(&chemin).is_ok_and(|contenu| contenu.contains(aiguille))
         {
             return true;
         }
@@ -249,14 +276,20 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
         // Le dépôt iOS peut être absent d'une copie partielle. Le dire plutôt
         // que d'échouer : ce test garde un accord, il ne réclame pas un
         // fichier.
-        eprintln!("modèles iOS absents en {} — accord non vérifié", racine.display());
+        eprintln!(
+            "modèles iOS absents en {} — accord non vérifié",
+            racine.display()
+        );
         return;
     }
     // Les constantes sont réparties entre les fichiers de modèle : les
     // chercher toutes plutôt que d'en nommer un seul, sinon déplacer une
     // constante suffirait à désarmer le test sans que personne ne le voie.
     let mut source = String::new();
-    for entree in std::fs::read_dir(&racine).expect("modèles lisibles").flatten() {
+    for entree in std::fs::read_dir(&racine)
+        .expect("modèles lisibles")
+        .flatten()
+    {
         if entree.path().extension().is_some_and(|e| e == "swift") {
             source.push_str(&std::fs::read_to_string(entree.path()).expect("modèle lisible"));
             source.push('\n');
@@ -327,8 +360,18 @@ fn la_date_affichee_est_celle_de_la_version_en_vigueur() {
     let affichee = chaine_du_contrat(&source, "POLICY_UPDATED_LABEL");
 
     let mois = [
-        "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
-        "octobre", "novembre", "décembre",
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre",
     ];
     let (annee, reste) = version.split_once('-').expect("version ISO : AAAA-MM-JJ");
     let (mois_iso, jour) = reste.split_once('-').expect("version ISO : AAAA-MM-JJ");
@@ -479,11 +522,13 @@ fn le_credit_horizon_ne_depasse_pas_ce_qu_il_annonce() {
         "le catalogue annonce autre chose que soixante jours : « {annonce} »"
     );
     assert_eq!(
-        crate::droits::HORIZON_CREDIT_JOURS, 60,
+        crate::droits::HORIZON_CREDIT_JOURS,
+        60,
         "la borne du crédit ne correspond plus à ce qui est vendu"
     );
     assert!(
-        crate::droits::HORIZON_CREDIT_JOURS <= crate::droits::droits_pour("grandtour").jours_a_l_avance,
+        crate::droits::HORIZON_CREDIT_JOURS
+            <= crate::droits::droits_pour("grandtour").jours_a_l_avance,
         "un crédit à l'unité donnerait plus que l'abonnement le plus cher"
     );
 }
@@ -501,8 +546,8 @@ fn le_credit_horizon_ne_depasse_pas_ce_qu_il_annonce() {
 /// date recopiée — une copie se désynchroniserait sans que rien ne le dise.
 #[test]
 fn la_politique_affiche_la_date_de_la_version_consentie() {
-    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../web/src/pages/documents.ts");
+    let chemin =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/src/pages/documents.ts");
     let Ok(source) = std::fs::read_to_string(&chemin) else {
         eprintln!("site absent en {} — accord non vérifié", chemin.display());
         return;
@@ -539,7 +584,10 @@ fn la_politique_affiche_la_date_de_la_version_consentie() {
 fn les_adresses_appelees_par_l_application_existent_dans_le_routeur() {
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
     if !racine.is_dir() {
-        eprintln!("application iOS absente en {} — accord non vérifié", racine.display());
+        eprintln!(
+            "application iOS absente en {} — accord non vérifié",
+            racine.display()
+        );
         return;
     }
 
@@ -585,7 +633,10 @@ fn le_client_reseau_ne_decode_aucune_date_sans_millisecondes() {
     let reseau = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../ios/WeaveKit/Sources/WeaveKit/Networking");
     if !reseau.is_dir() {
-        eprintln!("client iOS absent en {} — accord non vérifié", reseau.display());
+        eprintln!(
+            "client iOS absent en {} — accord non vérifié",
+            reseau.display()
+        );
         return;
     }
 
@@ -599,7 +650,10 @@ fn le_client_reseau_ne_decode_aucune_date_sans_millisecondes() {
     );
 
     let mut fautifs = Vec::new();
-    for entree in std::fs::read_dir(&reseau).expect("le répertoire réseau").flatten() {
+    for entree in std::fs::read_dir(&reseau)
+        .expect("le répertoire réseau")
+        .flatten()
+    {
         let chemin = entree.path();
         if chemin.extension().is_some_and(|e| e == "swift") {
             let source = std::fs::read_to_string(&chemin).unwrap_or_default();
@@ -620,7 +674,10 @@ fn le_client_reseau_ne_decode_aucune_date_sans_millisecondes() {
 fn adresses_du_routeur() -> std::collections::BTreeSet<String> {
     let mut adresses = std::collections::BTreeSet::new();
     let routes = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes");
-    for entree in std::fs::read_dir(routes).expect("le répertoire des routes").flatten() {
+    for entree in std::fs::read_dir(routes)
+        .expect("le répertoire des routes")
+        .flatten()
+    {
         let source = std::fs::read_to_string(entree.path()).unwrap_or_default();
         let mut reste = source.as_str();
         // `.route(` peut être suivi d'un retour à la ligne : la déclaration de
@@ -628,7 +685,10 @@ fn adresses_du_routeur() -> std::collections::BTreeSet<String> {
         while let Some(i) = reste.find(".route(") {
             reste = &reste[i + ".route(".len()..];
             let apres = reste.trim_start();
-            if let Some(fin) = apres.strip_prefix('"').and_then(|s| s.find('"').map(|f| &s[..f])) {
+            if let Some(fin) = apres
+                .strip_prefix('"')
+                .and_then(|s| s.find('"').map(|f| &s[..f]))
+            {
                 adresses.insert(normaliser_parametres(fin));
             }
         }
@@ -641,7 +701,9 @@ fn adresses_appelees(racine: &std::path::Path) -> std::collections::BTreeSet<Str
     let mut adresses = std::collections::BTreeSet::new();
     let mut a_visiter = vec![racine.to_path_buf()];
     while let Some(chemin) = a_visiter.pop() {
-        let Ok(entrees) = std::fs::read_dir(&chemin) else { continue };
+        let Ok(entrees) = std::fs::read_dir(&chemin) else {
+            continue;
+        };
         for entree in entrees.flatten() {
             let chemin = entree.path();
             if chemin.is_dir() {
@@ -771,7 +833,11 @@ fn prix_du_catalogue(source: &str, champ: &str, valeur: &str) -> i64 {
     let debut = source
         .find(&marque)
         .unwrap_or_else(|| panic!("« {valeur} » a disparu du catalogue"));
-    let cle = if champ == "sku" { "priceCents: " } else { "monthlyPriceCents: " };
+    let cle = if champ == "sku" {
+        "priceCents: "
+    } else {
+        "monthlyPriceCents: "
+    };
     let apres = source[debut..]
         .find(cle)
         .unwrap_or_else(|| panic!("« {valeur} » n'a pas de prix"))
@@ -819,7 +885,10 @@ fn les_vocabulaires_de_l_application_ios_sont_ceux_du_contrat() {
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../ios/WeaveKit/Sources/WeaveKit/Models");
     if !racine.is_dir() {
-        eprintln!("modèles iOS absents en {} — accord non vérifié", racine.display());
+        eprintln!(
+            "modèles iOS absents en {} — accord non vérifié",
+            racine.display()
+        );
         return;
     }
 
@@ -832,16 +901,32 @@ fn les_vocabulaires_de_l_application_ios_sont_ceux_du_contrat() {
 
     // Chaque ligne : le fichier Swift, l'énumération, et la liste de référence.
     for (fichier, enumeration, reference) in [
-        ("Gender.swift", "Gender", liste_du_contrat(&contrat, "GENDERS")),
-        ("Plan.swift", "PlanState", liste_du_type(&domaine, "PlanState")),
+        (
+            "Gender.swift",
+            "Gender",
+            liste_du_contrat(&contrat, "GENDERS"),
+        ),
+        (
+            "Plan.swift",
+            "PlanState",
+            liste_du_type(&domaine, "PlanState"),
+        ),
         // Les motifs de signalement ne passent pas par le contrat partagé :
         // le site n'en a pas l'usage. L'accord se tient donc directement
         // entre l'application et la route qui les refuse.
-        ("Moderation.swift", "ReportReason", trier(&crate::routes::moderation::MOTIFS)),
+        (
+            "Moderation.swift",
+            "ReportReason",
+            trier(&crate::routes::moderation::MOTIFS),
+        ),
         // Un objet de consentement que l'application nommerait autrement se
         // ferait refuser par la route, et l'accord ne pourrait pas être donné
         // — le traitement resterait bloqué sans que rien ne dise pourquoi.
-        ("Consentement.swift", "ConsentKind", liste_du_contrat(&contrat, "CONSENT_KINDS")),
+        (
+            "Consentement.swift",
+            "ConsentKind",
+            liste_du_contrat(&contrat, "CONSENT_KINDS"),
+        ),
     ] {
         let source = std::fs::read_to_string(racine.join(fichier))
             .unwrap_or_else(|e| panic!("{fichier} illisible : {e}"));
@@ -939,7 +1024,10 @@ fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../ios/WeaveKit/Sources/WeaveKit/Models/Account.swift");
     let Ok(source) = std::fs::read_to_string(&chemin) else {
-        eprintln!("modèle iOS absent en {} — accord non vérifié", chemin.display());
+        eprintln!(
+            "modèle iOS absent en {} — accord non vérifié",
+            chemin.display()
+        );
         return;
     };
 
@@ -962,5 +1050,146 @@ fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
             cote_ios, cote_serveur,
             "« {palier} » : l'application propose {cote_ios}, le serveur accepte {cote_serveur}"
         );
+    }
+}
+
+/// Chaque requête de l'application iOS annonce la langue de son utilisateur.
+///
+/// Le service traduit ses messages, et l'application les rend TELS QUELS —
+/// `WeaveAPI.swift` le dit de son `message`. Mais il n'a qu'un seul moyen de
+/// savoir dans quelle langue répondre : l'en-tête `Accept-Language`. Une
+/// requête qui l'omet reçoit du français, et une application anglaise affiche
+/// « Ce plan est complet. » au milieu de son propre texte.
+///
+/// L'oubli ne casse rien de visible côté Swift : la requête part, le serveur
+/// répond, les données arrivent. Seule la langue du refus change — et on ne
+/// s'en aperçoit qu'en lisant une erreur, sur un téléphone réglé dans une
+/// autre langue que la sienne.
+#[test]
+fn chaque_requete_ios_annonce_sa_langue() {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/ios/WeaveKit/Sources/WeaveKit/Networking/WeaveAPI.swift");
+    let source = std::fs::read_to_string(&chemin)
+        .unwrap_or_else(|e| panic!("WeaveAPI.swift illisible en {} : {e}", chemin.display()));
+
+    // Chaque `URLRequest(url:` ouvre la construction d'une requête. L'en-tête
+    // doit être posé avant que celle-ci ne parte.
+    let constructions = source.matches("URLRequest(url:").count();
+    assert!(
+        constructions > 0,
+        "aucune construction de requête trouvée : le fichier a changé de forme"
+    );
+
+    let annonces = source
+        .matches("forHTTPHeaderField: \"Accept-Language\"")
+        .count();
+    assert_eq!(
+        annonces, constructions,
+        "{constructions} requêtes construites mais {annonces} annoncent leur langue : \
+         l'une d'elles recevra du français quoi qu'il arrive"
+    );
+
+    // L'en-tête vient des langues du système, et n'est pas écrit en dur : une
+    // constante « fr » compilerait et annulerait toute la traduction.
+    assert!(
+        source.contains("Locale.preferredLanguages"),
+        "la langue annoncée ne vient pas des réglages du téléphone"
+    );
+}
+
+/// Le catalogue de chaînes iOS reste en phase avec le code qui les affiche.
+///
+/// En SwiftUI, `Text("Publier")` passe par `LocalizedStringKey` : le texte
+/// français EST la clé. Renommer une phrase dans le code sans la renommer dans
+/// le catalogue ne casse rien de visible — la chaîne retombe simplement sur le
+/// français, dans une application anglaise, sans erreur ni avertissement.
+///
+/// Le contrôle porte sur les deux sens :
+///
+/// - chaque clé du catalogue existe encore dans le code Swift ; une clé
+///   orpheline est une phrase qu'on croit traduite et qui ne l'est plus ;
+/// - chaque clé a bien ses deux traductions, non vides.
+#[test]
+fn le_catalogue_ios_est_en_phase_avec_le_code() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
+    let catalogue = std::fs::read_to_string(ios.join("Weave/Localizable.xcstrings"))
+        .expect("Localizable.xcstrings lisible");
+    let catalogue: serde_json::Value =
+        serde_json::from_str(&catalogue).expect("le catalogue est du JSON valide");
+
+    assert_eq!(
+        catalogue["sourceLanguage"], "fr",
+        "la langue source a changé"
+    );
+
+    // Tout le Swift de l'application, d'un seul tenant : une clé peut être
+    // écrite dans n'importe quelle vue.
+    let mut sources = String::new();
+    empiler_le_swift(&ios, &mut sources);
+    assert!(
+        sources.len() > 10_000,
+        "seulement {} octets de Swift lus : le parcours des fichiers a dérivé",
+        sources.len()
+    );
+
+    // Ces noms sont ceux de produits déclarés dans App Store Connect, et
+    // « Pause » est le même mot en anglais : les seules identités voulues.
+    const IDENTITES_VOULUES: [&str; 3] = ["Bilan", "Escale", "Pause"];
+
+    let chaines = catalogue["strings"].as_object().expect("des chaînes");
+    assert!(
+        chaines.len() >= 120,
+        "catalogue étonnamment court : {}",
+        chaines.len()
+    );
+
+    let mut orphelines = Vec::new();
+    for (cle, entree) in chaines {
+        // La clé telle qu'elle est ÉCRITE dans le source : les sauts de ligne
+        // y sont des échappements, pas des retours à la ligne.
+        let litteral = cle
+            .replace('\\', "\\\\")
+            .replace('\n', "\\n")
+            .replace('"', "\\\"");
+        if !sources.contains(&format!("\"{litteral}\"")) {
+            orphelines.push(cle.clone());
+            continue;
+        }
+
+        for langue in ["en", "es"] {
+            let valeur = entree["localizations"][langue]["stringUnit"]["value"]
+                .as_str()
+                .unwrap_or_else(|| panic!("« {cle} » n'a pas de traduction en « {langue} »"));
+            assert!(
+                !valeur.is_empty(),
+                "« {cle} » : traduction « {langue} » vide"
+            );
+            if !IDENTITES_VOULUES.contains(&cle.as_str()) {
+                assert_ne!(valeur, cle, "« {cle} » : « {langue} » reprend le français");
+            }
+        }
+    }
+
+    assert!(
+        orphelines.is_empty(),
+        "ces clés ne sont plus dans le code Swift, et leur traduction ne sert plus : {orphelines:?}"
+    );
+}
+
+/// Concatène tout le Swift d'un répertoire, récursivement.
+fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
+    let Ok(entrees) = std::fs::read_dir(repertoire) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.is_dir() {
+            empiler_le_swift(&chemin, sortie);
+        } else if chemin.extension().is_some_and(|e| e == "swift") {
+            if let Ok(contenu) = std::fs::read_to_string(&chemin) {
+                sortie.push_str(&contenu);
+                sortie.push('\n');
+            }
+        }
     }
 }

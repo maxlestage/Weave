@@ -6,7 +6,7 @@
 //! passage à Rust.
 
 use super::Service;
-use axum::http::{header::CACHE_CONTROL, StatusCode};
+use axum::http::{StatusCode, header::CACHE_CONTROL};
 
 /// Un `dist` de test : un index et un fichier d'empreinte, comme en produit.
 fn dist_de_test() -> std::path::PathBuf {
@@ -14,7 +14,11 @@ fn dist_de_test() -> std::path::PathBuf {
     let n = COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let racine = std::env::temp_dir().join(format!("weave-dist-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&racine).expect("répertoire de test");
-    std::fs::write(racine.join("index.html"), "<!doctype html><title>Weave</title>").unwrap();
+    std::fs::write(
+        racine.join("index.html"),
+        "<!doctype html><title>Weave</title>",
+    )
+    .unwrap();
     std::fs::write(racine.join("chunk-abc123.js"), "console.log('weave')").unwrap();
     // Les quatre adresses fixes : elles ne portent pas d'empreinte, parce
     // qu'elles sont demandées depuis l'extérieur.
@@ -43,7 +47,10 @@ async fn la_racine_rend_le_site() {
 
     let (statut, entetes, corps) = service.get_brut("/").await;
     assert_eq!(statut, StatusCode::OK, "la racine du service est vide");
-    assert!(corps.contains("<title>Weave</title>"), "corps rendu : {corps}");
+    assert!(
+        corps.contains("<title>Weave</title>"),
+        "corps rendu : {corps}"
+    );
     assert_eq!(
         entetes.get(CACHE_CONTROL).map(|v| v.to_str().unwrap()),
         Some("no-cache"),
@@ -97,7 +104,11 @@ async fn un_site_absent_n_empeche_pas_l_api() {
     let service = Service::monter_avec(Some("/chemin/qui/n/existe/pas".to_string())).await;
 
     let (statut, corps) = service.get("/health", None).await;
-    assert_eq!(statut, StatusCode::OK, "l'API refuse de servir sans vitrine : {corps}");
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "l'API refuse de servir sans vitrine : {corps}"
+    );
 }
 
 /// Une adresse d'API mal orthographiée doit rendre 404, pas 405 : le service
@@ -109,7 +120,11 @@ async fn un_post_sur_une_adresse_inconnue_rend_404() {
     let service = Service::monter_avec(Some(dist.display().to_string())).await;
 
     let (statut, _) = service
-        .post("/v1/auth/adresse-qui-n-existe-pas", None, serde_json::json!({}))
+        .post(
+            "/v1/auth/adresse-qui-n-existe-pas",
+            None,
+            serde_json::json!({}),
+        )
         .await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }
@@ -132,7 +147,10 @@ async fn une_page_juridique_repond_a_son_adresse_sans_redirection() {
         StatusCode::OK,
         "« /cgv » devait rendre la page, pas une redirection"
     );
-    assert!(corps.contains("Conditions de vente"), "corps rendu : {corps}");
+    assert!(
+        corps.contains("Conditions de vente"),
+        "corps rendu : {corps}"
+    );
 }
 
 /// Une page rendue sans barre oblique ni extension reste du HTML.
@@ -192,12 +210,18 @@ async fn les_adresses_fixes_ne_se_gardent_pas_un_an() {
     ] {
         let (statut, entetes, _) = service.get_brut(adresse).await;
         assert_eq!(statut, StatusCode::OK, "« {adresse} » n'est pas servie");
-        let cache = entetes.get(CACHE_CONTROL).map(|v| v.to_str().unwrap()).unwrap_or_default();
+        let cache = entetes
+            .get(CACHE_CONTROL)
+            .map(|v| v.to_str().unwrap())
+            .unwrap_or_default();
         assert!(
             !cache.contains("immutable"),
             "« {adresse} » est figée un an alors que son adresse ne peut pas changer : {cache}"
         );
-        assert!(cache.contains("max-age"), "« {adresse} » sans durée : {cache}");
+        assert!(
+            cache.contains("max-age"),
+            "« {adresse} » sans durée : {cache}"
+        );
     }
 
     // Un fichier empreint, lui, se garde : son nom change avec son contenu.

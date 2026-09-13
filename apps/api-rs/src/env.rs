@@ -204,8 +204,18 @@ pub fn charger() -> Result<Env, String> {
     let mut problemes: Vec<Probleme> = Vec::new();
     let mut avertissements: Vec<Probleme> = Vec::new();
 
-    let jwt_secret = exiger("JWT_SECRET", Some("secret-de-developpement-non-utilisable"), mode, &mut problemes);
-    let signing_secret = exiger("MEDIA_SIGNING_SECRET", Some("secret-media-developpement"), mode, &mut problemes);
+    let jwt_secret = exiger(
+        "JWT_SECRET",
+        Some("secret-de-developpement-non-utilisable"),
+        mode,
+        &mut problemes,
+    );
+    let signing_secret = exiger(
+        "MEDIA_SIGNING_SECRET",
+        Some("secret-media-developpement"),
+        mode,
+        &mut problemes,
+    );
 
     let weave_db = lire("WEAVE_DB").map(|v| v.to_lowercase());
     let driver = match weave_db.as_deref() {
@@ -234,7 +244,12 @@ pub fn charger() -> Result<Env, String> {
             .unwrap_or_else(|| "sqlite://./weave-dev.sqlite?mode=rwc".to_string()),
     };
 
-    let redis_url = exiger("REDIS_URL", Some("redis://127.0.0.1:6379"), mode, &mut problemes);
+    let redis_url = exiger(
+        "REDIS_URL",
+        Some("redis://127.0.0.1:6379"),
+        mode,
+        &mut problemes,
+    );
 
     let ssl_insecure = vrai("DATABASE_SSL_INSECURE");
     let tls_insecure = vrai("REDIS_TLS_INSECURE");
@@ -253,15 +268,18 @@ pub fn charger() -> Result<Env, String> {
         if !tls_insecure {
             avertissements.push(Probleme {
                 variable: "REDIS_TLS_INSECURE",
-                raison: "le magasin clé-valeur d'Heroku présente lui aussi un certificat auto-signé"
-                    .to_string(),
+                raison:
+                    "le magasin clé-valeur d'Heroku présente lui aussi un certificat auto-signé"
+                        .to_string(),
                 remede: "définir REDIS_TLS_INSECURE=true, sans quoi le cache restera injoignable",
             });
         }
     }
 
-    let web_origin = lire("PUBLIC_WEB_ORIGIN").unwrap_or_else(|| "http://localhost:5173".to_string());
-    let media_base = lire("MEDIA_BASE_URL").unwrap_or_else(|| "http://localhost:3000/media".to_string());
+    let web_origin =
+        lire("PUBLIC_WEB_ORIGIN").unwrap_or_else(|| "http://localhost:5173".to_string());
+    let media_base =
+        lire("MEDIA_BASE_URL").unwrap_or_else(|| "http://localhost:3000/media".to_string());
 
     if mode.is_production() {
         if web_origin.contains("localhost") {
@@ -347,7 +365,10 @@ pub fn charger() -> Result<Env, String> {
 fn rapport(titre: &str, problemes: &[Probleme]) -> String {
     let mut s = format!("\n  {titre}\n\n");
     for p in problemes {
-        s.push_str(&format!("  • {} — {}\n      {}\n", p.variable, p.raison, p.remede));
+        s.push_str(&format!(
+            "  • {} — {}\n      {}\n",
+            p.variable, p.raison, p.remede
+        ));
     }
     s.push_str("\n  Sur Heroku : tableau de bord → Settings → Config Vars,\n");
     s.push_str("  ou le workflow « Heroku — configurer les variables » depuis GitHub.\n\n");

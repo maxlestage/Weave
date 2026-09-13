@@ -37,7 +37,10 @@ const MIGRATIONS_POSTGRES: &[(&str, &str)] = &[
 ];
 
 const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
-    ("0_init", include_str!("../migrations-sqlite/0_init/migration.sql")),
+    (
+        "0_init",
+        include_str!("../migrations-sqlite/0_init/migration.sql"),
+    ),
     (
         "1_media_objects",
         include_str!("../migrations-sqlite/1_media_objects/migration.sql"),
@@ -191,7 +194,10 @@ mod tests {
 
     #[test]
     fn le_decoupage_garde_toutes_les_instructions() {
-        for (dialecte, jeu) in [("postgres", MIGRATIONS_POSTGRES), ("sqlite", MIGRATIONS_SQLITE)] {
+        for (dialecte, jeu) in [
+            ("postgres", MIGRATIONS_POSTGRES),
+            ("sqlite", MIGRATIONS_SQLITE),
+        ] {
             let instructions = decouper(jeu[0].1);
             // Le schéma compte dix-huit tables, plus ses index.
             assert!(
@@ -217,7 +223,10 @@ mod tests {
     #[test]
     fn chaque_dialecte_recoit_son_propre_jeu() {
         assert_eq!(jeu(DatabaseBackend::Sqlite)[0].1, MIGRATIONS_SQLITE[0].1);
-        assert_eq!(jeu(DatabaseBackend::Postgres)[0].1, MIGRATIONS_POSTGRES[0].1);
+        assert_eq!(
+            jeu(DatabaseBackend::Postgres)[0].1,
+            MIGRATIONS_POSTGRES[0].1
+        );
         assert_ne!(
             MIGRATIONS_SQLITE[0].1, MIGRATIONS_POSTGRES[0].1,
             "les deux jeux sont identiques : l'un des deux fichiers n'est pas le bon"
