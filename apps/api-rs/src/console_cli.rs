@@ -18,8 +18,10 @@ weave-api console — modération
   suspendre <compte> <motif>   met un compte hors circulation ; ses sessions tombent
   retablir <compte>            lève une suspension
 
-  verifier <compte> <motif>    pose le badge « vérifié » sur un profil
-  deverifier <compte> <motif>  le retire
+  verifications                les demandes de vérification, prioritaires d'abord
+  verifier <compte> <motif>    pose le badge « vérifié » et clôt la demande
+  refuser-verif <compte> <m.>  clôt la demande sans poser le badge
+  deverifier <compte> <motif>  retire un badge déjà posé
 
   photos                       les photos envoyées et jamais examinées
   photo-ok <compte>            garde la photo et la marque examinée
@@ -43,6 +45,7 @@ pub async fn executer(
     match commande {
         "signalements" => signalements(db).await?,
         "photos" => photos(db).await?,
+        "verifications" => verifications(db).await?,
 
         "clore" => {
             let dossier = exiger(un, "clore <dossier> [note]")?;
@@ -87,6 +90,17 @@ pub async fn executer(
                 "aucun compte ne porte cet identifiant",
             );
             oublier(cache, compte).await;
+        }
+
+        "refuser-verif" => {
+            let compte = exiger(un, "refuser-verif <compte> <motif>")?;
+            let motif = exiger_motif(deux, "refuser-verif <compte> <motif>")?;
+            dire(
+                console::refuser_verification(db, compte, &motif).await?,
+                "demande refusée, motif consigné",
+                "ce compte n'a pas de demande en attente",
+                "ce compte n'a pas de demande en attente",
+            );
         }
 
         "deverifier" => {
@@ -184,6 +198,31 @@ async fn signalements(db: &DatabaseConnection) -> anyhow::Result<()> {
         }
         println!();
     }
+    Ok(())
+}
+
+async fn verifications(db: &DatabaseConnection) -> anyhow::Result<()> {
+    let file = console::verifications_en_attente(db).await?;
+    if file.is_empty() {
+        println!("  • aucune demande de vérification en attente");
+        return Ok(());
+    }
+    println!("  {} demande(s) en attente\n", file.len());
+    for demande in file {
+        let priorite = if demande.palier == "grandtour" { " ★ prioritaire" } else { "" };
+        println!("  {} ({}){priorite}", demande.nom, demande.compte);
+        println!(
+            "    palier {} — depuis le {}",
+            demande.palier,
+            demande.depuis.format("%d/%m/%Y")
+        );
+        if !demande.note.is_empty() {
+            println!("    dit : {}", demande.note);
+        }
+        println!();
+    }
+    println!("  Aucune pièce d'identité ne transite par Weave : la vérification");
+    println!("  se poursuit par courrier, à l'adresse d'assistance.");
     Ok(())
 }
 

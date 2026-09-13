@@ -486,11 +486,24 @@ sans argument, elle donne la liste de ce qu'elle sait faire. Les gestes :
 | `console clore <dossier> [note]` | pose `handledAt`. Le dossier cesse de retenir la purge du compte visé |
 | `console suspendre <compte> <motif>` | statut `suspended` : plus de session valide, plus de fil. Le motif est obligatoire |
 | `console retablir <compte>` | lève une suspension |
-| `console verifier <compte> <motif>` | pose le badge « vérifié » sur un profil |
-| `console deverifier <compte> <motif>` | le retire |
+| `console verifications` | les demandes de vérification, prioritaires d'abord |
+| `console verifier <compte> <motif>` | pose le badge « vérifié » et clôt la demande |
+| `console refuser-verif <compte> <motif>` | clôt la demande sans poser le badge |
+| `console deverifier <compte> <motif>` | retire un badge déjà posé |
 | `console photos` | les photos envoyées et jamais examinées |
 | `console photo-ok <compte>` | garde la photo, la sort de la file |
 | `console photo-retirer <compte>` | retire la photo **et efface ses octets** |
+
+**La file des vérifications** se relève dans l'ordre qu'elle donne : le Grand
+Tour vend « Vérification de profil accélérée », et cette priorité n'existe que
+si on la respecte. À palier égal, la plus ancienne d'abord — une priorité n'est
+pas un droit de doubler indéfiniment.
+
+**Aucune pièce d'identité ne transite par Weave.** La demande ne porte qu'un mot
+libre ; la vérification se poursuit par courrier. Conserver des papiers
+d'identité créerait une réserve dont la perte serait irréparable, pour un
+service qui n'en a pas besoin : ce qu'on établit, c'est qu'il y a quelqu'un
+derrière le profil, pas un état civil.
 
 **Le badge « vérifié »** dit qu'une personne a examiné une pièce et consigné sa
 décision. Il ne dit pas qu'un contrôle automatique a eu lieu : il n'y en a
