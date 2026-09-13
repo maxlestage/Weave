@@ -426,3 +426,39 @@ heroku addons:create scheduler:standard -a weave
 ```
 
 Les deux cohabitent sans risque : le verrou vaut aussi pour l'appel externe.
+
+## Modérer, depuis un téléphone
+
+`weave-api console` pose les décisions de modération. Elle ne s'installe pas et
+ne s'expose pas : elle s'appelle sur le dyno, et le tableau de bord Heroku sait
+le faire depuis un navigateur mobile (**More → Run console**).
+
+```sh
+heroku run -a weave ./bin-release/weave-api console
+```
+
+sans argument, elle donne la liste de ce qu'elle sait faire. Les gestes :
+
+| Commande | Effet |
+| --- | --- |
+| `console signalements` | les dossiers ouverts, du plus ancien au plus récent, avec le motif, ce qui est dit, la cible et son statut |
+| `console clore <dossier> [note]` | pose `handledAt`. Le dossier cesse de retenir la purge du compte visé |
+| `console suspendre <compte> <motif>` | statut `suspended` : plus de session valide, plus de fil. Le motif est obligatoire |
+| `console retablir <compte>` | lève une suspension |
+| `console photos` | les photos envoyées et jamais examinées |
+| `console photo-ok <compte>` | garde la photo, la sort de la file |
+| `console photo-retirer <compte>` | retire la photo **et efface ses octets** |
+
+**Clore n'est pas sanctionner.** Clore un dossier ne suspend personne, et
+suspendre ne clôt aucun dossier — ce sont deux décisions, et il faut poser les
+deux. Chacune s'inscrit au journal d'audit avec son motif.
+
+L'autorisation, ici, c'est l'accès au dyno : le compte Heroku et son second
+facteur. C'est la raison pour laquelle ces gestes ne sont pas une route HTTP —
+il aurait fallu ouvrir sur l'internet public la porte qui donne le pouvoir de
+suspendre un compte.
+
+La commande invalide le cache après une suspension ou un rétablissement : sans
+cela, le résumé d'identité du compte y vivrait encore un quart d'heure, et le
+geste n'aurait pris effet qu'à son expiration. Si le cache est injoignable,
+elle le dit — et ce délai s'applique.
