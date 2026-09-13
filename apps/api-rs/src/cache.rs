@@ -272,19 +272,99 @@ pub async fn rendre_demande(manager: &ConnectionManager, compte: &str, jour: &st
     decrementer_sans_passer_sous_zero(manager, &cles::demandes_utilisees(compte, jour)).await;
 }
 
+/// Le pendant du script de consommation, et pour la même raison.
+///
+/// Lire puis décrémenter en deux temps laisse deux remboursements concurrents
+/// franchir le zéro ensemble : tous deux lisent 1, tous deux décrémentent, le
+/// compteur tombe à -1. Le prochain `INCR` le ramène alors à 0, sous le
+/// plafond — et une demande est offerte. C'est précisément l'invariant que le
+/// produit défend qui cède, par une porte que personne ne regardait.
+///
+/// Le cas s'atteint sans rien forger : deux appels simultanés au retrait d'une
+/// même demande passent tous deux le contrôle d'état avant que le premier ne
+/// l'ait écrit, et remboursent tous deux.
+const RENDRE_LUA: &str = r#"
+local utilisees = tonumber(redis.call('GET', KEYS[1]) or '0')
+if utilisees > 0 then
+  return redis.call('DECR', KEYS[1])
+end
+return utilisees
+"#;
+
 async fn decrementer_sans_passer_sous_zero(manager: &ConnectionManager, cle: &str) {
-    let cle = cle.to_string();
     let mut conn = manager.clone();
-    let utilisees: i64 = redis::cmd("GET")
-        .arg(&cle)
-        .query_async::<Option<String>>(&mut conn)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    if utilisees > 0 {
-        let _ = redis::cmd("DECR").arg(&cle).query_async::<i64>(&mut conn).await;
+    let _ = redis::cmd("EVAL")
+        .arg(RENDRE_LUA)
+        .arg(1)
+        .arg(cle)
+        .query_async::<i64>(&mut conn)
+        .await;
+}
+
+#[cfg(test)]
+mod tests_quota {
+    use super::*;
+    use crate::tests::Service;
+
+    /// Le compteur ne doit jamais devenir négatif — un compteur négatif est une
+    /// demande offerte, et « on ne peut pas arroser » ne tient plus.
+    ///
+    /// Vingt remboursements concurrents pour une seule demande consommée : en
+    /// deux temps, ils franchissaient le zéro ensemble et laissaient le
+    /// compteur à -19.
+    #[tokio::test]
+    async fn des_remboursements_concurrents_ne_passent_pas_sous_zero() {
+        let service = Service::monter().await;
+        let compte = service.id("quota");
+        let jour = "2026-09-13";
+        let cle = cles::demandes_utilisees(&compte, jour);
+
+        // Une demande consommée, et une seule.
+        consommer_demande(&service.etat.cache, &compte, jour, 5, 3600)
+            .await
+            .expect("cache joignable")
+            .expect("le quota accepte la première");
+
+        let mut essais = Vec::new();
+        for _ in 0..20 {
+            let cache = service.etat.cache.clone();
+            let compte = compte.clone();
+            essais.push(tokio::spawn(async move {
+                rendre_demande(&cache, &compte, "2026-09-13").await;
+            }));
+        }
+        for essai in essais {
+            essai.await.expect("tâche terminée");
+        }
+
+        let reste = compteur(&service.etat.cache, &cle).await;
+        assert_eq!(reste, 0, "le compteur est tombé à {reste} : demandes offertes");
+
+        let _ = oublier(&service.etat.cache, &cle).await;
+    }
+
+    /// Et le remboursement légitime fonctionne toujours : deux consommées,
+    /// deux rendues, on revient à zéro.
+    #[tokio::test]
+    async fn deux_remboursements_pour_deux_demandes_reviennent_a_zero() {
+        let service = Service::monter().await;
+        let compte = service.id("quota-pair");
+        let jour = "2026-09-13";
+        let cle = cles::demandes_utilisees(&compte, jour);
+
+        for _ in 0..2 {
+            consommer_demande(&service.etat.cache, &compte, jour, 5, 3600)
+                .await
+                .expect("cache joignable")
+                .expect("accepté");
+        }
+        assert_eq!(compteur(&service.etat.cache, &cle).await, 2);
+
+        rendre_demande(&service.etat.cache, &compte, jour).await;
+        rendre_demande(&service.etat.cache, &compte, jour).await;
+
+        assert_eq!(compteur(&service.etat.cache, &cle).await, 0);
+        let _ = oublier(&service.etat.cache, &cle).await;
     }
 }
 
