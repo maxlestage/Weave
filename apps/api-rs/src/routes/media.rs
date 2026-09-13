@@ -5,6 +5,7 @@
 //! inscrit dans la signature, donc impossible à modifier côté client.
 
 use crate::{
+    limitation::{consommer, regles},
     auth::Authentifie,
     crypto::{signer_url_media, verifier_signature_media},
     entities::{media_objects, profiles},
@@ -85,6 +86,8 @@ async fn deposer_photo(
     if corps.len() > PHOTO_MAX_OCTETS {
         return Err(invalide("Cette image dépasse 2 Mo."));
     }
+
+    consommer(&state, regles::PHOTO, &compte.id).await?;
 
     let fiche = profiles::Entity::find()
         .filter(profiles::Column::AccountId.eq(compte.id.as_str()))

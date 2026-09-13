@@ -28,6 +28,7 @@ use crate::{
         unit_purchases,
     },
     error::{non_autorise, AppError},
+    limitation::{consommer, regles},
     temps::iso8601,
     AppState,
 };
@@ -49,6 +50,11 @@ async fn exporter(
     State(state): State<AppState>,
     Authentifie(compte): Authentifie,
 ) -> Result<impl IntoResponse, AppError> {
+    // La lecture la plus lourde du service, accessible à tout compte connecté
+    // et bornée par rien. La borne est large : le droit d'accès ne se refuse
+    // pas, il se protège d'une boucle.
+    consommer(&state, regles::EXPORT, &compte.id).await?;
+
     let id = compte.id.as_str();
 
     let ligne = accounts::Entity::find_by_id(id)

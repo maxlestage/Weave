@@ -220,3 +220,62 @@ async fn une_categorie_inconnue_est_refusee() {
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+/// L'envoi de photo et l'export sont bornés en débit.
+///
+/// Aucun des deux ne l'était. La photo écrit jusqu'à deux mégaoctets par
+/// requête ; l'export est la lecture la plus lourde du service — tout le
+/// compte, plans, demandes, conversations, messages, achats, et les octets de
+/// la photo — et il est accessible à tout compte connecté.
+///
+/// La borne de l'export est volontairement large : le droit d'accès ne se
+/// refuse pas. L'article 12 ne permet de s'opposer qu'aux demandes
+/// « manifestement infondées ou excessives, notamment en raison de leur
+/// caractère répétitif ».
+#[tokio::test]
+async fn l_export_et_l_envoi_de_photo_sont_bornes() {
+    use crate::limitation::regles;
+
+    let service = Service::monter().await;
+    service.compte("c_debit", "depart").await;
+    let jeton = service.jeton("c_debit");
+
+    // La borne de l'export : les premiers passages répondent, celui d'après non.
+    for tour in 0..regles::EXPORT.limite {
+        let (statut, _) = service.get("/v1/me/export", Some(&jeton)).await;
+        assert_eq!(statut, StatusCode::OK, "l'export a été refusé au tour {tour}");
+    }
+    let (statut, corps) = service.get("/v1/me/export", Some(&jeton)).await;
+    assert_eq!(
+        statut,
+        StatusCode::TOO_MANY_REQUESTS,
+        "l'export n'est borné par rien : {corps}"
+    );
+
+    // Celle de la photo. La fiche d'abord : sans ville, la route refuse pour
+    // une autre raison, et le test ne prouverait rien.
+    let (statut, corps) = service
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({ "city": "Lyon", "latitude": 45.76, "longitude": 4.84, "gender": "femme" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let jpeg = [&[0xFF, 0xD8, 0xFF, 0xE0][..], &[0u8; 64][..]].concat();
+    for tour in 0..regles::PHOTO.limite {
+        let (statut, _) = service
+            .put_octets("/v1/me/photo", &jeton, jpeg.clone())
+            .await;
+        assert_eq!(statut, StatusCode::OK, "la photo a été refusée au tour {tour}");
+    }
+    let (statut, corps) = service
+        .put_octets("/v1/me/photo", &jeton, jpeg)
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::TOO_MANY_REQUESTS,
+        "l'envoi de photo n'est borné par rien : {corps}"
+    );
+}
