@@ -151,7 +151,7 @@ const ARTICLES: readonly Article[] = [
               "Blocages et signalements",
               "Votre sécurité et celle des autres, traitement des signalements",
               "Intérêt légitime, obligation légale",
-              "Effacés avec votre compte ; mais tant qu'un signalement vous vise et reste ouvert, la purge de votre compte est reportée",
+              "Effacés avec votre compte ; mais tant qu'un signalement vous vise et reste ouvert, la purge de votre compte est reportée — au plus quatre-vingt-dix jours, après quoi il est effacé même si le dossier est resté ouvert",
             ],
             [
               "Abonnements et achats : identifiant de transaction, référence du produit, montant",
