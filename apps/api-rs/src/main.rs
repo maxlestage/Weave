@@ -136,6 +136,22 @@ async fn main() -> anyhow::Result<()> {
     let port = config.port;
     let driver = config.db.driver.as_str();
 
+    // Dire pourquoi les achats seront refusés, plutôt que de laisser chercher.
+    //
+    // Poser les identifiants App Store est le geste par lequel on croit activer
+    // les achats. Tant que la vérification cryptographique des transactions
+    // n'est pas écrite, ils restent refusés en production — et sans ce message,
+    // rien ne relierait ce refus à sa cause.
+    if config.is_production()
+        && config.app_store.configure
+        && !routes::billing::VERIFICATION_JWS_IMPLEMENTEE
+    {
+        tracing::warn!(
+            "App Store configuré, mais la vérification des transactions n'est pas \
+             en service : les achats sont refusés."
+        );
+    }
+
     let state = AppState {
         db,
         cache,
