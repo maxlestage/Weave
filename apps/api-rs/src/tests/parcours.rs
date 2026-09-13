@@ -426,3 +426,109 @@ async fn un_signalement_ordinaire_ne_suspend_pas() {
         "un signalement ordinaire a suffi à couper un compte : {corps}"
     );
 }
+
+/// Une inscription complète doit mener à un compte qui fonctionne.
+///
+/// L'inscription ne demandait que le prénom et la date de naissance. Le compte
+/// restait donc « onboarding », sans fiche — et sans fiche, le fil est vide et
+/// la publication refusée. Tout le monde arrivait sur une application morte,
+/// sans rien pour le dire.
+///
+/// Le test déroule le parcours réel : code, inscription, dépôt de la fiche.
+/// C'est cette dernière étape que l'application ne faisait pas.
+#[tokio::test]
+async fn deposer_sa_fiche_ouvre_le_compte() {
+    let service = Service::monter().await;
+    let email = service.email("c_nouvelle");
+
+    let (statut, corps) = service
+        .post("/v1/auth/otp/request", None, json!({ "email": email }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let code = corps["devCode"].as_str().expect("le code hors production").to_string();
+
+    let (statut, corps) = service
+        .post("/v1/auth/otp/verify", None, json!({
+            "email": email,
+            "code": code,
+            "displayName": "Camille",
+            "birthDate": "1994-03-08",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let acces = corps["session"]["accessToken"].as_str().expect("un accès").to_string();
+
+    // Sans fiche : le compte est né, et il ne sert à rien.
+    let (statut, moi) = service.get("/v1/me", Some(&acces)).await;
+    assert_eq!(statut, StatusCode::OK, "{moi}");
+    assert_eq!(moi["status"], "onboarding", "le compte devrait attendre sa fiche");
+
+    let plan = json!({
+        "title": "Un cafe pour faire connaissance",
+        "category": "repas",
+        "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+    });
+    let (statut, corps) = service.post("/v1/plans", Some(&acces), plan.clone()).await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "publier sans fiche devrait être refusé : {corps}"
+    );
+
+    // La fiche déposée : c'est l'appel que l'application ne faisait nulle part.
+    let (statut, corps) = service
+        .put("/v1/me/profile", Some(&acces), json!({
+            "city": "Nantes",
+            "latitude": 47.2184,
+            "longitude": -1.5536,
+            "gender": "femme",
+            "bio": "Je connais tous les bars a chats de la ville.",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (_, moi) = service.get("/v1/me", Some(&acces)).await;
+    assert_eq!(moi["status"], "active", "la fiche devait ouvrir le compte");
+    assert_eq!(moi["city"], "Nantes");
+
+    let (statut, corps) = service.post("/v1/plans", Some(&acces), plan).await;
+    assert_eq!(statut, StatusCode::OK, "publier après la fiche : {corps}");
+}
+
+/// Un genre hors vocabulaire est refusé, des deux côtés.
+///
+/// Le fil compare le genre de l'auteur d'un plan à ceux que le lecteur
+/// cherche, caractère par caractère. Une valeur libre ne rendait pas une
+/// erreur : elle rendait un fil vide, sans rien dire à personne.
+#[tokio::test]
+async fn un_genre_hors_vocabulaire_est_refuse() {
+    let service = Service::monter().await;
+    service.compte("c_genre", "depart").await;
+    let jeton = service.jeton("c_genre");
+
+    let fiche = |genre: &str| {
+        json!({
+            "city": "Lyon",
+            "latitude": 45.76,
+            "longitude": 4.84,
+            "gender": genre,
+        })
+    };
+
+    let (statut, corps) = service.put("/v1/me/profile", Some(&jeton), fiche("Femme")).await;
+    assert_ne!(statut, StatusCode::OK, "« Femme » majuscule devrait être refusé : {corps}");
+
+    let (statut, corps) = service.put("/v1/me/profile", Some(&jeton), fiche("femme")).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Et les critères de recherche suivent le même vocabulaire.
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["Homme"] }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "un genre cherché hors liste : {corps}");
+
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme", "non_binaire"] }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+}

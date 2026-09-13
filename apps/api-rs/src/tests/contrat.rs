@@ -96,6 +96,20 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
     );
 }
 
+/// Les genres, eux, décident de qui voit qui.
+///
+/// Le fil compare le genre de l'auteur d'un plan à ceux que le lecteur
+/// cherche, caractère par caractère. Un vocabulaire qui diverge d'un côté ne
+/// rend pas une erreur : il rend un fil vide, sans rien dire.
+#[test]
+fn les_genres_sont_les_memes_des_deux_cotes() {
+    assert_eq!(
+        liste_du_contrat(&contrat(), "GENDERS"),
+        trier(&crate::routes::me::GENRES),
+        "le vocabulaire des genres diverge : la correspondance par genre ne rendrait plus rien"
+    );
+}
+
 /// Les catégories de plan aussi : une catégorie acceptée par l'API mais
 /// inconnue du contrat n'est affichable nulle part, et l'inverse fait rejeter
 /// un plan que l'application proposait.
@@ -246,4 +260,27 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
             "l'application iOS affiche {valeur} pour {cote_swift}, le contrat dit autre chose"
         );
     }
+}
+
+/// Lit une liste `export const NOM = ["a", "b"]` du contrat, triée.
+fn liste_du_contrat(source: &str, nom: &str) -> Vec<String> {
+    let debut = source
+        .find(&format!("export const {nom}"))
+        .unwrap_or_else(|| panic!("« {nom} » a disparu du contrat partagé"));
+    let ouvrante = source[debut..].find('[').expect("une liste") + debut;
+    let fermante = source[ouvrante..].find(']').expect("une liste fermée") + ouvrante;
+
+    let mut valeurs: Vec<String> = source[ouvrante + 1..fermante]
+        .split(',')
+        .map(|m| m.trim().trim_matches(['"', '\'']).to_string())
+        .filter(|m| !m.is_empty())
+        .collect();
+    valeurs.sort();
+    valeurs
+}
+
+fn trier(valeurs: &[&str]) -> Vec<String> {
+    let mut triees: Vec<String> = valeurs.iter().map(|v| (*v).to_string()).collect();
+    triees.sort();
+    triees
 }

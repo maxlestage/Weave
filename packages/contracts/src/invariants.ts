@@ -83,6 +83,29 @@ export const MIN_AGE = 18;
 export const DEFAULT_RADIUS_KM = 25;
 export const MAX_RADIUS_KM = 100;
 
+/**
+ * Genres, pour la fiche et pour les critères du fil.
+ *
+ * Un vocabulaire fixe, et c'est ce qui compte : le fil retient un plan quand
+ * le genre de son auteur figure parmi ceux que le lecteur cherche, comparés
+ * caractère par caractère. Deux orthographes d'une même chose — « femme » et
+ * « Femme » — ne se rencontreraient jamais.
+ *
+ * Rien de tout cela n'existait : l'API acceptait n'importe quelle chaîne de
+ * quarante caractères, et l'application ne proposait ni de renseigner son
+ * genre ni de dire qui l'on cherche. La correspondance par genre était donc
+ * écrite, et inatteignable.
+ */
+export const GENDERS = ["femme", "homme", "non_binaire", "autre"] as const;
+export type Gender = (typeof GENDERS)[number];
+
+export const GENDER_LABELS: Readonly<Record<Gender, string>> = {
+  femme: "Femme",
+  homme: "Homme",
+  non_binaire: "Non binaire",
+  autre: "Autre",
+};
+
 /** Catégories de plans. Volontairement peu nombreuses et concrètes. */
 export const PLAN_CATEGORIES = [
   "sortie",
