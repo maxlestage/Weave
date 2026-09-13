@@ -305,6 +305,22 @@ public actor WeaveAPI {
         )
     }
 
+    /// Dépose sa photo de profil.
+    ///
+    /// Le corps est l'image elle-même, brute : il n'y a qu'un fichier et aucun
+    /// champ qui l'accompagne. Le serveur déduit le format des octets de tête
+    /// plutôt que de l'en-tête annoncé — celui-ci est écrit par l'appelant, et
+    /// resservir plus tard un « image/jpeg » qui n'en est pas laisserait le
+    /// navigateur du destinataire décider quoi en faire.
+    ///
+    /// Rend l'URL signée de la photo déposée.
+    public func submitPhoto(_ image: Data) async throws -> URL? {
+        struct Result: Decodable { let photoUrl: URL? }
+        let token = try await validToken()
+        let brut = try await sendRawUpload(.put, "/v1/me/photo", token: token, payload: image)
+        return try decoder.decode(Result.self, from: brut).photoUrl
+    }
+
     // MARK: - Se protéger
 
     /// Bloque quelqu'un.
@@ -482,6 +498,41 @@ public actor WeaveAPI {
     /// La gestion d'erreur est identique : un export refusé doit produire la
     /// même erreur typée qu'un appel ordinaire, sinon l'écran qui l'appelle
     /// devrait traiter deux vocabulaires d'échec.
+    /// Envoie des octets bruts et rend la réponse brute.
+    ///
+    /// Distincte de `send` : celle-ci encode du JSON, et une image encodée en
+    /// JSON ferait un tiers de taille en plus pour rien.
+    private func sendRawUpload(
+        _ method: Method,
+        _ path: String,
+        token: String,
+        payload: Data
+    ) async throws -> Data {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method.rawValue
+        // Une photo part plus lentement qu'une requête ordinaire, et souvent
+        // sur un réseau mobile : la minute par défaut y suffit rarement.
+        request.timeoutInterval = 120
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.upload(for: request, from: payload)
+        } catch {
+            throw WeaveAPIError.transport(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw WeaveAPIError.transport("Réponse inattendue.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Self.decodeError(status: http.statusCode, data: data, decoder: decoder)
+        }
+        return data
+    }
+
     private func sendRaw(_ method: Method, _ path: String, token: String?) async throws -> Data {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method.rawValue

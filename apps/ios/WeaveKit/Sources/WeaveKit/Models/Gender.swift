@@ -27,3 +27,17 @@ public enum Gender: String, CaseIterable, Identifiable, Codable, Sendable {
 
 /// Longueur maximale de la phrase de présentation, côté serveur comme ici.
 public let bioMaxChars = 160
+
+/// Taille maximale d'une photo de profil, côté serveur comme ici.
+///
+/// L'application recompresse avant d'envoyer : cette borne est ce que le
+/// serveur refuse, pas ce qu'on vise. Mieux vaut le dire pendant la
+/// préparation que rejeter l'envoi une fois la photo choisie.
+public let photoMaxBytes = 2 * 1024 * 1024
+
+/// Côté le plus long d'une photo après recompression.
+///
+/// Une photo de profil s'affiche dans une vignette ; envoyer les douze
+/// mégapixels du capteur ferait payer à la personne un téléversement qu'elle
+/// ne verra jamais, et à la base un stockage qui ne sert à rien.
+public let photoMaxCote: Double = 1080

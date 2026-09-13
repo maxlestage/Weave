@@ -288,13 +288,31 @@ async fn le_catalogue_ne_vend_aucune_visibilite() {
 
 #[tokio::test]
 async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
+    use crate::entities::media_objects;
+    use sea_orm::{ActiveModelTrait, Set};
+
     let service = Service::monter().await;
-    service.compte("c_media", "depart").await;
+    let compte = service.compte("c_media", "depart").await;
+
+    // Une vraie image en base : le service rend désormais des octets, plus un
+    // objet JSON expliquant que le stockage « est branché au déploiement ».
+    let octets = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03];
+    media_objects::ActiveModel {
+        key: Set("photo-secrete".to_string()),
+        account_id: Set(compte.clone()),
+        content_type: Set("image/jpeg".to_string()),
+        byte_size: Set(octets.len() as i32),
+        bytes: Set(octets.clone()),
+        created_at: Set(chrono::Utc::now().naive_utc()),
+    }
+    .insert(&service.db)
+    .await
+    .expect("média inséré");
+
     service
         .db
         .execute_unprepared(&format!(
-            "UPDATE profiles SET photoKey='photos/secrete.jpg' WHERE accountId='{}'",
-            service.id("c_media")
+            "UPDATE profiles SET photoKey='photo-secrete' WHERE accountId='{compte}'"
         ))
         .await
         .unwrap();
@@ -303,13 +321,45 @@ async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
     let url = fiche["photoUrl"].as_str().expect("une photo signée");
     let chemin = url.strip_prefix("https://exemple.test").unwrap();
 
-    let (statut, _) = service.get(chemin, None).await;
-    assert_eq!(statut, StatusCode::OK, "l'URL d'origine doit passer");
+    let (statut, entetes, corps) = service.get_brut(chemin).await;
+    assert_eq!(statut, StatusCode::OK, "l'URL d'origine doit passer : {corps}");
+    assert_eq!(
+        entetes.get(axum::http::header::CONTENT_TYPE).map(|v| v.to_str().unwrap()),
+        Some("image/jpeg"),
+        "le type de contenu doit être celui déduit des octets"
+    );
 
     // Le flou fait partie de la charge signée.
     let deflouté = chemin.replace("blur=0", "blur=8");
-    let (statut, _) = service.get(&deflouté, None).await;
+    let (statut, _, _) = service.get_brut(&deflouté).await;
     assert_eq!(statut, StatusCode::FORBIDDEN, "changer le flou doit invalider");
+}
+
+/// Un flou correctement signé est refusé, jamais servi net.
+///
+/// Le niveau de flou est inscrit dans la signature pour qu'il ne puisse pas
+/// être changé côté client. Mais il n'est pas encore appliqué : servir net une
+/// photo dont la signature réclamait un flou ouvrirait exactement ce que la
+/// signature protège. Le jour où la révélation progressive s'écrira, elle
+/// butera ici plutôt que de découvrir quelqu'un sans le vouloir.
+#[tokio::test]
+async fn un_flou_demande_mais_non_applique_est_refuse() {
+    use crate::crypto::signer_url_media;
+
+    let service = Service::monter().await;
+    // La configuration du service fait foi : recopier l'adresse et le secret
+    // ici les ferait diverger au premier changement, et le test signerait
+    // pour un service qui n'est plus celui qu'on éprouve.
+    let media = &service.etat.config.media;
+    let url = signer_url_media(&media.base_url, &media.signing_secret, "photo-quelconque", 600, 8);
+    let chemin = url.strip_prefix("https://exemple.test").unwrap();
+
+    let (statut, _, corps) = service.get_brut(chemin).await;
+    assert_eq!(
+        statut,
+        StatusCode::FORBIDDEN,
+        "une photo a été servie nette alors qu'un flou était signé : {corps}"
+    );
 }
 
 /// Une pause est un aller-retour : les plans reviennent à la reprise.
@@ -595,4 +645,77 @@ async fn un_telephone_qui_change_de_mains_cesse_de_notifier_le_precedent() {
         .unwrap()
         .expect("la ligne du second compte");
     assert_eq!(nouvelle.apns_token.as_deref(), Some("jeton-du-telephone"));
+}
+
+/// Déposer une photo, la relire, la remplacer.
+///
+/// `photoKey` existait depuis le début et n'a jamais été écrit autrement qu'à
+/// NULL : aucune route ne permettait d'envoyer une photo, et le service des
+/// médias rendait un objet JSON expliquant que le relais vers le stockage
+/// « est branché au déploiement ». Il ne l'a jamais été — personne ne pouvait
+/// avoir de photo, sur une application de rencontre.
+#[tokio::test]
+async fn une_photo_se_depose_se_relit_et_se_remplace() {
+    use crate::entities::media_objects;
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+
+    let service = Service::monter().await;
+    let compte = service.compte("c_photo", "depart").await;
+    let jeton = service.jeton("c_photo");
+
+    // La fiche d'abord : une photo sans ville n'aurait nulle part où aller.
+    let (statut, corps) = service
+        .put("/v1/me/profile", Some(&jeton), json!({
+            "city": "Bordeaux",
+            "latitude": 44.84,
+            "longitude": -0.58,
+            "gender": "autre",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Un JPEG minimal : ce sont ses octets de tête qui le font reconnaître.
+    let jpeg = |teinte: u8| {
+        let mut octets = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        octets.extend_from_slice(&[teinte; 64]);
+        octets
+    };
+
+    let (statut, corps) = service.put_octets("/v1/me/photo", &jeton, jpeg(1)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let url = corps["photoUrl"].as_str().expect("une URL signée").to_string();
+
+    // Et elle se relit, par l'URL signée, avec son type déduit des octets.
+    let chemin = url.strip_prefix("https://exemple.test").unwrap();
+    let (statut, entetes, _) = service.get_brut(chemin).await;
+    assert_eq!(statut, StatusCode::OK);
+    assert_eq!(
+        entetes.get(axum::http::header::CONTENT_TYPE).map(|v| v.to_str().unwrap()),
+        Some("image/jpeg")
+    );
+
+    // La remplacer ne doit pas laisser l'ancienne derrière : une image
+    // orpheline reste en base sans que rien ne la désigne plus.
+    let (statut, corps) = service.put_octets("/v1/me/photo", &jeton, jpeg(2)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let restants = media_objects::Entity::find()
+        .filter(media_objects::Column::AccountId.eq(compte.as_str()))
+        .count(&service.db)
+        .await
+        .unwrap();
+    assert_eq!(restants, 1, "l'ancienne photo est restée en base");
+}
+
+/// Ce qui n'est pas une image est refusé, quel que soit l'en-tête annoncé.
+#[tokio::test]
+async fn un_fichier_qui_n_est_pas_une_image_est_refuse() {
+    let service = Service::monter().await;
+    service.compte("c_faux_media", "depart").await;
+    let jeton = service.jeton("c_faux_media");
+
+    let (statut, corps) = service
+        .put_octets("/v1/me/photo", &jeton, b"<?php system($_GET[0]); ?>".to_vec())
+        .await;
+    assert_ne!(statut, StatusCode::OK, "un fichier arbitraire a été stocké : {corps}");
 }

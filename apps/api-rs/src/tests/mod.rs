@@ -25,12 +25,6 @@ use tower::ServiceExt;
 const SECRET: &str = "un-secret-de-test-assez-long-pour-passer-la-validation";
 const SECRET_MEDIA: &str = "un-autre-secret-de-test-assez-long-pour-les-medias";
 
-/// Le schéma tel que Prisma l'applique. Le lire depuis le dépôt plutôt que de
-/// le recopier garantit que les tests portent sur les tables réelles : une
-/// colonne ajoutée au schéma sans l'être ici ferait échouer le test, ce qui
-/// est exactement ce qu'on veut.
-const SCHEMA: &str = include_str!("../../migrations-sqlite/0_init/migration.sql");
-
 pub async fn base_de_test() -> DatabaseConnection {
     // Ni `sqlite::memory:` ni une base nommée en cache partagé ne conviennent :
     // la première donne une base DISTINCTE par connexion du pool, la seconde
@@ -45,25 +39,18 @@ pub async fn base_de_test() -> DatabaseConnection {
         .await
         .expect("base SQLite de test");
 
-    // Chaque instruction du fichier est précédée d'un « -- CreateTable ».
-    // Écarter une instruction parce qu'elle COMMENCE par un commentaire les
-    // écartait donc toutes, en silence : la base restait vide et l'échec
-    // n'apparaissait qu'au premier INSERT. Les commentaires se retirent ligne
-    // à ligne, pas instruction par instruction.
-    for instruction in SCHEMA.split(';') {
-        let sql: String = instruction
-            .lines()
-            .filter(|ligne| !ligne.trim_start().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let sql = sql.trim();
-        if sql.is_empty() {
-            continue;
-        }
-        db.execute_unprepared(sql)
-            .await
-            .unwrap_or_else(|e| panic!("schéma refusé : {e}\n{sql}"));
-    }
+    // Les migrations sont appliquées par le moteur qui les applique en
+    // production, et non recopiées ici.
+    //
+    // Le harnais incluait `0_init` en dur. Toute migration suivante était donc
+    // invisible des tests : la suite entière tournait contre un schéma figé
+    // au premier jour, et personne ne l'aurait su avant la production. Passer
+    // par `migrations::appliquer` fait d'une pierre deux coups — les tests
+    // voient le schéma réel, et le moteur de migrations est exercé par chacun
+    // d'eux.
+    crate::migrations::appliquer(&db)
+        .await
+        .expect("migrations appliquées");
     db
 }
 
@@ -194,6 +181,32 @@ impl Service {
         self.appeler("DELETE", chemin, jeton, None).await
     }
 
+    /// Envoie des octets bruts — pour les routes qui reçoivent un fichier.
+    pub async fn put_octets(
+        &self,
+        chemin: &str,
+        jeton: &str,
+        octets: Vec<u8>,
+    ) -> (StatusCode, Value) {
+        let requete = Request::builder()
+            .method("PUT")
+            .uri(chemin)
+            .extension(adresse_appelante())
+            .header(AUTHORIZATION, format!("Bearer {jeton}"))
+            .header("content-type", "application/octet-stream")
+            .body(Body::from(octets))
+            .expect("requête bien formée");
+
+        let reponse = self.routeur.clone().oneshot(requete).await.expect("réponse");
+        let statut = reponse.status();
+        let corps = http_body_util::BodyExt::collect(reponse.into_body())
+            .await
+            .expect("corps lu")
+            .to_bytes();
+        let valeur = serde_json::from_slice(&corps).unwrap_or(Value::Null);
+        (statut, valeur)
+    }
+
     pub async fn patch(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
         self.appeler("PATCH", chemin, jeton, Some(corps)).await
     }
@@ -315,12 +328,15 @@ pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
 mod contrat;
 mod parcours;
 
+/// Le schéma des tests est celui que la production appliquera.
+///
+/// Le harnais incluait `0_init` en dur : toute migration suivante restait
+/// invisible des tests, qui tournaient contre un schéma figé au premier jour.
+/// Ce test vérifie maintenant qu'une table née d'une migration ULTÉRIEURE est
+/// bien là — c'est-à-dire que le harnais a déroulé toutes les migrations, et
+/// pas seulement la première.
 #[tokio::test]
 async fn le_schema_de_test_est_bien_celui_du_depot() {
-    assert!(!SCHEMA.trim().is_empty(), "le schéma inclus est vide");
-    let creations = SCHEMA.matches("CREATE TABLE").count();
-    assert!(creations >= 18, "seulement {creations} tables dans le schéma inclus");
-
     // Une base fraîche doit accepter une écriture dans la table centrale :
     // c'est la preuve que le schéma a réellement été appliqué, et pas
     // seulement lu.
@@ -331,6 +347,12 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
     )
     .await
     .expect("la table accounts doit exister");
+
+    // Et une table née d'une migration postérieure à « 0_init » : c'est elle
+    // qui distingue un harnais qui migre d'un harnais qui recopie.
+    db.execute_unprepared("SELECT count(*) FROM media_objects")
+        .await
+        .expect("les migrations postérieures à « 0_init » doivent être appliquées");
 }
 mod vitrine;
 mod session;

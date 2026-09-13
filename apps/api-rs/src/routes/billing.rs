@@ -122,7 +122,82 @@ async fn enregistrer_unite(
     })))
 }
 
+/// Accorde la dotation d'une période, une fois et une seule.
+///
+/// Apple **renvoie** ses notifications tant qu'il n'obtient pas de 200, et en
+/// délivre parfois plusieurs pour le même événement. Chaque renvoi rappelait
+/// `crediter`, qui ajoute : un renouvellement retenté deux fois donnait deux
+/// fois la dotation du mois. C'est gratuit, c'est répétable, et rien ne le
+/// signalait.
+///
+/// La date d'échéance sert de marque : tant que la ligne porte déjà celle de
+/// la période en cours, la dotation a été accordée et un nouvel appel ne fait
+/// rien. Le mois suivant apporte une autre échéance, et la dotation repart.
+///
+/// La dotation s'ajoute au solde plutôt que de le remplacer, et c'est
+/// délibéré : « escale » se vend aussi à l'unité, et remplacer effacerait ce
+/// qui a été payé. Les deux origines se mêlent donc dans un même solde, qui
+/// n'est jamais remis à zéro — c'est le choix du produit, pas un oubli.
+async fn doter_la_periode(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    montant: i32,
+    echeance: chrono::NaiveDateTime,
+) -> Result<(), AppError> {
+    let deja = credit_balances::Entity::find()
+        .filter(credit_balances::Column::AccountId.eq(compte_id))
+        .filter(credit_balances::Column::Sku.eq(sku))
+        .filter(credit_balances::Column::ResetsAt.eq(echeance))
+        .one(&state.db)
+        .await?;
+
+    if deja.is_some() {
+        tracing::debug!(compte = compte_id, sku, "dotation déjà accordée pour cette période");
+        return Ok(());
+    }
+
+    crediter(state, compte_id, sku, montant, Some(echeance)).await
+}
+
+#[cfg(test)]
+pub(crate) async fn doter_la_periode_pour_test(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    montant: i32,
+    echeance: chrono::NaiveDateTime,
+) -> Result<(), AppError> {
+    doter_la_periode(state, compte_id, sku, montant, echeance).await
+}
+
+/// Le crédit, exposé aux tests.
+///
+/// `crediter` est privée parce que rien hors de ce module n'a de raison de
+/// créditer un compte. Les tests, eux, doivent pouvoir lancer deux crédits en
+/// même temps sans passer par StoreKit.
+#[cfg(test)]
+pub(crate) async fn crediter_pour_test(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    montant: i32,
+) -> Result<(), AppError> {
+    crediter(state, compte_id, sku, montant, None).await
+}
+
 /// Ajoute des unités au solde, en créant la ligne si elle manque.
+///
+/// L'incrément se fait dans la base, jamais en Rust.
+///
+/// Le solde était lu, additionné, puis réécrit. Deux crédits simultanés — un
+/// achat et le renvoi de la même notification par Apple, deux achats coup sur
+/// coup — lisaient tous deux le même solde et n'en écrivaient qu'un : la
+/// seconde dotation disparaissait. Quelqu'un payait et ne recevait rien, et
+/// rien nulle part ne l'aurait signalé.
+///
+/// `balance = balance + N` est évalué par la base, sous le verrou de ligne
+/// qu'elle pose : deux appels s'additionnent au lieu de s'écraser.
 async fn crediter(
     state: &AppState,
     compte_id: &str,
@@ -130,35 +205,74 @@ async fn crediter(
     montant: i32,
     remise_a_zero: Option<chrono::NaiveDateTime>,
 ) -> Result<(), AppError> {
-    let existant = credit_balances::Entity::find()
+    use sea_orm::sea_query::{Expr, ExprTrait};
+
+    let mut maj = credit_balances::Entity::update_many()
+        .col_expr(
+            credit_balances::Column::Balance,
+            Expr::col(credit_balances::Column::Balance).add(montant),
+        )
+        .col_expr(
+            credit_balances::Column::UpdatedAt,
+            Expr::value(Utc::now().naive_utc()),
+        );
+    if let Some(date) = remise_a_zero {
+        maj = maj.col_expr(credit_balances::Column::ResetsAt, Expr::value(date));
+    }
+
+    let touchees = maj
         .filter(credit_balances::Column::AccountId.eq(compte_id))
         .filter(credit_balances::Column::Sku.eq(sku))
-        .one(&state.db)
+        .exec(&state.db)
         .await?;
 
-    match existant {
-        Some(ligne) => {
-            let solde = ligne.balance + montant;
-            let mut maj: credit_balances::ActiveModel = ligne.into();
-            maj.balance = Set(solde);
-            if let Some(date) = remise_a_zero {
-                maj.resets_at = Set(Some(date));
-            }
-            maj.updated_at = Set(Utc::now().naive_utc());
-            maj.update(&state.db).await?;
-        }
-        None => {
-            credit_balances::ActiveModel {
-                id: Set(cuid2::create_id()),
-                account_id: Set(compte_id.to_string()),
-                sku: Set(sku.to_string()),
-                balance: Set(montant),
-                resets_at: Set(remise_a_zero),
-                updated_at: Set(Utc::now().naive_utc()),
-            }
-            .insert(&state.db)
-            .await?;
-        }
+    if touchees.rows_affected > 0 {
+        return Ok(());
+    }
+
+    // Pas de ligne : on la crée. Un index unique porte sur (compte, sku) —
+    // deux créations simultanées ne peuvent donc pas faire deux lignes, la
+    // seconde échoue. On retente alors l'incrément, qui trouvera la ligne que
+    // l'autre vient de poser plutôt que de perdre la dotation.
+    let creation = credit_balances::ActiveModel {
+        id: Set(cuid2::create_id()),
+        account_id: Set(compte_id.to_string()),
+        sku: Set(sku.to_string()),
+        balance: Set(montant),
+        resets_at: Set(remise_a_zero),
+        updated_at: Set(Utc::now().naive_utc()),
+    }
+    .insert(&state.db)
+    .await;
+
+    if creation.is_ok() {
+        return Ok(());
+    }
+
+    let mut rattrapage = credit_balances::Entity::update_many()
+        .col_expr(
+            credit_balances::Column::Balance,
+            Expr::col(credit_balances::Column::Balance).add(montant),
+        )
+        .col_expr(
+            credit_balances::Column::UpdatedAt,
+            Expr::value(Utc::now().naive_utc()),
+        );
+    if let Some(date) = remise_a_zero {
+        rattrapage = rattrapage.col_expr(credit_balances::Column::ResetsAt, Expr::value(date));
+    }
+
+    let touchees = rattrapage
+        .filter(credit_balances::Column::AccountId.eq(compte_id))
+        .filter(credit_balances::Column::Sku.eq(sku))
+        .exec(&state.db)
+        .await?;
+
+    if touchees.rows_affected == 0 {
+        // Ni l'incrément, ni la création, ni le rattrapage : la création a
+        // échoué pour une autre raison que la course. On rend son erreur
+        // plutôt que de dire que le crédit est passé.
+        creation?;
     }
     Ok(())
 }
@@ -213,17 +327,12 @@ async fn notification_app_store(
 
     if let (false, Some(echeance)) = (expire, echeance) {
         // Dotation mensuelle du palier. Les crédits achetés à l'unité ne sont
-        // jamais remis à zéro : on ajoute, on ne remplace pas.
+        // jamais remis à zéro : on ajoute, on ne remplace pas — « escale » se
+        // vend aussi, et remplacer le solde effacerait ce qui a été payé.
         let escales = droits_pour(palier).escales_par_mois;
         if escales > 0 {
-            crediter(
-                &state,
-                &compte_id,
-                "escale",
-                escales as i32,
-                Some(echeance.naive_utc()),
-            )
-            .await?;
+            doter_la_periode(&state, &compte_id, "escale", escales as i32, echeance.naive_utc())
+                .await?;
         }
     }
 

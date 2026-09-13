@@ -24,7 +24,8 @@ use crate::{
     auth::Authentifie,
     entities::{
         accounts, blocks, consent_records, conversations, credit_balances, devices, join_requests,
-        messages, plans, preferences, profiles, reports, subscriptions, unit_purchases,
+        media_objects, messages, plans, preferences, profiles, reports, subscriptions,
+        unit_purchases,
     },
     error::{non_autorise, AppError},
     temps::iso8601,
@@ -32,6 +33,7 @@ use crate::{
 };
 use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 
 pub fn routes() -> Router<AppState> {
@@ -58,6 +60,25 @@ async fn exporter(
         .filter(profiles::Column::AccountId.eq(id))
         .one(&state.db)
         .await?;
+
+    // Les octets de la photo, joints à l'export plutôt que désignés par une
+    // clé. `None` quand il n'y en a pas, ou quand l'objet a disparu — auquel
+    // cas mieux vaut rien qu'une clé qui ne mène nulle part.
+    let photo = match fiche.as_ref().and_then(|f| f.photo_key.clone()) {
+        Some(cle) => media_objects::Entity::find_by_id(cle)
+            .one(&state.db)
+            .await?
+            .map(|objet| {
+                json!({
+                    "typeDeContenu": objet.content_type,
+                    "octets": objet.byte_size,
+                    // En base64 standard, tel qu'un `data:` URI l'attend : le
+                    // fichier s'ouvre en le collant dans un navigateur.
+                    "donneesBase64": STANDARD.encode(&objet.bytes),
+                })
+            }),
+        None => None,
+    };
 
     let criteres = preferences::Entity::find()
         .filter(preferences::Column::AccountId.eq(id))
@@ -157,15 +178,26 @@ async fn exporter(
             "longitudeArrondie": f.lon_rounded,
             "genre": f.gender,
             "presentation": f.bio,
-            "photo": f.photo_key,
+            // La photo est jointe entière, en clair.
+            //
+            // L'export rendait `photoKey` — un identifiant opaque qui ne
+            // désigne rien d'accessible à qui le reçoit. L'article 20 demande
+            // un format exploitable : une clé ne l'est pas, et une URL signée
+            // ne le serait pas davantage, puisqu'elle expire en quelques
+            // minutes alors qu'un export se garde.
+            "photo": photo,
             "creeLe": iso8601(f.created_at.and_utc()),
         })),
         "criteres": criteres.map(|c| json!({
             "ageMinimum": c.min_age,
             "ageMaximum": c.max_age,
             "distanceMaximaleKm": c.max_distance_km,
-            "recherche": c.seeking_json,
-            "categories": c.categories_json,
+            // Les listes sont rendues comme listes, pas comme du JSON dans
+            // une chaîne. Elles sont stockées en texte — le schéma est partagé
+            // avec SQLite, qui n'a pas de type tableau — et les recopier telles
+            // quelles donnait « "[\"femme\"]" » à relire à la main.
+            "recherche": liste(&c.seeking_json),
+            "categories": liste(&c.categories_json),
             "escaleVille": c.escale_city,
             "escaleJusquA": c.escale_until.map(|quand| iso8601(quand.and_utc())),
         })),
@@ -256,4 +288,14 @@ async fn exporter(
         )],
         Json(document),
     ))
+}
+
+/// Relit une liste stockée en texte JSON.
+///
+/// Les colonnes de listes sont du texte : le schéma est partagé avec SQLite,
+/// qui n'a pas de type tableau. Une colonne illisible vaut « aucun » plutôt
+/// que de faire échouer tout l'export — quelqu'un qui demande ses données doit
+/// les recevoir, même si l'une d'elles est abîmée.
+fn liste(brut: &str) -> Vec<String> {
+    serde_json::from_str(brut).unwrap_or_default()
 }
