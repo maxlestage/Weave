@@ -66,6 +66,18 @@ et `audit_events` en `SET NULL` — la trace de l'action survit, son auteur
 devient anonyme. Un test vérifie que la cascade s'applique réellement, y
 compris sous SQLite, où les clés étrangères ne sont pas actives par défaut.
 
+**Les activités en direct** sont effacées à la fermeture, pas marquées closes.
+La ligne porte `last_state_json` — l'instantané de ce qui s'est affiché sur un
+écran verrouillé —, et la page promet « effacées dès la fin de l'activité » :
+la garder jusqu'à la péremption de la session aurait été des heures de trop. La
+purge ramasse celles qu'APNs nous apprend closes après coup, seul chemin qui
+n'a personne pour retirer sa ligne.
+
+**Les consentements retirés** partent au bout de cinq ans, la durée annoncée.
+Un consentement ACTIF n'est jamais touché : c'est lui qui autorise le traitement
+en cours, et l'effacer retirerait sa base légale à quelqu'un qui n'a rien
+demandé.
+
 **Les traces techniques** — `audit_events` : identifiant de compte, action,
 adresse IP — sont effacées au bout de douze mois, la durée que le tableau des
 traitements annonce. Rien ne les effaçait : la seconde moitié de la promesse

@@ -409,7 +409,8 @@ n'y a pas d'horaire, seulement un verrou à prendre dès qu'on est éveillé.
 Le journal dit ce qui a été fait :
 
 ```json
-{"message":"purge effectuée","messages":0,"activites":0,"traces":0,"comptes":0,"differes":0}
+{"message":"purge effectuée","messages":0,"activites":0,"traces":0,
+ "consentements":0,"comptes":0,"differes":0}
 ```
 
 `differes` compte les comptes échus mais retenus par un signalement encore

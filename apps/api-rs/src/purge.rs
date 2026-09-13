@@ -39,13 +39,27 @@
 
 use crate::{
     cache,
-    entities::{accounts, audit_events, live_activity_sessions, messages, reports},
+    entities::{
+        accounts, audit_events, consent_records, live_activity_sessions, messages, reports,
+    },
     AppState,
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
 };
+
+/// Durée de conservation d'un consentement retiré.
+///
+/// La politique de confidentialité l'annonce : « 5 ans après le retrait ».
+/// C'est la durée pendant laquelle il faut pouvoir établir que le traitement
+/// était licite quand il a eu lieu — au-delà, la trace ne prouve plus rien
+/// d'utile et n'a plus de raison d'être conservée.
+///
+/// Un consentement ACTIF n'est jamais touché : c'est lui qui autorise le
+/// traitement en cours, et l'effacer reviendrait à retirer la base légale de
+/// quelqu'un qui n'a rien demandé.
+pub const CONSENTEMENTS_RETIRES_ANS: i64 = 5;
 
 /// Durée de conservation des traces techniques.
 ///
@@ -75,6 +89,8 @@ pub struct Bilan {
     pub activites_effacees: u64,
     /// Traces techniques passées leur durée de conservation.
     pub traces_effacees: u64,
+    /// Consentements retirés depuis plus longtemps que leur conservation.
+    pub consentements_effaces: u64,
 }
 
 /// Combien de temps le verrou quotidien reste tenu.
@@ -141,6 +157,7 @@ async fn passer_si_c_est_notre_tour(state: &AppState) {
             messages = bilan.messages_effaces,
             activites = bilan.activites_effacees,
             traces = bilan.traces_effacees,
+            consentements = bilan.consentements_effaces,
             comptes = bilan.comptes_effaces,
             differes = bilan.comptes_differes,
             "purge effectuée"
@@ -170,8 +187,16 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
     //    verrouillé. Le garder après la fin de l'activité ne sert plus rien,
     //    et la minimisation qu'annonce la politique de confidentialité vaut
     //    aussi pour ce qu'on a cessé d'utiliser.
+    //    Une activité close l'est aussi : la route qui la termine efface déjà
+    //    sa ligne, mais elle n'est pas le seul chemin — APNs peut nous
+    //    apprendre après coup que l'activité a disparu de l'appareil, et cette
+    //    ligne-là n'a personne pour la retirer.
     let activites_effacees = live_activity_sessions::Entity::delete_many()
-        .filter(live_activity_sessions::Column::StaleAt.lte(maintenant))
+        .filter(
+            sea_orm::Condition::any()
+                .add(live_activity_sessions::Column::StaleAt.lte(maintenant))
+                .add(live_activity_sessions::Column::EndedAt.is_not_null()),
+        )
         .exec(db)
         .await?
         .rows_affected;
@@ -187,7 +212,22 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
         .all(db)
         .await?;
 
-    // 3. Les traces techniques passées leur durée de conservation.
+    // 3. Les consentements retirés depuis plus de cinq ans.
+    //
+    //    Seuls les retirés : un consentement actif autorise un traitement en
+    //    cours, et l'effacer retirerait sa base légale à quelqu'un qui n'a rien
+    //    demandé.
+    let consentements_effaces = consent_records::Entity::delete_many()
+        .filter(consent_records::Column::RevokedAt.is_not_null())
+        .filter(
+            consent_records::Column::RevokedAt
+                .lt(maintenant - Duration::days(CONSENTEMENTS_RETIRES_ANS * 365)),
+        )
+        .exec(db)
+        .await?
+        .rows_affected;
+
+    // 4. Les traces techniques passées leur durée de conservation.
     //
     //    Elles survivent à la suppression du compte — c'est voulu, et la
     //    politique le dit : la trace de l'action reste, son auteur devient
@@ -205,6 +245,7 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
         messages_effaces,
         activites_effacees,
         traces_effacees,
+        consentements_effaces,
         ..Default::default()
     };
 
@@ -305,6 +346,54 @@ pub(super) mod tests {
         .insert(db)
         .await
         .expect("compte inséré");
+    }
+
+    /// Un consentement retiré ne se garde pas indéfiniment, et un consentement
+    /// actif ne se touche jamais.
+    ///
+    /// « 5 ans après le retrait », dit le tableau des traitements. Effacer un
+    /// consentement ACTIF retirerait sa base légale à quelqu'un qui n'a rien
+    /// demandé — le fil cesserait de filtrer par genre du jour au lendemain.
+    #[tokio::test]
+    async fn un_consentement_retire_se_garde_cinq_ans_un_consentement_actif_toujours() {
+        use crate::entities::consent_records;
+
+        let db = base_de_test().await;
+        compte(&db, "consentant", None).await;
+
+        let ligne = |id: &str, retire_il_y_a: Option<i64>| consent_records::ActiveModel {
+            id: Set(id.to_string()),
+            account_id: Set("consentant".to_string()),
+            kind: Set("donnees_sensibles".to_string()),
+            version: Set("2026-09-12".to_string()),
+            granted: Set(true),
+            granted_at: Set(Utc::now().naive_utc() - Duration::days(365 * 7)),
+            revoked_at: Set(retire_il_y_a.map(|j| Utc::now().naive_utc() - Duration::days(j))),
+        };
+
+        ligne("ancien", Some(CONSENTEMENTS_RETIRES_ANS * 365 + 1))
+            .insert(&db)
+            .await
+            .expect("consentement ancien");
+        ligne("recent", Some(30)).insert(&db).await.expect("retrait récent");
+        ligne("actif", None).insert(&db).await.expect("consentement actif");
+
+        let bilan = executer(&db).await.expect("purge");
+        assert_eq!(bilan.consentements_effaces, 1, "seul le retrait échu part");
+
+        let restants: Vec<String> = consent_records::Entity::find()
+            .all(&db)
+            .await
+            .expect("lecture")
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        assert!(!restants.contains(&"ancien".to_string()));
+        assert!(restants.contains(&"recent".to_string()), "cinq ans ne sont pas écoulés");
+        assert!(
+            restants.contains(&"actif".to_string()),
+            "un consentement actif autorise un traitement en cours"
+        );
     }
 
     /// La durée annoncée pour les traces techniques est appliquée.

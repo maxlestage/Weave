@@ -116,9 +116,16 @@ async fn terminer_activite(
         .all(&state.db)
         .await?
     {
-        let mut close: live_activity_sessions::ActiveModel = session.into();
-        close.ended_at = Set(Some(Utc::now().naive_utc()));
-        close.update(&state.db).await?;
+        // La ligne part, elle n'est pas seulement marquée close.
+        //
+        // La politique de confidentialité promet que les activités en direct
+        // sont « effacées dès la fin de l'activité ». Poser `ended_at` et
+        // attendre la purge laissait vivre `last_state_json` — l'instantané de
+        // ce qui s'est affiché sur un écran verrouillé — jusqu'à la péremption
+        // de la session, soit des heures après que la personne l'a fermée.
+        live_activity_sessions::Entity::delete_by_id(session.id)
+            .exec(&state.db)
+            .await?;
     }
 
     Ok(Json(json!({ "ok": true })))
