@@ -12,7 +12,7 @@
 use crate::{
     auth::Authentifie,
     crypto::signer_url_media,
-    droits::{droits_pour, exiger_credit},
+    droits::{droits_pour, exiger_credit, HORIZON_CREDIT_JOURS},
     live_activity,
     entities::{accounts, join_requests, plans, profiles},
     error::{invalide, introuvable, AppError, Code},
@@ -234,8 +234,24 @@ async fn publier(
         return Err(trop_de_plans());
     }
 
-    // Le palier borne l'horizon ; un crédit « Horizon » l'ouvre une fois.
-    if debut > Utc::now() + Duration::days(droits.jours_a_l_avance) {
+    // Le palier borne l'horizon ; un crédit « Horizon » l'ouvre une fois,
+    // JUSQU'À SA PROPRE BORNE.
+    //
+    // Le crédit n'en avait aucune : au-delà de l'horizon du palier, il passait,
+    // point. Un compte gratuit muni d'un crédit à 0,99 € publiait un plan pour
+    // 2050 — plus loin que le Grand Tour à 24,99 € par mois, qui s'arrête à
+    // quatre-vingt-dix jours, et plus loin que les soixante jours que le
+    // catalogue annonce en vendant ce crédit.
+    let horizon_du_palier = Utc::now() + Duration::days(droits.jours_a_l_avance);
+    if debut > horizon_du_palier {
+        let horizon_du_credit =
+            Utc::now() + Duration::days(droits.jours_a_l_avance.max(HORIZON_CREDIT_JOURS));
+        if debut > horizon_du_credit {
+            return Err(invalide(&format!(
+                "Un plan se publie au plus {} jours à l'avance.",
+                droits.jours_a_l_avance.max(HORIZON_CREDIT_JOURS)
+            )));
+        }
         exiger_credit(&state, &compte.id, "horizon", "Horizon").await?;
     }
 

@@ -8,8 +8,9 @@
  * sanctionnée — d'où le surlignage voyant de tout ce qui manque.
  */
 
+import { dateDuDocument } from "./documents.ts";
 import { AC, Page, type Article } from "./Page.tsx";
-import { CONTACT, EDITEUR, MISE_A_JOUR } from "./identite.ts";
+import { CONTACT, EDITEUR } from "./identite.ts";
 
 const ARTICLES: readonly Article[] = [
   {
@@ -145,7 +146,7 @@ export function MentionsLegales() {
     <Page
       titre="Mentions légales"
       chapeau="Qui édite Weave, qui l'héberge, et à qui écrire."
-      miseAJour={MISE_A_JOUR}
+      miseAJour={dateDuDocument("mentions-legales")}
       articles={ARTICLES}
     />
   );

@@ -12,8 +12,9 @@
  */
 
 import { ACCOUNT_PURGE_DAYS, MESSAGE_RETENTION_DAYS, MIN_AGE } from "@weave/contracts";
+import { dateDuDocument } from "./documents.ts";
 import { AC, Page, Tableau, type Article } from "./Page.tsx";
-import { CONTACT, EDITEUR, MISE_A_JOUR } from "./identite.ts";
+import { CONTACT, EDITEUR } from "./identite.ts";
 
 const ARTICLES: readonly Article[] = [
   {
@@ -446,7 +447,7 @@ export function Confidentialite() {
     <Page
       titre="Politique de confidentialité"
       chapeau="Une application où l'on donne son heure et son lieu manipule ce qu'il y a de plus sensible. Voici exactement ce que nous collectons, pourquoi, combien de temps, et ce que nous nous interdisons."
-      miseAJour={MISE_A_JOUR}
+      miseAJour={dateDuDocument("confidentialite")}
       articles={ARTICLES}
     />
   );

@@ -347,6 +347,172 @@ fn chaine_du_contrat(source: &str, nom: &str) -> String {
         .to_string()
 }
 
+/// Les prix, des deux côtés.
+///
+/// L'API les réécrit — elle ne peut pas lire le TypeScript — et elle ne les
+/// affiche pas seulement : `unit_purchases.price_cents` REÇOIT ce nombre à
+/// chaque achat. Une divergence ferait donc que le site annonce un prix,
+/// qu'Apple en encaisse un autre, et que le registre en consigne un troisième.
+#[test]
+fn les_prix_de_l_api_sont_ceux_du_contrat_partage() {
+    let catalogue = catalogue();
+
+    for (sku, attendu) in crate::routes::billing::unites_pour_test() {
+        assert_eq!(
+            prix_du_catalogue(&catalogue, "sku", sku),
+            attendu,
+            "le prix de « {sku} » diverge entre le contrat et l'API"
+        );
+    }
+    for (palier, attendu) in crate::routes::billing::offres_pour_test() {
+        assert_eq!(
+            prix_du_catalogue(&catalogue, "tier", palier),
+            attendu,
+            "le prix du palier « {palier} » diverge entre le contrat et l'API"
+        );
+    }
+}
+
+/// L'achat à l'unité ne doit jamais revenir moins cher que l'abonnement.
+///
+/// Un catalogue où l'on s'en sort mieux au détail vend des unités à des gens
+/// qui auraient pris un abonnement. Ce n'était pas théorique : quatre escales
+/// coûtaient 14,99 + 2 × 3,99 = 22,97 € par-dessus l'Expédition, contre 24,99 €
+/// pour le Grand Tour qui les comprend. On s'abonnait moins pour en avoir plus.
+///
+/// Le test ne cherche pas à rendre l'unité perdante dans tous les cas : en
+/// acheter UNE pour un besoin ponctuel reste moins cher que de s'abonner, et
+/// c'est le propre de l'achat à l'unité.
+#[test]
+fn aucun_achat_a_l_unite_ne_revient_moins_cher_que_l_abonnement() {
+    let catalogue = catalogue();
+    let unite = |sku: &str| prix_du_catalogue(&catalogue, "sku", sku);
+    let palier = |tier: &str| prix_du_catalogue(&catalogue, "tier", tier);
+
+    let somme: i64 = ["renfort", "horizon", "tablee", "escale", "bilan"]
+        .iter()
+        .map(|sku| unite(sku))
+        .sum();
+    assert!(
+        somme > palier("expedition"),
+        "une fois chaque unité ({somme} c) coûte moins qu'un mois d'Expédition ({} c), \
+         qui les accorde toutes et les redonne le mois suivant",
+        palier("expedition")
+    );
+
+    // La Virée accorde sans compter ce que ces trois-là vendent à l'unité.
+    for sku in ["renfort", "horizon", "tablee"] {
+        assert!(
+            2 * unite(sku) > palier("viree"),
+            "deux « {sku} » ({} c) coûtent moins que la Virée ({} c)",
+            2 * unite(sku),
+            palier("viree")
+        );
+    }
+
+    // L'Escapade comprend une escale ; le Grand Tour en comprend quatre, soit
+    // deux de plus que l'Expédition.
+    assert!(
+        palier("viree") + unite("escale") > palier("escapade"),
+        "la Virée plus une escale revient moins cher que l'Escapade, qui en comprend une"
+    );
+    assert!(
+        palier("expedition") + 2 * unite("escale") > palier("grandtour"),
+        "l'Expédition plus deux escales revient moins cher que le Grand Tour, \
+         qui comprend les quatre"
+    );
+}
+
+/// Un crédit « Horizon » ne donne pas plus que l'abonnement le plus cher.
+///
+/// Il ne donnait AUCUNE borne : au-delà de l'horizon du palier, il passait. Un
+/// compte gratuit muni d'un crédit publiait un plan pour 2050 — plus loin que
+/// le Grand Tour, et plus loin que les soixante jours que le catalogue annonce
+/// en le vendant.
+#[test]
+fn le_credit_horizon_ne_depasse_pas_ce_qu_il_annonce() {
+    let catalogue = catalogue();
+    let annonce = catalogue
+        .split("horizon: {")
+        .nth(1)
+        .and_then(|bloc| bloc.split("description:").nth(1))
+        .and_then(|reste| reste.split('"').nth(1))
+        .expect("la description du crédit « Horizon »");
+    assert!(
+        annonce.contains("soixante jours"),
+        "le catalogue annonce autre chose que soixante jours : « {annonce} »"
+    );
+    assert_eq!(
+        crate::droits::HORIZON_CREDIT_JOURS, 60,
+        "la borne du crédit ne correspond plus à ce qui est vendu"
+    );
+    assert!(
+        crate::droits::HORIZON_CREDIT_JOURS <= crate::droits::droits_pour("grandtour").jours_a_l_avance,
+        "un crédit à l'unité donnerait plus que l'abonnement le plus cher"
+    );
+}
+
+/// La date affichée sur la politique de confidentialité est celle que portent
+/// les consentements.
+///
+/// Chaque document juridique porte désormais SA date — corriger un tarif touche
+/// les conditions de vente, pas la politique de confidentialité. Mais celle de
+/// la politique n'est pas libre : c'est la version qu'enregistrent les
+/// consentements, et une page qui afficherait une autre date prétendrait qu'on
+/// a accepté un texte qui n'est pas celui-là.
+///
+/// Le test vérifie que l'entrée reprend la constante partagée plutôt qu'une
+/// date recopiée — une copie se désynchroniserait sans que rien ne le dise.
+#[test]
+fn la_politique_affiche_la_date_de_la_version_consentie() {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../web/src/pages/documents.ts");
+    let Ok(source) = std::fs::read_to_string(&chemin) else {
+        eprintln!("site absent en {} — accord non vérifié", chemin.display());
+        return;
+    };
+
+    let debut = source
+        .find(r#"slug: "confidentialite""#)
+        .expect("la politique a disparu de la liste des documents");
+    let bloc = &source[debut..debut + source[debut..].find("},").expect("bloc fermé")];
+    assert!(
+        bloc.contains("miseAJour: POLICY_UPDATED_LABEL"),
+        "la politique de confidentialité porte une date recopiée plutôt que la \
+         version consentie : « {bloc} »"
+    );
+}
+
+fn catalogue() -> String {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../packages/contracts/src/catalog.ts");
+    std::fs::read_to_string(&chemin)
+        .unwrap_or_else(|e| panic!("catalogue illisible en {} : {e}", chemin.display()))
+}
+
+/// Lit le prix du bloc dont `champ: "valeur"` ouvre la déclaration.
+///
+/// `sku` pour une unité — elle porte `priceCents` — et `tier` pour un palier,
+/// qui porte `monthlyPriceCents`.
+fn prix_du_catalogue(source: &str, champ: &str, valeur: &str) -> i64 {
+    let marque = format!("{champ}: \"{valeur}\",");
+    let debut = source
+        .find(&marque)
+        .unwrap_or_else(|| panic!("« {valeur} » a disparu du catalogue"));
+    let cle = if champ == "sku" { "priceCents: " } else { "monthlyPriceCents: " };
+    let apres = source[debut..]
+        .find(cle)
+        .unwrap_or_else(|| panic!("« {valeur} » n'a pas de prix"))
+        + debut
+        + cle.len();
+    source[apres..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .unwrap_or_else(|_| panic!("le prix de « {valeur} » n'est pas un nombre"))
+}
+
 /// Lit une liste `export const NOM = ["a", "b"]` du contrat, triée.
 fn liste_du_contrat(source: &str, nom: &str) -> Vec<String> {
     let debut = source
