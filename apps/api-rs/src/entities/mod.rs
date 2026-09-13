@@ -21,3 +21,4 @@ pub mod refresh_tokens;
 pub mod reports;
 pub mod subscriptions;
 pub mod unit_purchases;
+pub mod verification_requests;
