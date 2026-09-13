@@ -36,7 +36,7 @@ const OTP_TTL_MINUTES: i64 = 10;
 /// Cinq essais, puis il faut redemander un code.
 const OTP_MAX_TENTATIVES: i32 = 5;
 /// Weave est réservé aux majeurs.
-const AGE_MINIMUM: i32 = 18;
+pub const AGE_MINIMUM: i32 = 18;
 /// Le délai légal avant purge des données d'un compte supprimé.
 ///
 /// Réexporté depuis `purge`, qui l'applique. Il était écrit ici aussi, et les

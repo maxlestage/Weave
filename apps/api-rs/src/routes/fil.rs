@@ -43,7 +43,7 @@ const TAILLE_FIL: usize = 60;
 /// Le fil se périme vite : il dépend de la position, des critères et de l'heure.
 const TTL_FIL: u64 = 5 * 60;
 /// Rayon retenu quand aucun n'est réglé.
-const RAYON_DEFAUT_KM: f64 = 25.0;
+pub const RAYON_DEFAUT_KM: f64 = 25.0;
 /// Un plan reste au fil un moment après son heure : on peut arriver en retard.
 const GRACE_MINUTES: i64 = 30;
 

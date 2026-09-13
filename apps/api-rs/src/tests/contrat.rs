@@ -57,8 +57,21 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
 
     // Chaque ligne : le nom dans le contrat, la constante Rust qui doit lui
     // répondre. La liste ne couvre que ce que l'API réécrit de son côté.
-    let accords: [(&str, i64); 12] = [
+    let accords: [(&str, i64); 16] = [
+        // L'âge minimum d'abord : c'est la seule de ces valeurs qui décide
+        // qui a le droit d'être là. Les CGU l'annoncent en lisant le contrat,
+        // l'API le refuse en lisant sa propre constante — et rien ne les
+        // rapprochait. Une divergence ferait annoncer un âge et en appliquer
+        // un autre, sur la règle qui compte le plus pour ce produit.
+        ("MIN_AGE", crate::routes::auth::AGE_MINIMUM as i64),
         ("MAX_OPEN_PLANS", crate::routes::plans::MAX_PLANS_OUVERTS as i64),
+        ("RENFORT_GRANT", crate::droits::RENFORT_GRANT),
+        ("DEFAULT_RADIUS_KM", crate::routes::fil::RAYON_DEFAUT_KM as i64),
+        ("MAX_RADIUS_KM", crate::routes::me::RAYON_MAXIMUM_KM as i64),
+        // `FEED_TTL_SECONDS` reste hors de cette liste : le contrat l'écrit
+        // « 5 * 60 », que ce test refuse d'évaluer — et à raison. C'est par
+        // ailleurs un réglage de cache, pas une promesse : une divergence y
+        // coûterait quelques secondes de fraîcheur, rien qu'on ait annoncé.
         ("ACCOUNT_PURGE_DAYS", crate::purge::PURGE_COMPTE_JOURS),
         (
             "MESSAGE_RETENTION_DAYS",

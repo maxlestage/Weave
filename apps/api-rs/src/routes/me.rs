@@ -44,7 +44,7 @@ pub(crate) const GENRES: [&str; 4] = ["femme", "homme", "non_binaire", "autre"];
 const AGE_MINIMUM: i32 = 18;
 const AGE_MAXIMUM: i32 = 99;
 /// Le rayon du fil, en kilomètres. `packages/contracts` fait foi.
-const RAYON_MAXIMUM_KM: i32 = 100;
+pub const RAYON_MAXIMUM_KM: i32 = 100;
 /// Les catégories de plans, telles que `packages/contracts` les fixe.
 const CATEGORIES: [&str; 8] = [
     "sortie", "sport", "culture", "repas", "musique", "jeux", "balade", "benevolat",
