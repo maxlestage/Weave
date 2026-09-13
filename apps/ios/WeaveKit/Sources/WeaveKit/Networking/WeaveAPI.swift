@@ -18,7 +18,15 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
     /// On a déjà demandé à venir. On ne redemande pas deux fois.
     case alreadyRequested
     /// Il manque un crédit ou un palier. Porte de quoi proposer l'achat.
-    case entitlementRequired(sku: String?, productID: String?)
+    /// Le serveur refuse faute de crédit ou faute d'offre.
+    ///
+    /// `message` est celui du serveur, et il est rendu tel quel : c'est lui
+    /// qui sait si le refus porte sur un crédit — « Renfort » n'est pas
+    /// compris dans votre offre — ou sur un palier — filtrer par catégorie
+    /// demande une offre supérieure. Le client répondait « Cette action
+    /// demande un crédit » dans les deux cas, ce qui est faux dans le second
+    /// et envoie acheter ce qu'on n'a pas besoin d'acheter.
+    case entitlementRequired(message: String, sku: String?, productID: String?)
     case server(status: Int, message: String)
     case transport(String)
 
@@ -33,7 +41,7 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
         case .tooManyPlans(let message): message
         case .planClosed(let message): message
         case .alreadyRequested: "Vous avez déjà demandé à venir."
-        case .entitlementRequired: "Cette action demande un crédit."
+        case .entitlementRequired(let message, _, _): message
         case .server(_, let message): message
         case .transport: "Connexion impossible. Réessayez."
         }
@@ -609,7 +617,11 @@ public actor WeaveAPI {
         case "plan_closed": .planClosed(body.message)
         case "already_requested": .alreadyRequested
         case "entitlement_required":
-            .entitlementRequired(sku: body.details?.sku, productID: body.details?.unitProductId)
+            .entitlementRequired(
+                message: body.message,
+                sku: body.details?.sku,
+                productID: body.details?.unitProductId
+            )
         default: .server(status: status, message: body.message)
         }
     }
@@ -741,18 +753,22 @@ public struct PreferencesPatch: Encodable, Sendable {
     /// l'application ne pouvait pas dire qui l'on cherche, et la
     /// correspondance par genre restait donc inatteignable.
     public let seeking: [Gender]?
+    /// Jours retenus, au sens ISO : 1 lundi, 7 dimanche. Vide = tous.
+    public let days: [Int]?
 
     public init(
         minAge: Int? = nil,
         maxAge: Int? = nil,
         maxDistanceKm: Int? = nil,
         categories: [PlanCategory]? = nil,
-        seeking: [Gender]? = nil
+        seeking: [Gender]? = nil,
+        days: [Int]? = nil
     ) {
         self.minAge = minAge
         self.maxAge = maxAge
         self.maxDistanceKm = maxDistanceKm
         self.seeking = seeking
+        self.days = days
         self.categories = categories
     }
 }

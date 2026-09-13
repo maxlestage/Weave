@@ -51,6 +51,21 @@ public enum PlanTier: String, Codable, CaseIterable, Sendable {
         guard self != .depart else { return nil }
         return "com.weave.app.sub.\(rawValue).monthly"
     }
+
+    /// Ce palier donne-t-il droit au filtre par jour ?
+    ///
+    /// Le serveur fait foi et refuse le critère aux paliers qui ne l'ont pas.
+    /// Ceci ne sert qu'à ne pas montrer un réglage qui sera refusé — proposer
+    /// puis refuser est une façon de vendre, pas de régler.
+    ///
+    /// « Escapade » nomme ce que « précis » recouvre : « catégorie, jour,
+    /// distance fine ».
+    public var filtreParJour: Bool {
+        switch self {
+        case .depart, .viree: false
+        case .escapade, .expedition, .grandtour: true
+        }
+    }
 }
 
 /// Produit achetable à l'unité. Miroir de `UnitSku`.

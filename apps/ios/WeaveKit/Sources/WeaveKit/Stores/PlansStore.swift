@@ -188,7 +188,10 @@ public final class PlansStore {
     // MARK: - Interne
 
     private func handle(_ error: WeaveAPIError) {
-        if case .entitlementRequired(let sku, _) = error {
+        if case .entitlementRequired(_, let sku, _) = error {
+            // `sku` est absent quand le refus porte sur un palier plutôt que
+            // sur un crédit : il n'y a alors rien de précis à proposer, et
+            // suggérer un achat au hasard vaudrait moins que rien.
             suggestedPurchase = sku.flatMap(UnitSku.init(rawValue:))
         }
         alert = error
