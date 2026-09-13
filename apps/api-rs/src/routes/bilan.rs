@@ -25,6 +25,7 @@
 //! soit dépensé : faire payer 2,99 € pour un rapport vide serait pire que de
 //! ne rien vendre du tout.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::{Authentifie, CompteAuthentifie},
@@ -77,11 +78,10 @@ async fn etablir(
 
     if passes.len() < PLANS_MINIMUM {
         // Refusé AVANT de dépenser le crédit.
-        return Err(invalide(&format!(
-            "Il faut au moins {PLANS_MINIMUM} plans passés pour qu'un bilan dise quelque chose. \
-             Vous en avez {}. Votre crédit n'a pas été utilisé.",
-            passes.len()
-        )));
+        return Err(invalide(Msg::BilanTropPeuDePlans {
+            minimum: PLANS_MINIMUM as i64,
+            passes: passes.len() as i64,
+        }));
     }
 
     let mut lignes = Vec::with_capacity(passes.len());

@@ -9,6 +9,7 @@
 //!
 //! Ce qui se vend, c'est l'horizon de publication et les plans de groupe.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -149,13 +150,10 @@ async fn demandes_recues(
     let plan = plans::Entity::find_by_id(plan_id.as_str())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Plan introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::PlanIntrouvable))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(
-            Code::Forbidden,
-            "Ce plan n'est pas le vôtre.",
-        ));
+        return Err(AppError::new(Code::Forbidden, Msg::PlanPasLeVotre.t()));
     }
 
     let demandes = join_requests::Entity::find()
@@ -246,28 +244,29 @@ async fn publier(
 
     let titre = corps.title.trim().to_string();
     if titre.chars().count() < TITRE_MIN || titre.chars().count() > TITRE_MAX {
-        return Err(invalide(&format!(
-            "Le titre doit faire entre {TITRE_MIN} et {TITRE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::TitreLongueur {
+            minimum: TITRE_MIN as i64,
+            maximum: TITRE_MAX as i64,
+        }));
     }
     let note = corps.note.unwrap_or_default().trim().to_string();
     if note.chars().count() > NOTE_MAX {
-        return Err(invalide(&format!(
-            "La note ne peut pas dépasser {NOTE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::NoteTropLongue {
+            maximum: NOTE_MAX as i64,
+        }));
     }
     if !CATEGORIES.contains(&corps.category.as_str()) {
-        return Err(invalide("Catégorie inconnue."));
+        return Err(invalide(Msg::CategorieInconnue));
     }
 
     let debut = DateTime::parse_from_rfc3339(&corps.starts_at)
-        .map_err(|_| invalide("Date de rendez-vous illisible."))?
+        .map_err(|_| invalide(Msg::DateDeRendezVousIllisible))?
         .with_timezone(&Utc);
 
     if debut < Utc::now() + Duration::minutes(DELAI_MINIMUM_MINUTES) {
-        return Err(invalide(&format!(
-            "Un plan se publie au moins {DELAI_MINIMUM_MINUTES} minutes à l'avance."
-        )));
+        return Err(invalide(Msg::DelaiDePublicationTropCourt {
+            minutes: DELAI_MINIMUM_MINUTES,
+        }));
     }
 
     // Un premier comptage, avant de dépenser quoi que ce soit.
@@ -293,19 +292,19 @@ async fn publier(
         let horizon_du_credit =
             Utc::now() + Duration::days(droits.jours_a_l_avance.max(HORIZON_CREDIT_JOURS));
         if debut > horizon_du_credit {
-            return Err(invalide(&format!(
-                "Un plan se publie au plus {} jours à l'avance.",
-                droits.jours_a_l_avance.max(HORIZON_CREDIT_JOURS)
-            )));
+            return Err(invalide(Msg::HorizonDePublicationDepasse {
+                jours: droits.jours_a_l_avance.max(HORIZON_CREDIT_JOURS),
+            }));
         }
         exiger_credit(&state, &compte.id, "horizon", "Horizon").await?;
     }
 
     let capacite = corps.capacity.unwrap_or(CAPACITE_SOLO);
     if !(CAPACITE_SOLO..=CAPACITE_GROUPE_MAX).contains(&capacite) {
-        return Err(invalide(&format!(
-            "La capacité doit être comprise entre {CAPACITE_SOLO} et {CAPACITE_GROUPE_MAX}."
-        )));
+        return Err(invalide(Msg::CapaciteHorsBornes {
+            minimum: CAPACITE_SOLO.into(),
+            maximum: CAPACITE_GROUPE_MAX.into(),
+        }));
     }
     if capacite > CAPACITE_SOLO && !droits.plans_de_groupe {
         exiger_credit(&state, &compte.id, "tablee", "Tablée").await?;
@@ -339,7 +338,7 @@ async fn publier(
         .filter(profiles::Column::AccountId.eq(compte.id.as_str()))
         .one(&transaction)
         .await?
-        .ok_or_else(|| invalide("Renseignez d'abord votre ville."))?;
+        .ok_or_else(|| invalide(Msg::RenseignezDAbordVotreVille))?;
 
     let plan = plans::ActiveModel {
         id: Set(cuid2::create_id()),
@@ -413,13 +412,10 @@ async fn annuler(
     let plan = plans::Entity::find_by_id(id.clone())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Plan introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::PlanIntrouvable))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(
-            Code::Forbidden,
-            "Ce plan n'est pas le vôtre.",
-        ));
+        return Err(AppError::new(Code::Forbidden, Msg::PlanPasLeVotre.t()));
     }
 
     // Les deux écritures vont ensemble : un plan annulé dont les demandes

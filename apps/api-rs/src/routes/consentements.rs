@@ -34,6 +34,7 @@
 //! période d'activité qui permet d'établir que le traitement était licite
 //! quand il a eu lieu.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -120,9 +121,7 @@ async fn poser(
     let objet = valider_objet(&corps.kind)?;
     let version = corps.version.unwrap_or_default();
     if version != VERSION_POLITIQUE {
-        return Err(invalide(
-            "Ce consentement porte sur une version du texte qui n'est plus en vigueur.",
-        ));
+        return Err(invalide(Msg::ConsentementSurVersionPerimee));
     }
 
     let transaction = state.db.begin().await?;
@@ -206,7 +205,7 @@ fn valider_objet(kind: &str) -> Result<&'static str, AppError> {
     OBJETS
         .into_iter()
         .find(|objet| *objet == kind)
-        .ok_or_else(|| invalide("Objet de consentement inconnu."))
+        .ok_or_else(|| invalide(Msg::ObjetDeConsentementInconnu))
 }
 
 /// Vrai quand le consentement vaut encore : donné, non retiré, et sur la

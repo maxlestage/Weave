@@ -20,6 +20,7 @@
 //! consentements avec leur date, les appareils, les achats. C'est ce qui permet
 //! de vérifier ce que le service sait, ce qui est le point du droit d'accès.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -60,7 +61,7 @@ async fn exporter(
     let ligne = accounts::Entity::find_by_id(id)
         .one(&state.db)
         .await?
-        .ok_or_else(|| non_autorise("Session expirée. Reconnectez-vous."))?;
+        .ok_or_else(|| non_autorise(Msg::SessionExpiree))?;
 
     let fiche = profiles::Entity::find()
         .filter(profiles::Column::AccountId.eq(id))

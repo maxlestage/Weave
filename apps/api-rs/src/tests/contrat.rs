@@ -1052,3 +1052,47 @@ fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
         );
     }
 }
+
+/// Chaque requête de l'application iOS annonce la langue de son utilisateur.
+///
+/// Le service traduit ses messages, et l'application les rend TELS QUELS —
+/// `WeaveAPI.swift` le dit de son `message`. Mais il n'a qu'un seul moyen de
+/// savoir dans quelle langue répondre : l'en-tête `Accept-Language`. Une
+/// requête qui l'omet reçoit du français, et une application anglaise affiche
+/// « Ce plan est complet. » au milieu de son propre texte.
+///
+/// L'oubli ne casse rien de visible côté Swift : la requête part, le serveur
+/// répond, les données arrivent. Seule la langue du refus change — et on ne
+/// s'en aperçoit qu'en lisant une erreur, sur un téléphone réglé dans une
+/// autre langue que la sienne.
+#[test]
+fn chaque_requete_ios_annonce_sa_langue() {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/ios/WeaveKit/Sources/WeaveKit/Networking/WeaveAPI.swift");
+    let source = std::fs::read_to_string(&chemin)
+        .unwrap_or_else(|e| panic!("WeaveAPI.swift illisible en {} : {e}", chemin.display()));
+
+    // Chaque `URLRequest(url:` ouvre la construction d'une requête. L'en-tête
+    // doit être posé avant que celle-ci ne parte.
+    let constructions = source.matches("URLRequest(url:").count();
+    assert!(
+        constructions > 0,
+        "aucune construction de requête trouvée : le fichier a changé de forme"
+    );
+
+    let annonces = source
+        .matches("forHTTPHeaderField: \"Accept-Language\"")
+        .count();
+    assert_eq!(
+        annonces, constructions,
+        "{constructions} requêtes construites mais {annonces} annoncent leur langue : \
+         l'une d'elles recevra du français quoi qu'il arrive"
+    );
+
+    // L'en-tête vient des langues du système, et n'est pas écrit en dur : une
+    // constante « fr » compilerait et annulerait toute la traduction.
+    assert!(
+        source.contains("Locale.preferredLanguages"),
+        "la langue annoncée ne vient pas des réglages du téléphone"
+    );
+}
