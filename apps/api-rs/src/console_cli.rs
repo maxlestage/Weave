@@ -18,12 +18,18 @@ weave-api console — modération
   suspendre <compte> <motif>   met un compte hors circulation ; ses sessions tombent
   retablir <compte>            lève une suspension
 
+  verifier <compte> <motif>    pose le badge « vérifié » sur un profil
+  deverifier <compte> <motif>  le retire
+
   photos                       les photos envoyées et jamais examinées
   photo-ok <compte>            garde la photo et la marque examinée
   photo-retirer <compte>       retire la photo et efface ses octets
 
 Clore un dossier ne sanctionne personne, et suspendre ne clôt aucun dossier :
-ce sont deux décisions, et il faut les poser toutes les deux.";
+ce sont deux décisions, et il faut les poser toutes les deux.
+
+Les gestes qui demandent un motif l'inscrivent au journal d'audit : une décision
+de modération sans trace ne se conteste pas.";
 
 pub async fn executer(
     db: &DatabaseConnection,
@@ -50,12 +56,7 @@ pub async fn executer(
 
         "suspendre" => {
             let compte = exiger(un, "suspendre <compte> <motif>")?;
-            let motif = deux.filter(|m| !m.is_empty()).ok_or_else(|| {
-                // Un motif obligatoire n'est pas une formalité : c'est ce qui
-                // rend la décision contestable, comme les mentions légales le
-                // promettent.
-                anyhow::anyhow!("Il faut un motif : suspendre <compte> <motif>")
-            })?;
+            let motif = exiger_motif(deux, "suspendre <compte> <motif>")?;
             dire(
                 console::suspendre(db, compte, &motif).await?,
                 "compte suspendu",
@@ -71,6 +72,30 @@ pub async fn executer(
                 console::retablir(db, compte).await?,
                 "suspension levée",
                 "ce compte n'était pas suspendu",
+                "aucun compte ne porte cet identifiant",
+            );
+            oublier(cache, compte).await;
+        }
+
+        "verifier" => {
+            let compte = exiger(un, "verifier <compte> <motif>")?;
+            let motif = exiger_motif(deux, "verifier <compte> <motif>")?;
+            dire(
+                console::verifier(db, compte, &motif).await?,
+                "badge posé",
+                "ce profil portait déjà le badge",
+                "aucun compte ne porte cet identifiant",
+            );
+            oublier(cache, compte).await;
+        }
+
+        "deverifier" => {
+            let compte = exiger(un, "deverifier <compte> <motif>")?;
+            let motif = exiger_motif(deux, "deverifier <compte> <motif>")?;
+            dire(
+                console::deverifier(db, compte, &motif).await?,
+                "badge retiré",
+                "ce profil ne portait pas le badge",
                 "aucun compte ne porte cet identifiant",
             );
             oublier(cache, compte).await;
@@ -104,6 +129,14 @@ pub async fn executer(
 
 fn exiger<'a>(valeur: Option<&'a str>, usage: &str) -> anyhow::Result<&'a str> {
     valeur.ok_or_else(|| anyhow::anyhow!("Usage : weave-api console {usage}"))
+}
+
+/// Un motif obligatoire n'est pas une formalité : c'est ce qui rend la décision
+/// contestable, comme les mentions légales le promettent.
+fn exiger_motif(valeur: Option<String>, usage: &str) -> anyhow::Result<String> {
+    valeur
+        .filter(|m| !m.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("Il faut un motif : weave-api console {usage}"))
 }
 
 fn dire(issue: Issue, fait: &str, deja: &str, introuvable: &str) {

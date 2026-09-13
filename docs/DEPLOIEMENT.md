@@ -445,9 +445,17 @@ sans argument, elle donne la liste de ce qu'elle sait faire. Les gestes :
 | `console clore <dossier> [note]` | pose `handledAt`. Le dossier cesse de retenir la purge du compte visé |
 | `console suspendre <compte> <motif>` | statut `suspended` : plus de session valide, plus de fil. Le motif est obligatoire |
 | `console retablir <compte>` | lève une suspension |
+| `console verifier <compte> <motif>` | pose le badge « vérifié » sur un profil |
+| `console deverifier <compte> <motif>` | le retire |
 | `console photos` | les photos envoyées et jamais examinées |
 | `console photo-ok <compte>` | garde la photo, la sort de la file |
 | `console photo-retirer <compte>` | retire la photo **et efface ses octets** |
+
+**Le badge « vérifié »** dit qu'une personne a examiné une pièce et consigné sa
+décision. Il ne dit pas qu'un contrôle automatique a eu lieu : il n'y en a
+aucun. C'est pourquoi le motif est obligatoire, et pourquoi `deverifier` existe
+— un badge qu'on ne peut pas retirer force à choisir entre laisser une
+affirmation fausse en place et supprimer le compte de quelqu'un.
 
 **Clore n'est pas sanctionner.** Clore un dossier ne suspend personne, et
 suspendre ne clôt aucun dossier — ce sont deux décisions, et il faut poser les
