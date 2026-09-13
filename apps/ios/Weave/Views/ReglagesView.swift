@@ -37,6 +37,9 @@ struct ReglagesView: View {
     @State private var fiche = false
     @State private var offres = false
     @State private var confidentialite = false
+    @State private var verification: EtatDeVerification?
+    @State private var motVerification = ""
+    @State private var demandeVerifEnCours = false
     @State private var erreur: String?
 
     var body: some View {
@@ -199,6 +202,12 @@ struct ReglagesView: View {
                     Text("Un fichier JSON contenant ce que vous avez écrit et ce que le service sait de vous. Il ne contient pas les messages écrits par d'autres, ni l'identité de qui vous aurait signalé : ce sont leurs données.")
                 }
 
+                // Le badge se posait depuis la console de modération, et
+                // PERSONNE NE POUVAIT LE DEMANDER. Le Grand Tour vend par
+                // ailleurs une « vérification accélérée » : une priorité
+                // suppose une file, et il n'y en avait aucune.
+                sectionVerification
+
                 // La politique de confidentialité nomme cet écran : « vous
                 // pouvez le retirer à tout moment depuis l'application »,
                 // « Réglages › Confidentialité ». Il désignait un écran qui
@@ -252,6 +261,7 @@ struct ReglagesView: View {
             .sheet(isPresented: $offres) {
                 OffresView().environment(modele)
             }
+            .task { await chargerVerification() }
             .sheet(isPresented: $confidentialite) {
                 ConfidentialiteView().environment(modele)
             }
@@ -362,6 +372,66 @@ struct ReglagesView: View {
 
     /// Lit les critères réels, puis n'autorise qu'ensuite l'application des
     /// curseurs. Sans cela, toucher un âge écraserait l'autre.
+    @ViewBuilder
+    private var sectionVerification: some View {
+        if let etat = verification {
+            Section {
+                if etat.verified {
+                    LabeledContent("Profil vérifié", value: "Oui")
+                } else if etat.enAttente {
+                    LabeledContent("Demande", value: "En cours d'examen")
+                } else {
+                    TextField("Un mot, si vous voulez (facultatif)", text: $motVerification, axis: .vertical)
+                        .lineLimit(1...3)
+                    Button {
+                        Task { await demanderVerification() }
+                    } label: {
+                        HStack {
+                            Text("Demander la vérification")
+                            if demandeVerifEnCours {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(demandeVerifEnCours)
+                }
+            } header: {
+                Text("Vérification")
+            } footer: {
+                if etat.verified {
+                    Text("Un badge apparaît sur vos plans. Il dit qu'une personne de l'équipe a vérifié que vous êtes bien vous — rien de plus.")
+                } else if etat.enAttente {
+                    Text("Nous vous écrirons à votre adresse e-mail pour la suite. Aucune pièce d'identité ne s'envoie depuis l'application.")
+                } else if let refus = etat.request, refus.state == .refusee, !refus.decision.isEmpty {
+                    Text("Demande précédente refusée : \(refus.decision). Vous pouvez redemander.")
+                } else {
+                    Text("Le badge dit qu'une personne de l'équipe a vérifié que vous êtes bien vous. La suite se fait par e-mail : aucune pièce d'identité ne s'envoie depuis l'application.")
+                }
+            }
+        }
+    }
+
+    private func chargerVerification() async {
+        verification = try? await modele.api.verificationState()
+    }
+
+    private func demanderVerification() async {
+        demandeVerifEnCours = true
+        defer { demandeVerifEnCours = false }
+        do {
+            try await modele.api.requestVerification(
+                note: motVerification.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            motVerification = ""
+            await chargerVerification()
+        } catch let souci as WeaveAPIError {
+            erreur = souci.userMessage
+        } catch {
+            erreur = "La demande n'a pas abouti. Réessayez dans un moment."
+        }
+    }
+
     private func chargerCriteres() async {
         guard !criteresLus else { return }
         guard let criteres = try? await modele.api.preferences() else { return }

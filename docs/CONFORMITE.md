@@ -162,6 +162,23 @@ une pièce et consigné sa décision avec son motif. Il ne dit pas qu'un contrô
 automatique a eu lieu — il n'y en a aucun, et **aucune page publique ne définit
 encore ce que le badge affirme**. Cette page-là reste à écrire.
 
+**La vérification se demande** depuis Réglages › Vérification, et la demande
+entre dans une file que `console verifications` relève. Le badge se posait
+depuis la console, et personne ne pouvait le demander — le Grand Tour vendait
+par ailleurs une priorité dans une file qui n'existait pas.
+
+`verification_requests` ne porte **aucune pièce d'identité** : une demande, un
+mot libre facultatif, et la décision avec son motif. La suite se fait par
+courrier. Conserver des papiers d'identité créerait une réserve de données
+sensibles dont la perte serait irréparable, pour un service qui n'en a pas
+besoin — et l'article 9 s'appliquerait à cette réserve comme au reste.
+
+Le motif d'un refus est **rendu à la personne** : les mentions légales
+promettent qu'une décision de modération se conteste, et un refus dont on ignore
+la raison ne se conteste pas. Les CGU disent désormais ce que le badge affirme,
+et surtout ce qu'il n'affirme pas — aucun contrôle automatique, aucune
+vérification d'identité officielle, et rien qui garantisse l'âge ou les photos.
+
 **Ce qui reste à définir** est le processus humain, pas l'outil : qui relève la
 file, sous quel délai, et selon quelle grille. Les photos sont publiées avant
 examen — la file est donc a posteriori, et `photos` la donne de la plus

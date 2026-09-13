@@ -240,6 +240,26 @@ public actor WeaveAPI {
         let _: EmptyResponse = try await request(.patch, "/v1/me/preferences", encodable: preferences)
     }
 
+    // MARK: - Vérification de profil
+
+    /// Où en est ma demande, et le badge est-il posé ?
+    public func verificationState() async throws -> EtatDeVerification {
+        try await request(.get, "/v1/me/verification")
+    }
+
+    /// Demande la vérification de son profil.
+    ///
+    /// `note` est un mot libre et facultatif. Aucune pièce d'identité ne
+    /// transite par l'application : la vérification se poursuit par courrier,
+    /// et une réserve de papiers d'identité serait une responsabilité que ce
+    /// service n'a aucune raison de prendre.
+    public func requestVerification(note: String?) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/me/verification",
+            body: ["note": note ?? ""]
+        )
+    }
+
     // MARK: - Consentements
 
     /// L'état de chaque consentement, y compris ceux jamais donnés.

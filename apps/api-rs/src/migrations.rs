@@ -30,6 +30,10 @@ const MIGRATIONS_POSTGRES: &[(&str, &str)] = &[
         "3_filtre_jours",
         include_str!("../migrations/3_filtre_jours/migration.sql"),
     ),
+    (
+        "4_verifications",
+        include_str!("../migrations/4_verifications/migration.sql"),
+    ),
 ];
 
 const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
@@ -45,6 +49,10 @@ const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
     (
         "3_filtre_jours",
         include_str!("../migrations-sqlite/3_filtre_jours/migration.sql"),
+    ),
+    (
+        "4_verifications",
+        include_str!("../migrations-sqlite/4_verifications/migration.sql"),
     ),
 ];
 

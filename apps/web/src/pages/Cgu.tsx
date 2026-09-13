@@ -135,6 +135,45 @@ const ARTICLES: readonly Article[] = [
     ),
   },
   {
+    id: "verification",
+    titre: "Le badge « vérifié »",
+    contenu: (
+      <>
+        <p>
+          Un badge apparaît sur les plans de certaines personnes. Il dit une chose précise, et il
+          faut savoir laquelle :{" "}
+          <strong>
+            quelqu'un de l'équipe a échangé avec cette personne et jugé qu'il y a bien quelqu'un
+            derrière ce profil
+          </strong>
+          . La décision est humaine, et elle est consignée avec son motif.
+        </p>
+        <p>
+          Ce qu'il ne dit pas : il n'y a{" "}
+          <strong>aucun contrôle automatique, aucune vérification d'identité officielle</strong>, et
+          rien qui garantisse l'exactitude de l'âge, du prénom ou des photos. Un badge n'est pas une
+          pièce d'identité, et un profil vérifié mérite la même prudence qu'un autre lors d'une
+          première rencontre.
+        </p>
+        <p>
+          La vérification se demande depuis l'application, dans{" "}
+          <strong>Réglages&nbsp;› Vérification</strong>, et la suite se fait par e-mail.{" "}
+          <strong>Aucune pièce d'identité ne s'envoie depuis l'application</strong> : conserver des
+          papiers d'identité créerait une réserve de données dont la perte serait irréparable, pour
+          un service qui n'en a pas besoin.
+        </p>
+        <p>
+          Un badge se retire — pièce périmée, doute, erreur — et un refus est motivé. L'un comme
+          l'autre se contestent à{" "}
+          <a href={`mailto:${CONTACT.support}`}>
+            <AC>{CONTACT.support}</AC>
+          </a>
+          .
+        </p>
+      </>
+    ),
+  },
+  {
     id: "moderation",
     titre: "Signalement et modération",
     contenu: (
