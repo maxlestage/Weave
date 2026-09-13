@@ -29,6 +29,27 @@ pub mod regles {
     /// Demandes de participation. Le quota journalier du palier est
     /// l'invariant ; cette règle ne sert qu'à borner les rafales.
     pub const DEMANDE: Regle = Regle { seau: "join", limite: 40, fenetre_secondes: 60 * 60 };
+
+    /// Envoi de photo de profil.
+    ///
+    /// Chaque envoi est une transaction qui écrit jusqu'à deux mégaoctets et en
+    /// efface autant : l'ancienne part avec la nouvelle, si bien que rien ne
+    /// s'accumule — mais rien ne bornait non plus le rythme. Dix par heure
+    /// laisse largement de quoi hésiter entre trois photos.
+    pub const PHOTO: Regle = Regle { seau: "photo", limite: 10, fenetre_secondes: 60 * 60 };
+
+    /// Export de ses données.
+    ///
+    /// C'est la lecture la plus lourde du service : tout le compte, plans,
+    /// demandes, conversations, messages, achats, et les octets de la photo.
+    /// Rien ne la bornait, et elle est accessible à tout compte connecté.
+    ///
+    /// La borne est volontairement large. Le droit d'accès ne se refuse pas :
+    /// l'article 12 ne permet de s'opposer qu'aux demandes « manifestement
+    /// infondées ou excessives, notamment en raison de leur caractère
+    /// répétitif ». Cinq par jour ne gêne personne qui exerce son droit, et
+    /// arrête une boucle.
+    pub const EXPORT: Regle = Regle { seau: "export", limite: 5, fenetre_secondes: 24 * 60 * 60 };
 }
 
 /// Incrémente le compteur et refuse la requête si le seuil est franchi.
