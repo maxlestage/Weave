@@ -23,6 +23,13 @@ pub enum Code {
     PlanClosed,
     AlreadyRequested,
     EntitlementRequired,
+    /// Jamais produit par ce service, et c'est voulu : un envoi APNs qui échoue
+    /// est journalisé, jamais remonté au client — accepter une demande reste
+    /// utile même si la bannière ne part pas. Le code demeure parce que
+    /// `@weave/contracts` le déclare (`UPSTREAM`) et que le site comme
+    /// l'application iOS savent le lire. Le retirer d'un seul côté ferait
+    /// diverger un vocabulaire partagé sans qu'aucun compilateur ne le voie.
+    #[allow(dead_code)]
     Upstream,
     Internal,
 }
@@ -68,6 +75,13 @@ pub struct AppError {
     pub code: Code,
     pub message: String,
     pub details: Option<serde_json::Value>,
+    /// Secondes à attendre avant de réessayer, pour un refus de débit.
+    ///
+    /// Le message le dit déjà en français ; un client, lui, ne lit pas le
+    /// français. `Retry-After` est ce que la norme HTTP prévoit pour qu'une
+    /// application sache temporiser au lieu de réessayer aussitôt — et de se
+    /// faire refuser encore.
+    pub retry_after: Option<i64>,
 }
 
 impl AppError {
@@ -76,11 +90,19 @@ impl AppError {
             code,
             message: message.into(),
             details: None,
+            retry_after: None,
         }
     }
 
     pub fn avec_details(mut self, details: serde_json::Value) -> Self {
         self.details = Some(details);
+        self
+    }
+
+    /// Combien de secondes attendre avant de réessayer. Pose l'en-tête
+    /// `Retry-After` sur la réponse.
+    pub fn dans(mut self, secondes: i64) -> Self {
+        self.retry_after = Some(secondes.max(1));
         self
     }
 }
@@ -99,7 +121,16 @@ impl IntoResponse for AppError {
         if let Some(details) = self.details {
             corps["details"] = details;
         }
-        (self.code.status(), Json(corps)).into_response()
+
+        let mut reponse = (self.code.status(), Json(corps)).into_response();
+        if let Some(secondes) = self.retry_after {
+            if let Ok(valeur) = axum::http::HeaderValue::from_str(&secondes.to_string()) {
+                reponse
+                    .headers_mut()
+                    .insert(axum::http::header::RETRY_AFTER, valeur);
+            }
+        }
+        reponse
     }
 }
 

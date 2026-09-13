@@ -138,6 +138,8 @@ Le socle est fonctionnel et testé ; ces points demandent des décisions ou des
 comptes tiers, pas du code d'architecture :
 
 - [ ] Envoi réel des codes de connexion (fournisseur d'e-mail transactionnel)
+- [x] Alertes APNs quand un message arrive — la Live Activity ne compte que
+      plans et demandes, un message n'y apparaissait pas
 - [ ] Stockage objet des médias, avec modération des photos avant publication
 - [ ] Vérification cryptographique complète des transactions StoreKit
       (clé App Store Connect)

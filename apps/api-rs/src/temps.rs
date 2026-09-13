@@ -17,11 +17,6 @@ fn fuseau(nom: &str) -> Tz {
     })
 }
 
-/// Heure locale courante (0-23) dans un fuseau donné.
-pub fn heure_locale(nom_fuseau: &str, a: DateTime<Utc>) -> u32 {
-    a.with_timezone(&fuseau(nom_fuseau)).hour()
-}
-
 /// Jour local au format AAAA-MM-JJ, pour les clés de cache journalières.
 pub fn jour_local(nom_fuseau: &str, a: DateTime<Utc>) -> String {
     a.with_timezone(&fuseau(nom_fuseau))

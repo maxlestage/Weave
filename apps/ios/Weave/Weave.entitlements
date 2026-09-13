@@ -7,7 +7,8 @@
   <array>
     <string>$(AppIdentifierPrefix)com.weave.app.shared</string>
   </array>
-  <!-- Notifications distantes : Live Activity démarrée à distance à l'heure de tissage. -->
+  <!-- Notifications distantes : Live Activity démarrée à distance, et alertes
+       quand un message arrive alors qu'aucune bannière n'est en cours. -->
   <key>aps-environment</key>
   <string>development</string>
   <!-- Groupe d'application : résumé de la montre pour la complication. -->

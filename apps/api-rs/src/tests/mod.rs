@@ -98,6 +98,10 @@ fn configuration() -> Env {
 pub struct Service {
     routeur: axum::Router,
     pub db: DatabaseConnection,
+    /// L'état du service, pour les tests qui appellent une fonction interne
+    /// plutôt qu'une route — un envoi de notification, par exemple, n'a pas
+    /// d'adresse HTTP à viser.
+    pub etat: AppState,
     /// Ce qui distingue les comptes d'un test de ceux d'un autre.
     ///
     /// La base est déjà propre à chaque test, mais le cache, lui, est partagé
@@ -144,7 +148,12 @@ impl Service {
             std::process::id(),
             COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         );
-        Self { routeur: construire_routeur(state), db, suffixe }
+        Self {
+            routeur: construire_routeur(state.clone()),
+            db,
+            etat: state,
+            suffixe,
+        }
     }
 
     /// L'identifiant réel d'un compte nommé dans un test.
