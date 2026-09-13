@@ -88,6 +88,10 @@ pub mod cles {
         format!("{NS}:watch:{compte}")
     }
     /// Compteur de limitation de débit.
+    /// Verrou d'une tâche d'entretien, pour qu'un seul dyno l'exécute.
+    pub fn verrou(tache: &str) -> String {
+        format!("{NS}:verrou:{tache}")
+    }
     pub fn limitation(seau: &str, sujet: &str) -> String {
         format!("{NS}:rl:{seau}:{sujet}")
     }
@@ -131,6 +135,29 @@ pub async fn ecrire_json<T: serde::Serialize>(
         .query_async::<()>(&mut conn)
         .await?;
     Ok(())
+}
+
+/// Prend un verrou pour la durée indiquée, ou rend faux s'il est déjà tenu.
+///
+/// `SET NX EX` en une seule commande : tester puis poser laisserait une fenêtre
+/// pendant laquelle deux dynos se croiraient tous deux seuls. Le verrou expire
+/// de lui-même — un processus arrêté au mauvais moment ne bloque pas la tâche
+/// pour toujours.
+pub async fn prendre_verrou(
+    manager: &ConnectionManager,
+    cle: &str,
+    secondes: u64,
+) -> redis::RedisResult<bool> {
+    let mut conn = manager.clone();
+    let pose: Option<String> = redis::cmd("SET")
+        .arg(cle)
+        .arg(chrono::Utc::now().to_rfc3339())
+        .arg("NX")
+        .arg("EX")
+        .arg(secondes)
+        .query_async(&mut conn)
+        .await?;
+    Ok(pose.is_some())
 }
 
 pub async fn oublier(manager: &ConnectionManager, cle: &str) -> redis::RedisResult<()> {

@@ -28,7 +28,11 @@
 //! `deleting`, invisible du fil, sans session valide — et sera purgé lors d'un
 //! passage ultérieur, une fois le signalement clos.
 
-use crate::entities::{accounts, live_activity_sessions, messages, reports};
+use crate::{
+    cache,
+    entities::{accounts, live_activity_sessions, messages, reports},
+    AppState,
+};
 use chrono::{Duration, Utc};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
@@ -46,6 +50,77 @@ pub struct Bilan {
     /// Comptes échus mais retenus par un signalement encore ouvert.
     pub comptes_differes: u64,
     pub activites_effacees: u64,
+}
+
+/// Combien de temps le verrou quotidien reste tenu.
+///
+/// Vingt-trois heures, pas vingt-quatre : sinon deux passages consécutifs
+/// dériveraient d'un jour à l'autre et finiraient par sauter une journée.
+const VERROU_SECONDES: u64 = 23 * 60 * 60;
+
+/// Entre deux tentatives de prise du verrou.
+const INTERVALLE: Duration = Duration::hours(1);
+
+/// Délai avant la première tentative, après le démarrage.
+///
+/// Le service doit d'abord être en mesure de répondre : une purge lancée dans
+/// la même seconde disputerait ses connexions à la base aux premières requêtes.
+const DELAI_INITIAL: Duration = Duration::minutes(2);
+
+/// Fait tourner la purge depuis le service lui-même.
+///
+/// Un planificateur externe — Heroku Scheduler, cron — reste préférable : une
+/// tâche d'entretien n'a rien à faire dans le processus qui sert les requêtes.
+/// Mais il demande une intervention d'exploitation, et sans elle la purge
+/// n'avait tout simplement pas lieu : `deletionRequestedAt` et `purgeAfter`
+/// décrivaient une intention que rien n'exécutait.
+///
+/// Deux précautions rendent la chose sûre :
+///
+/// * **un verrou dans le cache**, pris en une seule commande. Deux dynos qui
+///   se réveillent ensemble ne purgent pas deux fois — le second voit le
+///   verrou et repasse son tour.
+/// * **une tentative par heure**, pas une purge par heure. Le verrou tient
+///   vingt-trois heures : au plus un passage par jour, quel que soit le nombre
+///   de dynos et quelle que soit l'heure de leur réveil.
+///
+/// C'est ce dernier point qui rend l'approche acceptable sur un dyno qui
+/// s'endort : il n'y a pas d'horaire à manquer, seulement un verrou à prendre
+/// dès qu'on est réveillé.
+pub fn planifier(state: AppState) {
+    tokio::spawn(async move {
+        tokio::time::sleep(DELAI_INITIAL.to_std().unwrap_or_default()).await;
+        loop {
+            passer_si_c_est_notre_tour(&state).await;
+            tokio::time::sleep(INTERVALLE.to_std().unwrap_or_default()).await;
+        }
+    });
+}
+
+async fn passer_si_c_est_notre_tour(state: &AppState) {
+    let cle = cache::cles::verrou("purge");
+    match cache::prendre_verrou(&state.cache, &cle, VERROU_SECONDES).await {
+        Ok(false) => return,
+        Err(erreur) => {
+            // Cache indisponible : on ne purge pas. Purger sans verrou serait
+            // le seul moyen de purger deux fois, et rien ne presse — la
+            // tentative suivante aura lieu dans une heure.
+            tracing::warn!(erreur = %erreur, "verrou de purge indisponible, passage reporté");
+            return;
+        }
+        Ok(true) => {}
+    }
+
+    match executer(&state.db).await {
+        Ok(bilan) => tracing::info!(
+            messages = bilan.messages_effaces,
+            activites = bilan.activites_effacees,
+            comptes = bilan.comptes_effaces,
+            differes = bilan.comptes_differes,
+            "purge effectuée"
+        ),
+        Err(erreur) => tracing::error!(erreur = %erreur, "purge en échec"),
+    }
 }
 
 pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
@@ -287,6 +362,27 @@ pub(super) mod tests {
             .expect("lecture");
         assert_eq!(restantes.len(), 1);
         assert_eq!(restantes[0].id, "vivante");
+    }
+
+    /// Le point qui rend la purge dans le dyno acceptable : deux dynos qui se
+    /// réveillent ensemble ne purgent pas deux fois. Le second voit le verrou.
+    #[tokio::test]
+    async fn un_seul_passage_est_accorde_par_periode() {
+        use crate::tests::Service;
+        let service = Service::monter().await;
+        let cle = crate::cache::cles::verrou(&format!("purge-test-{}", service.id("v")));
+
+        let premier = crate::cache::prendre_verrou(&service.etat.cache, &cle, 60)
+            .await
+            .expect("cache joignable");
+        let second = crate::cache::prendre_verrou(&service.etat.cache, &cle, 60)
+            .await
+            .expect("cache joignable");
+
+        assert!(premier, "le premier passage prend le verrou");
+        assert!(!second, "le second doit repasser son tour");
+
+        let _ = crate::cache::oublier(&service.etat.cache, &cle).await;
     }
 
     #[tokio::test]
