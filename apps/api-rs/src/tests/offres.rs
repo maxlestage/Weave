@@ -1062,3 +1062,57 @@ async fn plan_simple(service: &Service, nom: &str) -> String {
     assert_eq!(statut, StatusCode::OK, "{corps}");
     corps["id"].as_str().expect("identifiant").to_string()
 }
+
+/// Deux ouvertures simultanées d'escale ne dépensent qu'un crédit.
+///
+/// Le contrôle « une escale est déjà en cours » se lisait puis s'écrivait en
+/// deux temps : deux appels concurrents le franchissaient ensemble et
+/// DÉPENSAIENT TOUS DEUX UN CRÉDIT pour une seule escale. À 5,99 € l'unité, un
+/// double appui coûtait le prix d'une escale de trop.
+#[tokio::test]
+async fn deux_escales_simultanees_ne_depensent_qu_un_credit() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_escale_course", "depart").await;
+    let jeton = service.jeton("c_escale_course");
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &compte, "escale", 4)
+        .await
+        .expect("crédits posés");
+
+    let corps = json!({ "city": "Bordeaux" });
+    let (a, b, c) = tokio::join!(
+        service.post("/v1/me/escale", Some(&jeton), corps.clone()),
+        service.post("/v1/me/escale", Some(&jeton), corps.clone()),
+        service.post("/v1/me/escale", Some(&jeton), corps.clone()),
+    );
+    let reussies = [a, b, c].iter().filter(|(s, _)| *s == StatusCode::OK).count();
+    assert_eq!(reussies, 1, "une seule ouverture doit aboutir");
+
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(
+        moi["credits"]["escale"], 3,
+        "une seule escale ouverte, donc un seul crédit dépensé : {moi}"
+    );
+}
+
+/// Sans crédit, rien n'est ouvert : la transaction annule tout.
+///
+/// L'ordre inverse — ouvrir puis payer — laisserait une escale que personne
+/// n'a payée le jour où le solde est vide.
+#[tokio::test]
+async fn une_escale_sans_credit_n_ouvre_rien() {
+    let service = Service::monter().await;
+    service.compte("c_escale_sans", "depart").await;
+    let jeton = service.jeton("c_escale_sans");
+
+    let (statut, corps) = service
+        .post("/v1/me/escale", Some(&jeton), json!({ "city": "Bordeaux" }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "{corps}");
+
+    let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
+    assert!(
+        criteres["escaleCity"].is_null(),
+        "une escale a été ouverte sans être payée : {criteres}"
+    );
+}
