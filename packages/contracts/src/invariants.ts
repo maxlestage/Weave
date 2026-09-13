@@ -97,6 +97,9 @@ export const MAX_RADIUS_KM = 100;
  * écrite, et inatteignable.
  */
 export const GENDERS = ["femme", "homme", "non_binaire", "autre"] as const;
+
+/** Longueur de la phrase de présentation. Une phrase, pas une biographie. */
+export const BIO_MAX_CHARS = 160;
 export type Gender = (typeof GENDERS)[number];
 
 export const GENDER_LABELS: Readonly<Record<Gender, string>> = {

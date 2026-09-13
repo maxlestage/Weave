@@ -532,3 +532,67 @@ async fn un_genre_hors_vocabulaire_est_refuse() {
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 }
+
+/// Un téléphone qui change de mains ne notifie plus son ancien propriétaire.
+///
+/// L'index unique porte sur (compte, appareil) : le même téléphone peut donc
+/// figurer sous plusieurs comptes, et la déconnexion ne touche pas la ligne
+/// d'appareil — elle ne révoque que les jetons de session. La ligne du premier
+/// survivait donc avec le même jeton de poussée, puisque ce jeton appartient à
+/// l'appareil et non au compte.
+///
+/// Les alertes du premier continuaient d'arriver sur un téléphone qui n'était
+/// plus le sien : « Nouveau message », sur l'écran verrouillé d'un inconnu.
+#[tokio::test]
+async fn un_telephone_qui_change_de_mains_cesse_de_notifier_le_precedent() {
+    use crate::entities::devices;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let service = Service::monter().await;
+    let premier = service.compte("c_premier_tel", "depart").await;
+    service.compte("c_second_tel", "depart").await;
+
+    // Le même appareil, déclaré par l'un puis par l'autre.
+    let appareil = format!("vendor-{premier}");
+    let declaration = json!({
+        "vendorId": appareil,
+        "platform": "ios",
+        "apnsToken": "jeton-du-telephone",
+        "pushToStartToken": "jeton-de-banniere",
+        "apnsEnvironment": "sandbox",
+    });
+
+    let (statut, corps) = service
+        .put("/v1/devices", Some(&service.jeton("c_premier_tel")), declaration.clone())
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, corps) = service
+        .put("/v1/devices", Some(&service.jeton("c_second_tel")), declaration)
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // La ligne du premier existe encore — c'est voulu — mais elle ne vise plus
+    // rien.
+    let ancienne = devices::Entity::find()
+        .filter(devices::Column::AccountId.eq(premier.as_str()))
+        .filter(devices::Column::VendorId.eq(appareil.as_str()))
+        .one(&service.db)
+        .await
+        .unwrap()
+        .expect("la ligne du premier compte");
+    assert!(
+        ancienne.apns_token.is_none() && ancienne.push_to_start_token.is_none(),
+        "l'ancien propriétaire vise encore ce téléphone : ses alertes y arriveraient"
+    );
+
+    // Et le nouveau, lui, reçoit bien.
+    let nouvelle = devices::Entity::find()
+        .filter(devices::Column::AccountId.eq(service.id("c_second_tel").as_str()))
+        .filter(devices::Column::VendorId.eq(appareil.as_str()))
+        .one(&service.db)
+        .await
+        .unwrap()
+        .expect("la ligne du second compte");
+    assert_eq!(nouvelle.apns_token.as_deref(), Some("jeton-du-telephone"));
+}
