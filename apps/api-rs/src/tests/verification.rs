@@ -4,7 +4,7 @@
 //! Le Grand Tour vend par ailleurs une « vérification accélérée » : une
 //! priorité suppose une file, et il n'y en avait aucune.
 
-use super::Service;
+use super::{refuse, Service};
 use axum::http::StatusCode;
 use serde_json::json;
 
@@ -161,7 +161,7 @@ async fn un_profil_deja_verifie_ne_redemande_pas() {
     crate::console::verifier(&service.db, &compte, "vu").await.expect("badge");
 
     let (statut, corps) = service.post("/v1/me/verification", Some(&jeton), json!({})).await;
-    assert_ne!(statut, StatusCode::OK, "{corps}");
+    refuse(statut, &corps, "validation", &format!("{corps}"));
 }
 
 /// Rien d'identifiant ne se dépose ici : le mot joint est borné, et la
@@ -179,5 +179,5 @@ async fn le_mot_joint_est_borne() {
             json!({ "note": "a".repeat(501) }),
         )
         .await;
-    assert_ne!(statut, StatusCode::OK, "{corps}");
+    refuse(statut, &corps, "validation", &format!("{corps}"));
 }

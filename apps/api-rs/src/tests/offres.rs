@@ -4,7 +4,7 @@
 //! enregistrer ce qu'Apple lui transmet. Aucune offre n'achète de visibilité —
 //! ce qui se vend, c'est l'horizon de publication et les plans de groupe.
 
-use super::Service;
+use super::{refuse, Service};
 use axum::http::StatusCode;
 use sea_orm::ConnectionTrait;
 use serde_json::json;
@@ -345,7 +345,7 @@ async fn une_escale_achetee_ouvre_le_fil_sur_une_autre_ville() {
     let (statut, corps) = service
         .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lyon" }))
         .await;
-    assert_ne!(statut, StatusCode::OK, "une escale sans crédit : {corps}");
+    refuse(statut, &corps, "entitlement_required", &format!("une escale sans crédit : {corps}"));
 
     crate::routes::billing::crediter_pour_test(&service.etat, &compte, "escale", 1)
         .await
@@ -373,7 +373,7 @@ async fn une_escale_achetee_ouvre_le_fil_sur_une_autre_ville() {
     let (statut, corps) = service
         .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lille" }))
         .await;
-    assert_ne!(statut, StatusCode::OK, "deux escales à la fois : {corps}");
+    refuse(statut, &corps, "validation", &format!("deux escales à la fois : {corps}"));
 
     // Le crédit du second achat n'a pas été consommé par ce refus.
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
@@ -480,9 +480,15 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
 
-    // Sans crédit, pas de bilan.
+    // Le bilan est refusé — mais par le contrôle des plans à venir, qui passe
+    // AVANT celui du crédit. Le commentaire disait « sans crédit, pas de
+    // bilan » et le test ne le vérifiait pas : il aurait continué de passer si
+    // le crédit avait cessé d'être exigé.
+    //
+    // La règle du crédit est tenue ailleurs, par
+    // `un_palier_sans_bilan_exige_toujours_le_credit` — vérifié en la retirant.
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    assert_ne!(statut, StatusCode::OK, "un bilan sans crédit : {corps}");
+    refuse(statut, &corps, "validation", &format!("un bilan sur des plans à venir : {corps}"));
 
     crate::routes::billing::crediter_pour_test(&service.etat, &auteur, "bilan", 1)
         .await
@@ -491,7 +497,7 @@ async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
     // Les plans sont encore à venir : le bilan doit refuser, et ne pas
     // consommer le crédit — un plan à venir n'a pas fini de recevoir.
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    assert_ne!(statut, StatusCode::OK, "un bilan sur des plans à venir : {corps}");
+    refuse(statut, &corps, "validation", &format!("un bilan sur des plans à venir : {corps}"));
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
     assert_eq!(moi["credits"]["bilan"], 1, "un refus a mangé le crédit");
 
@@ -536,7 +542,7 @@ async fn un_bilan_sans_matiere_ne_coute_pas_le_credit() {
         .expect("achat");
 
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    assert_ne!(statut, StatusCode::OK, "{corps}");
+    refuse(statut, &corps, "validation", &format!("{corps}"));
     assert!(
         corps["message"].as_str().unwrap_or_default().contains("n'a pas été utilisé"),
         "le refus doit dire que le crédit est intact : {corps}"
@@ -571,7 +577,7 @@ async fn une_transaction_forgee_est_refusee() {
             "signedTransaction": forgee,
         }))
         .await;
-    assert_ne!(statut, StatusCode::OK, "une transaction forgée a été acceptée : {corps}");
+    refuse(statut, &corps, "validation", &format!("une transaction forgée a été acceptée : {corps}"));
 
     let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_forgeur"))).await;
     assert_eq!(moi["tier"], "depart", "le palier a été accordé sans paiement");
@@ -633,7 +639,7 @@ async fn une_transaction_trop_ancienne_est_refusee() {
             "signedTransaction": signee,
         }))
         .await;
-    assert_ne!(statut, StatusCode::OK, "une transaction d'il y a deux jours : {corps}");
+    refuse(statut, &corps, "validation", &format!("une transaction d'il y a deux jours : {corps}"));
 }
 
 /// Un palier qui comprend le bilan ne fait pas payer deux fois.
@@ -734,7 +740,7 @@ async fn un_palier_sans_bilan_exige_toujours_le_credit() {
         .unwrap();
 
     let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
-    assert_ne!(statut, StatusCode::OK, "« Virée » ne comprend pas le bilan : {corps}");
+    refuse(statut, &corps, "entitlement_required", &format!("« Virée » ne comprend pas le bilan : {corps}"));
 }
 
 /// Les critères vendus par palier sont refusés à qui ne les a pas.
@@ -764,7 +770,7 @@ async fn les_criteres_vendus_sont_refuses_au_socle_gratuit() {
         let (statut, corps) = service
             .patch("/v1/me/preferences", Some(&jeton), json!({ champ: valeur }))
             .await;
-        assert_ne!(statut, StatusCode::OK, "« {champ} » accepté au socle : {corps}");
+        refuse(statut, &corps, "entitlement_required", &format!("« {champ} » accepté au socle : {corps}"));
     }
 
     // Vider reste possible : sinon, quelqu'un dont l'abonnement expire ne
@@ -880,7 +886,7 @@ async fn un_jour_hors_semaine_est_refuse() {
         let (statut, corps) = service
             .patch("/v1/me/preferences", Some(&jeton), json!({ "days": [faux] }))
             .await;
-        assert_ne!(statut, StatusCode::OK, "« {faux} » accepté comme jour : {corps}");
+        refuse(statut, &corps, "validation", &format!("« {faux} » accepté comme jour : {corps}"));
     }
 }
 
@@ -1108,7 +1114,7 @@ async fn une_escale_sans_credit_n_ouvre_rien() {
     let (statut, corps) = service
         .post("/v1/me/escale", Some(&jeton), json!({ "city": "Bordeaux" }))
         .await;
-    assert_ne!(statut, StatusCode::OK, "{corps}");
+    refuse(statut, &corps, "entitlement_required", &format!("{corps}"));
 
     let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
     assert!(

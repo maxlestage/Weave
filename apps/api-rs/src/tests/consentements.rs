@@ -3,7 +3,7 @@
 //! La page « Confidentialité » fait trois promesses. Un fichier par promesse
 //! aurait été plus joli ; elles se tiennent, et se cassent, ensemble.
 
-use super::Service;
+use super::{refuse, Service};
 use crate::routes::consentements::{DONNEES_SENSIBLES, VERSION_POLITIQUE};
 use axum::http::StatusCode;
 use serde_json::json;
@@ -191,7 +191,7 @@ async fn un_consentement_doit_porter_la_version_en_vigueur() {
                 json!({ "kind": DONNEES_SENSIBLES, "version": version }),
             )
             .await;
-        assert_ne!(statut, StatusCode::OK, "version « {version} » acceptée : {corps}");
+        refuse(statut, &corps, "validation", &format!("version « {version} » acceptée : {corps}"));
     }
 
     let (statut, corps) = service
@@ -201,7 +201,7 @@ async fn un_consentement_doit_porter_la_version_en_vigueur() {
             json!({ "kind": "tout_et_n_importe_quoi", "version": VERSION_POLITIQUE }),
         )
         .await;
-    assert_ne!(statut, StatusCode::OK, "objet inconnu accepté : {corps}");
+    refuse(statut, &corps, "validation", &format!("objet inconnu accepté : {corps}"));
 }
 
 /// Un consentement donné sur une version antérieure cesse de valoir, et le fil
