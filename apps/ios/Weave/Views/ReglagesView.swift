@@ -8,6 +8,20 @@ struct ReglagesView: View {
     @State private var distance = 25
     @State private var ageMin = 18
     @State private var ageMax = 32
+    /// Les critères ne s'appliquent qu'une fois lus.
+    ///
+    /// Les trois valeurs ci-dessus sont des valeurs de départ, pas les
+    /// réglages réels — l'application ne relisait jamais ses critères. Or les
+    /// deux âges s'appliquent ensemble : toucher un curseur avant d'avoir lu
+    /// aurait écrasé l'autre avec une valeur par défaut.
+    @State private var criteresLus = false
+    @State private var escaleVille: String?
+    @State private var escaleFin: Date?
+    @State private var nouvelleEscale = false
+    @State private var villeEscale = ""
+    @State private var escaleEnCours = false
+    @State private var bilan: Bilan?
+    @State private var bilanEnCours = false
 
     @State private var exportEnCours = false
     @State private var fichierExporte: URL?
@@ -42,6 +56,7 @@ struct ReglagesView: View {
                 Section {
                     Stepper("Jusqu'à \(distance) km", value: $distance, in: 1...100, step: 5)
                         .onChange(of: distance) { _, valeur in
+                            guard criteresLus else { return }
                             Task {
                                 try? await modele.api.updatePreferences(
                                     PreferencesPatch(maxDistanceKm: valeur)
@@ -56,8 +71,14 @@ struct ReglagesView: View {
                 } footer: {
                     Text("Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.")
                 }
-                .onChange(of: ageMin) { _, _ in Task { await appliquerAges() } }
-                .onChange(of: ageMax) { _, _ in Task { await appliquerAges() } }
+                .onChange(of: ageMin) { _, _ in
+                    guard criteresLus else { return }
+                    Task { await appliquerAges() }
+                }
+                .onChange(of: ageMax) { _, _ in
+                    guard criteresLus else { return }
+                    Task { await appliquerAges() }
+                }
 
                 if let moi = modele.moi {
                     Section("Crédits") {
@@ -65,6 +86,11 @@ struct ReglagesView: View {
                             LabeledContent(sku.displayName, value: "\(moi.credits(for: sku))")
                         }
                     }
+                }
+
+                if let moi = modele.moi {
+                    escaleSection(moi: moi)
+                    bilanSection(moi: moi)
                 }
 
                 Section {
@@ -166,6 +192,10 @@ struct ReglagesView: View {
             } message: {
                 Text(erreur ?? "")
             }
+            .task { await chargerCriteres() }
+            .sheet(item: $bilan) { rapport in
+                BilanView(bilan: rapport)
+            }
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -173,6 +203,132 @@ struct ReglagesView: View {
                     Button("Terminé") { dismiss() }
                 }
             }
+        }
+    }
+
+    /// L'escale : la déclencher, ou dire celle qui court.
+    @ViewBuilder
+    private func escaleSection(moi: Me) -> some View {
+        let credits = moi.credits(for: .escale)
+        if escaleEnCours || credits > 0 {
+            Section {
+                if let ville = escaleVille, let fin = escaleFin, escaleEnCours {
+                    LabeledContent("En escale à", value: ville)
+                    LabeledContent("Jusqu'au", value: fin.formatted(date: .abbreviated, time: .shortened))
+                    Button("Revenir chez moi", role: .destructive) {
+                        Task { await fermerEscale() }
+                    }
+                } else {
+                    Button("Ouvrir une escale") {
+                        villeEscale = ""
+                        nouvelleEscale = true
+                    }
+                    // L'alerte est portée par le bouton, pas par le
+                    // formulaire. Trois alertes empilées sur une même vue ne
+                    // se présentent pas toujours toutes : SwiftUI n'en retient
+                    // qu'une, et laquelle ne se devine pas. Le formulaire en
+                    // portait déjà deux.
+                    .alert("Où allez-vous ?", isPresented: $nouvelleEscale) {
+                        TextField("Ville", text: $villeEscale)
+                        Button("Annuler", role: .cancel) { villeEscale = "" }
+                        Button("Ouvrir l'escale") { Task { await ouvrirEscale() } }
+                    } message: {
+                        Text("Votre fil se composera autour de cette ville pendant sept jours, et vos plans y seront visibles. Cela consomme une « Escale ».")
+                    }
+                }
+            } header: {
+                Text("Escale")
+            } footer: {
+                Text(escaleEnCours
+                    ? "Votre fil se compose autour de cette ville, et vos plans y sont visibles. Revenir n'est pas remboursé : l'escale a servi."
+                    : "Publier depuis une autre ville pendant sept jours. Vous en avez \(credits).")
+            }
+        }
+    }
+
+    /// Le bilan : un rapport sur ses propres plans passés.
+    @ViewBuilder
+    private func bilanSection(moi: Me) -> some View {
+        if moi.credits(for: .bilan) > 0 {
+            Section {
+                Button {
+                    Task { await demanderBilan() }
+                } label: {
+                    HStack {
+                        Text("Établir mon bilan")
+                        if bilanEnCours {
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(bilanEnCours)
+            } header: {
+                Text("Bilan")
+            } footer: {
+                Text("Ce qui attire, ce qui tombe à plat, sur vos plans passés. Rien n'est comparé aux autres, et les messages reçus ne sont pas lus.")
+            }
+        }
+    }
+
+    /// Lit les critères réels, puis n'autorise qu'ensuite l'application des
+    /// curseurs. Sans cela, toucher un âge écraserait l'autre.
+    private func chargerCriteres() async {
+        guard !criteresLus else { return }
+        guard let criteres = try? await modele.api.preferences() else { return }
+
+        distance = criteres.maxDistanceKm
+        ageMin = criteres.minAge
+        ageMax = criteres.maxAge
+        escaleVille = criteres.escaleCity
+        escaleFin = criteres.escaleUntil
+        escaleEnCours = criteres.escaleEnCours
+        criteresLus = true
+    }
+
+    private func ouvrirEscale() async {
+        let ville = villeEscale.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ville.isEmpty else { return }
+        do {
+            let escale = try await modele.api.openEscale(city: ville)
+            escaleVille = escale.escaleCity
+            escaleFin = escale.escaleUntil
+            escaleEnCours = true
+            villeEscale = ""
+            await modele.rafraichirMoi()
+            await modele.plans.refresh()
+        } catch let souci as WeaveAPIError {
+            erreur = souci.userMessage
+        } catch {
+            erreur = "L'escale n'a pas pu être ouverte. Réessayez dans un moment."
+        }
+    }
+
+    private func fermerEscale() async {
+        do {
+            try await modele.api.closeEscale()
+            escaleVille = nil
+            escaleFin = nil
+            escaleEnCours = false
+            await modele.plans.refresh()
+        } catch {
+            erreur = "La fermeture n'a pas abouti. Réessayez dans un moment."
+        }
+    }
+
+    private func demanderBilan() async {
+        bilanEnCours = true
+        defer { bilanEnCours = false }
+        do {
+            bilan = try await modele.api.requestBilan()
+            await modele.rafraichirMoi()
+        } catch let souci as WeaveAPIError {
+            // Le serveur refuse sans rien dépenser quand il n'y a pas assez de
+            // plans passés, et son message le dit. Le reprendre tel quel plutôt
+            // que d'en inventer un : c'est lui qui connaît le compte.
+            erreur = souci.userMessage
+        } catch {
+            erreur = "Le bilan n'a pas pu être établi. Réessayez dans un moment."
         }
     }
 
