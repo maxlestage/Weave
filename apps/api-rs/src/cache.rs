@@ -18,7 +18,37 @@ pub async fn connecter(cfg: &Cache) -> redis::RedisResult<ConnectionManager> {
     ConnectionManager::new(client).await
 }
 
+/// Sonde le magasin, avec un second essai.
+///
+/// Le premier essai après le réveil d'un dyno échouait, et les suivants
+/// passaient : la sonde annonçait « dégradé » — et une 503 — pour un service
+/// entièrement sain. `ConnectionManager` rétablit sa connexion en arrière-plan
+/// quand elle est tombée ; l'appel qui déclenche ce rétablissement en fait les
+/// frais, celui d'après le trouve prêt.
+///
+/// Le second essai ne masque rien : un magasin réellement absent échoue les
+/// deux fois. Il distingue seulement « en train de se reconnecter » de
+/// « mort », et cette distinction est tout l'objet d'une sonde. Une sonde qui
+/// crie à chaque réveil apprend surtout à ne plus être lue.
 pub async fn ping(manager: &ConnectionManager) -> bool {
+    for reste in [true, false] {
+        if essayer_ping(manager).await {
+            return true;
+        }
+        if reste {
+            // Laisse au rétablissement le temps de s'amorcer. Le premier essai
+            // l'a demandé ; sans cette pause, le second le redemanderait.
+            tokio::time::sleep(DELAI_SECOND_ESSAI).await;
+        }
+    }
+    false
+}
+
+/// Court : la sonde entière doit rester bornée, et ce délai s'ajoute aux deux
+/// essais. Au pire, la sonde répond en un peu plus d'une seconde et demie.
+const DELAI_SECOND_ESSAI: Duration = Duration::from_millis(50);
+
+async fn essayer_ping(manager: &ConnectionManager) -> bool {
     let mut conn = manager.clone();
     let commande = redis::cmd("PING");
     let appel = commande.query_async::<String>(&mut conn);
@@ -407,5 +437,50 @@ mod tests {
     fn les_autres_urls_restent_intactes() {
         assert_eq!(url_effective(&cache("redis://hote:6379", true)), "redis://hote:6379");
         assert_eq!(url_effective(&cache("rediss://hote:6380", false)), "rediss://hote:6380");
+    }
+}
+
+#[cfg(test)]
+mod tests_sonde {
+    use super::*;
+    use crate::tests::Service;
+
+    /// Un magasin qui répond est déclaré sain.
+    #[tokio::test]
+    async fn un_magasin_vivant_est_sain() {
+        let service = Service::monter().await;
+        assert!(ping(&service.etat.cache).await);
+    }
+
+    /// Un magasin absent est déclaré mort — et vite.
+    ///
+    /// C'est ce que le second essai ne doit pas défaire : il distingue une
+    /// reconnexion d'une panne, il ne doit pas transformer la panne en attente.
+    /// Une sonde qui met dix secondes à dire « non » bloque le redémarrage
+    /// qu'elle est censée déclencher.
+    #[tokio::test]
+    async fn un_magasin_absent_est_declare_mort_sans_faire_attendre() {
+        // Un port fermé : le système refuse la connexion immédiatement, ce qui
+        // éprouve l'enchaînement des essais plutôt que les délais de garde.
+        let ecoute = std::net::TcpListener::bind("127.0.0.1:0").expect("port");
+        let port = ecoute.local_addr().unwrap().port();
+        drop(ecoute);
+
+        let client = redis::Client::open(format!("redis://127.0.0.1:{port}")).expect("client");
+        // `ConnectionManager::new` échoue d'emblée sans serveur : c'est déjà la
+        // réponse, et elle vaut « mort ».
+        let Ok(manager) = ConnectionManager::new(client).await else {
+            return;
+        };
+
+        let debut = std::time::Instant::now();
+        let sain = ping(&manager).await;
+        let duree = debut.elapsed();
+
+        assert!(!sain, "un magasin absent ne doit pas être déclaré sain");
+        assert!(
+            duree < Duration::from_secs(2),
+            "la sonde a mis {duree:?} : deux essais bornés doivent rester sous deux secondes"
+        );
     }
 }
