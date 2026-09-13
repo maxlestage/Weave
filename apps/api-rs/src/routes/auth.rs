@@ -7,7 +7,10 @@ use crate::{
     auth::{emettre_jeton, oublier_compte, Authentifie},
     cache,
     crypto::{code_otp, hacher_secret, hash_email, jeton_opaque, normaliser_email, sha256_hex, verifier_secret},
-    entities::{audit_events, accounts, join_requests, otp_challenges, plans, preferences, refresh_tokens, subscriptions},
+    entities::{
+        accounts, audit_events, conversations, devices, join_requests, otp_challenges, plans,
+        preferences, refresh_tokens, subscriptions,
+    },
     error::{invalide, non_autorise, AppError, Code},
     limitation::{consommer, regles},
     temps::{age_depuis, iso8601},
@@ -20,7 +23,8 @@ use axum::{
 };
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -234,6 +238,60 @@ async fn supprimer_compte(
             expiree.update(&state.db).await?;
         }
     }
+
+    // Les conversations se closent, et les appareils se taisent.
+    //
+    // Sans cela, pendant les trente jours qui précèdent la purge : le
+    // correspondant continuait d'écrire dans une conversation que plus
+    // personne ne lira jamais — et chaque message poussait une alerte sur le
+    // téléphone de qui venait de partir. Un mois de notifications après avoir
+    // supprimé son compte : c'est l'inverse exact de ce que la suppression
+    // demande, et la page publique promet un compte « inutilisable » entre
+    // temps.
+    //
+    // La conversation close le dit à l'autre côté — « Cette conversation est
+    // close » — plutôt que de laisser écrire dans le vide.
+    let ouvertes: Vec<String> = conversations::Entity::find()
+        .filter(conversations::Column::ClosedAt.is_null())
+        .filter(
+            Condition::any()
+                .add(conversations::Column::HostId.eq(compte.id.as_str()))
+                .add(conversations::Column::GuestId.eq(compte.id.as_str())),
+        )
+        .select_only()
+        .column(conversations::Column::Id)
+        .into_tuple()
+        .all(&state.db)
+        .await?;
+
+    if !ouvertes.is_empty() {
+        conversations::Entity::update_many()
+            .col_expr(
+                conversations::Column::ClosedAt,
+                sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+            )
+            .col_expr(
+                conversations::Column::ClosedBy,
+                sea_orm::sea_query::Expr::value(compte.id.as_str()),
+            )
+            .filter(conversations::Column::Id.is_in(ouvertes))
+            .exec(&state.db)
+            .await?;
+    }
+
+    // Les jetons d'alerte n'ont plus d'usage : leur seul objet était de
+    // pousser vers ce compte. Garder un identifiant d'appareil pour un usage
+    // qui n'existe plus est exactement ce que la politique de confidentialité
+    // s'interdit. Les lignes d'appareil, elles, partent avec la purge.
+    devices::Entity::update_many()
+        .col_expr(devices::Column::ApnsToken, sea_orm::sea_query::Expr::value(Option::<String>::None))
+        .col_expr(
+            devices::Column::PushToStartToken,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .filter(devices::Column::AccountId.eq(compte.id.as_str()))
+        .exec(&state.db)
+        .await?;
 
     if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(&compte.id)).await {
         tracing::warn!(erreur = %erreur, "fil non invalidé");
