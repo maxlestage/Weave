@@ -566,7 +566,7 @@ async fn un_genre_hors_vocabulaire_est_refuse() {
     };
 
     let (statut, corps) = service.put("/v1/me/profile", Some(&jeton), fiche("Femme")).await;
-    assert_ne!(statut, StatusCode::OK, "« Femme » majuscule devrait être refusé : {corps}");
+    refuse(statut, &corps, "validation", &format!("« Femme » majuscule devrait être refusé : {corps}"));
 
     let (statut, corps) = service.put("/v1/me/profile", Some(&jeton), fiche("femme")).await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
@@ -576,7 +576,7 @@ async fn un_genre_hors_vocabulaire_est_refuse() {
     let (statut, corps) = service
         .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["Homme"] }))
         .await;
-    assert_ne!(statut, StatusCode::OK, "un genre cherché hors liste : {corps}");
+    refuse(statut, &corps, "validation", &format!("un genre cherché hors liste : {corps}"));
 
     let (statut, corps) = service
         .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme", "non_binaire"] }))
@@ -718,5 +718,5 @@ async fn un_fichier_qui_n_est_pas_une_image_est_refuse() {
     let (statut, corps) = service
         .put_octets("/v1/me/photo", &jeton, b"<?php system($_GET[0]); ?>".to_vec())
         .await;
-    assert_ne!(statut, StatusCode::OK, "un fichier arbitraire a été stocké : {corps}");
+    refuse(statut, &corps, "validation", &format!("un fichier arbitraire a été stocké : {corps}"));
 }

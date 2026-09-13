@@ -327,6 +327,29 @@ fn adresse_appelante() -> axum::extract::ConnectInfo<std::net::SocketAddr> {
     ))
 }
 
+/// Vérifie qu'une requête a été REFUSÉE, et pour une raison qui vient du client.
+///
+/// `assert_ne!(statut, OK)` passe pour n'importe quelle erreur — y compris un
+/// 500 dû à une régression, un 401 sur une session mal montée, ou un 404 sur
+/// une adresse mal orthographiée. Un test qui veut dire « le palier refuse
+/// ceci » passerait alors au vert le jour où la route se met à planter, ce qui
+/// est exactement le contraire de ce qu'on lui demande.
+///
+/// Le code d'erreur attendu est exigé quand on le connaît : c'est lui qui dit
+/// POURQUOI c'est refusé, et l'application s'en sert pour proposer la suite.
+#[track_caller]
+pub fn refuse(statut: StatusCode, corps: &Value, code_attendu: &str, contexte: &str) {
+    assert!(
+        statut.is_client_error(),
+        "{contexte} — attendu un refus du client, obtenu {statut} : {corps}"
+    );
+    assert_eq!(
+        corps["error"].as_str().unwrap_or_default(),
+        code_attendu,
+        "{contexte} — refusé, mais pas pour la raison attendue : {corps}"
+    );
+}
+
 pub fn jeton_pour(compte_id: &str) -> String {
     emettre_jeton(SECRET, compte_id, 900).expect("jeton émis")
 }
