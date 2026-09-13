@@ -281,6 +281,7 @@ async fn servir_vitrine(mut requete: Request, suite: Next) -> Response {
 
     ajouter_barre_oblique(&mut requete);
 
+    let chemin = requete.uri().path().to_string();
     let mut reponse = suite.run(requete).await;
     if reponse.status().is_success() {
         // Le cache se décide sur le type de contenu, pas sur la forme de
@@ -294,16 +295,71 @@ async fn servir_vitrine(mut requete: Request, suite: Next) -> Response {
             .and_then(|valeur| valeur.to_str().ok())
             .is_some_and(|valeur| valeur.starts_with("text/html"));
 
-        reponse.headers_mut().insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static(if html {
-                "no-cache"
-            } else {
-                "public, max-age=31536000, immutable"
-            }),
-        );
+        // « Un an, immuable » ne vaut que pour un fichier dont le NOM change
+        // avec le contenu. Quatre fichiers vivent à une adresse fixe, parce
+        // que c'est leur raison d'être : `partage.png` est récupéré par les
+        // réseaux sociaux, `apple-touch-icon.png` par iOS, `favicon.svg` par
+        // les navigateurs, `site.webmanifest` par l'écran d'accueil. Tous sont
+        // demandés à une adresse écrite ailleurs que dans nos pages, et aucun
+        // ne peut donc porter d'empreinte.
+        //
+        // Ils prenaient l'en-tête d'un an quand même. Changer l'image de
+        // partage ou l'icône n'aurait rien changé pour personne pendant un an,
+        // et il n'existe aucun moyen de le forcer : l'adresse ne peut pas
+        // bouger, c'est tout l'intérêt.
+        let cache = if html {
+            "no-cache"
+        } else if porte_une_empreinte(&chemin) {
+            "public, max-age=31536000, immutable"
+        } else {
+            // Un jour : assez pour que l'image de partage ne soit pas
+            // rechargée à chaque aperçu, assez peu pour qu'une correction
+            // finisse par arriver.
+            "public, max-age=86400"
+        };
+
+        reponse
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
     }
     reponse
+}
+
+/// Le nom de ce fichier change-t-il avec son contenu ?
+///
+/// La construction appose une empreinte avant l'extension — `chunk-qw9gfct6.js`,
+/// `favicon-g0tg8e02.svg`. Un tel fichier ne change jamais sous le même nom :
+/// il se garde indéfiniment.
+///
+/// ## Ce qui compte comme empreinte
+///
+/// Un segment final en base 36, d'au moins six caractères, **et contenant au
+/// moins un chiffre**. La longueur n'est pas figée à celle qu'écrit Bun
+/// aujourd'hui : la pinner ferait retomber tous les fichiers en cache court le
+/// jour où le bundler en changerait, silencieusement.
+///
+/// Le chiffre exigé est ce qui sépare une empreinte d'un mot. `photo-couverture`
+/// finirait sinon gardé un an sur une adresse que personne ne peut changer ;
+/// `chunk-qw9gfct6` et `favicon-g0tg8e02` en portent tous deux.
+///
+/// ## Le doute profite à l'adresse fixe
+///
+/// Tout le reste est traité comme fixe, y compris un fichier qu'on ajouterait
+/// demain sans y penser. C'est le sens sûr : au pire un fichier immuable est
+/// redemandé une fois par jour ; au mieux on évite de figer un an quelque chose
+/// qu'on voudra corriger — et qu'on ne POURRA pas corriger, l'adresse étant
+/// écrite chez les réseaux sociaux et sur des écrans d'accueil.
+fn porte_une_empreinte(chemin: &str) -> bool {
+    let nom = chemin.rsplit('/').next().unwrap_or_default();
+    let Some((tige, _)) = nom.rsplit_once('.') else {
+        return false;
+    };
+    let Some((_, empreinte)) = tige.rsplit_once('-') else {
+        return false;
+    };
+    empreinte.len() >= 6
+        && empreinte.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && empreinte.chars().any(|c| c.is_ascii_digit())
 }
 
 /// Rend « /cgv » à la place de « /cgv/ », sans détour par une redirection.

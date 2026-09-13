@@ -16,6 +16,15 @@ fn dist_de_test() -> std::path::PathBuf {
     std::fs::create_dir_all(&racine).expect("répertoire de test");
     std::fs::write(racine.join("index.html"), "<!doctype html><title>Weave</title>").unwrap();
     std::fs::write(racine.join("chunk-abc123.js"), "console.log('weave')").unwrap();
+    // Les quatre adresses fixes : elles ne portent pas d'empreinte, parce
+    // qu'elles sont demandées depuis l'extérieur.
+    std::fs::write(racine.join("partage.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    std::fs::write(racine.join("apple-touch-icon.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    std::fs::write(racine.join("favicon.svg"), "<svg/>").unwrap();
+    std::fs::write(racine.join("site.webmanifest"), "{}").unwrap();
+    // Un nom composé, sans empreinte : c'est ce qu'un mot français assez long
+    // ferait passer pour une empreinte si l'on ne demandait pas de chiffre.
+    std::fs::write(racine.join("photo-couverture.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     // Une page juridique, construite comme en produit : un répertoire portant
     // le nom de l'adresse, et l'index dedans.
     std::fs::create_dir_all(racine.join("cgv")).unwrap();
@@ -154,4 +163,48 @@ async fn une_adresse_sans_extension_et_sans_page_reste_une_404() {
 
     let (statut, _, _) = service.get_brut("/cgv-qui-n-existe-pas").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
+}
+
+/// Une adresse fixe ne se garde pas un an.
+///
+/// Quatre fichiers vivent à une adresse que l'on ne peut pas changer, parce
+/// que c'est ailleurs qu'elle est écrite : `partage.png` chez les réseaux
+/// sociaux, `apple-touch-icon.png` et `site.webmanifest` sur l'écran
+/// d'accueil, `favicon.svg` chez tous les navigateurs et la moitié des robots.
+///
+/// Ils prenaient « un an, immuable » comme les fichiers empreints. Changer
+/// l'image de partage n'aurait rien changé pour personne pendant un an, et
+/// aucun moyen de forcer : l'adresse ne peut pas bouger, c'est tout l'intérêt.
+#[tokio::test]
+async fn les_adresses_fixes_ne_se_gardent_pas_un_an() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    for adresse in [
+        "/partage.png",
+        "/apple-touch-icon.png",
+        "/favicon.svg",
+        "/site.webmanifest",
+        // Un nom composé n'est pas une empreinte : sans le chiffre exigé,
+        // « couverture » en aurait la longueur et l'alphabet, et le fichier
+        // serait figé un an sur une adresse qu'on ne peut pas changer.
+        "/photo-couverture.png",
+    ] {
+        let (statut, entetes, _) = service.get_brut(adresse).await;
+        assert_eq!(statut, StatusCode::OK, "« {adresse} » n'est pas servie");
+        let cache = entetes.get(CACHE_CONTROL).map(|v| v.to_str().unwrap()).unwrap_or_default();
+        assert!(
+            !cache.contains("immutable"),
+            "« {adresse} » est figée un an alors que son adresse ne peut pas changer : {cache}"
+        );
+        assert!(cache.contains("max-age"), "« {adresse} » sans durée : {cache}");
+    }
+
+    // Un fichier empreint, lui, se garde : son nom change avec son contenu.
+    let (_, entetes, _) = service.get_brut("/chunk-abc123.js").await;
+    assert_eq!(
+        entetes.get(CACHE_CONTROL).map(|v| v.to_str().unwrap()),
+        Some("public, max-age=31536000, immutable"),
+        "un fichier empreint doit se garder indéfiniment"
+    );
 }

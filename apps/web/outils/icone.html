@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8" />
+<!--
+  L'icône, en grand, pour le rendu en PNG.
+
+  Le SVG du favicon est dessiné dans une boîte de 32 : agrandi tel quel à 180,
+  ses traits deviennent épais et ses arrondis mous. Celui-ci reprend le même
+  motif — trois chaînes, deux trames — redessiné aux proportions de l'écran
+  d'accueil, où l'icône fait presque un centimètre de côté.
+
+  iOS n'applique pas la transparence ni les coins arrondis d'un
+  `apple-touch-icon` : il pose l'image telle quelle et arrondit lui-même. Le
+  fond est donc plein jusqu'au bord, sans rayon — un rayon dessiné ici
+  laisserait quatre coins sombres autour de l'arrondi du système.
+-->
+<style>
+  @page {
+    margin: 0;
+  }
+  * {
+    margin: 0;
+  }
+  body {
+    width: 180px;
+    height: 180px;
+    background: #16121f;
+  }
+  svg {
+    display: block;
+  }
+</style>
+<svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+  <g stroke-width="15" stroke-linecap="round" fill="none">
+    <path d="M39 34v112" stroke="#ff6f9c" />
+    <path d="M90 34v112" stroke="#3ddba6" />
+    <path d="M141 34v112" stroke="#b08cff" />
+  </g>
+  <g stroke-width="12" stroke-linecap="round" fill="none">
+    <path d="M22 68c22.7 17 45.3 17 68 0s45.3-17 68 0" stroke="#ff9a5b" />
+    <path d="M22 119c22.7 17 45.3 17 68 0s45.3-17 68 0" stroke="#6db3f8" />
+  </g>
+</svg>
