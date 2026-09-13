@@ -205,15 +205,32 @@ async fn retirer(
             "Cette demande n'est pas la vôtre.",
         ));
     }
-    if demande.state != "envoyee" {
+    let envoyee_le = demande.sent_at;
+
+    // Le retrait est UNE écriture, conditionnée sur l'état de départ.
+    //
+    // Lire l'état puis écrire laissait deux retraits concurrents de la même
+    // demande franchir le contrôle ensemble, et REMBOURSER TOUS LES DEUX. Le
+    // script Lua du cache borne le compteur à zéro — il empêche de passer sous
+    // le plancher, pas de récupérer plus qu'on n'a dépensé : cinq retraits
+    // simultanés d'une seule demande rendaient cinq unités, et le quota
+    // journalier est l'invariant que le produit défend.
+    //
+    // Seul l'appel qui a réellement changé l'état rembourse.
+    let retiree = join_requests::Entity::update_many()
+        .col_expr(join_requests::Column::State, sea_orm::sea_query::Expr::value("retiree"))
+        .col_expr(
+            join_requests::Column::DecidedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(join_requests::Column::Id.eq(demande_id.as_str()))
+        .filter(join_requests::Column::State.eq("envoyee"))
+        .exec(&state.db)
+        .await?;
+
+    if retiree.rows_affected == 0 {
         return Err(invalide("Cette demande a déjà reçu une réponse."));
     }
-
-    let envoyee_le = demande.sent_at;
-    let mut retiree: join_requests::ActiveModel = demande.into();
-    retiree.state = Set("retiree".to_string());
-    retiree.decided_at = Set(Some(Utc::now().naive_utc()));
-    retiree.update(&state.db).await?;
 
     // Se raviser vite ne doit pas coûter la journée. Le jour est celui de
     // l'ENVOI, pas celui du retrait : sans quoi un retrait après minuit
