@@ -115,6 +115,21 @@ pub async fn exiger_credit(
     sku: &str,
     nom: &str,
 ) -> Result<(), AppError> {
+    exiger_credit_dans(&state.db, compte_id, sku, nom).await
+}
+
+/// Le même, sur une connexion quelconque — une transaction, notamment.
+///
+/// Dépenser un crédit hors de la transaction qui pose ce qu'il achète laisse
+/// les deux se désynchroniser : le crédit part, l'écriture perd la course, et
+/// personne ne rend rien. Ouvrir une escale est le cas où cela coûte le plus
+/// cher — un double appui valait deux crédits pour une seule escale.
+pub async fn exiger_credit_dans<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    compte_id: &str,
+    sku: &str,
+    nom: &str,
+) -> Result<(), AppError> {
     use sea_orm::sea_query::ExprTrait;
 
     // Décrément conditionnel : la clause `balance >= 1` est dans la requête,
@@ -127,7 +142,7 @@ pub async fn exiger_credit(
         .filter(credit_balances::Column::AccountId.eq(compte_id))
         .filter(credit_balances::Column::Sku.eq(sku))
         .filter(credit_balances::Column::Balance.gte(1))
-        .exec(&state.db)
+        .exec(db)
         .await?;
 
     if resultat.rows_affected == 1 {
