@@ -42,6 +42,7 @@ if (!resultat.success) {
 }
 
 await copierRessourcesPubliques();
+await prerendreLAccueil();
 await poserLesBalisesDeLAccueil();
 await ecrirePagesJuridiques(resultat);
 await ecrireFichiersDeReferencement();
@@ -181,6 +182,70 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
  * du site. Les pages juridiques, elles, lisaient déjà l'origine : seule
  * l'accueil ne le faisait pas, et c'était la seule qui comptait pour cela.
  */
+/*
+ * Rend la page d'accueil en HTML, comme les pages juridiques le sont déjà.
+ *
+ * Elle ne livrait qu'un `<div id="racine"></div>` VIDE : tout le contenu
+ * arrivait par deux cent trente-sept kilo-octets de JavaScript. Trois
+ * conséquences, et la première est la plus coûteuse pour un site dont le rôle
+ * est de se faire trouver :
+ *
+ * - un robot qui n'exécute pas de JavaScript ne voit RIEN. Les aperçus de lien
+ *   s'en tirent — ils lisent les balises `og:` de l'entête — mais un moteur
+ *   qui n'exécute pas de script indexe une page vide ;
+ * - si le paquet ne se charge pas, le visiteur voit une page blanche ;
+ * - le premier affichage attend le paquet entier, sur un site consulté surtout
+ *   en 4G.
+ *
+ * Le commentaire des pages juridiques le disait déjà : rendues ici, « elles
+ * s'affichent sans JavaScript, donc aussi pour un robot d'indexation ou un
+ * navigateur qui l'a désactivé ». L'accueil avait été laissé de côté.
+ *
+ * Le JavaScript reste servi, et `main.tsx` HYDRATE ce balisage au lieu de le
+ * remplacer : le menu mobile et les questions dépliantes fonctionnent comme
+ * avant.
+ */
+async function prerendreLAccueil() {
+  // `renderToString`, et non `renderToStaticMarkup` comme les pages juridiques.
+  //
+  // Les deux rendent le même HTML à un détail près : `renderToStaticMarkup`
+  // omet les séparateurs `<!-- -->` que React pose entre deux nœuds de texte
+  // voisins. Les pages juridiques ne sont jamais hydratées, donc ces marques
+  // ne leur serviraient à rien — et c'est bien pour cela qu'elles emploient
+  // l'autre fonction.
+  //
+  // L'accueil, lui, EST hydraté. Sans les séparateurs, une phrase mêlant du
+  // texte et une valeur — « Réservé aux {MIN_AGE} ans et plus » — arrive en un
+  // seul nœud là où le client en attend trois. React abandonne alors
+  // l'hydratation de cette branche et la reconstruit : erreur en console, et
+  // le travail du serveur perdu là où il servait.
+  const { renderToString } = await import("react-dom/server");
+  const { createElement } = await import("react");
+  const { App } = await import("./src/App.tsx");
+
+  const chemin = `${sortie}/index.html`;
+  const html = await Bun.file(chemin).text();
+
+  const vide = '<div id="racine"></div>';
+  if (!html.includes(vide)) {
+    throw new Error("Accueil : la racine n'est pas celle qu'on attendait.");
+  }
+
+  const corps = renderToString(createElement(App));
+
+  // Le rendu a-t-il produit quelque chose ?
+  //
+  // Une erreur dans un composant, une exportation renommée, et
+  // `renderToString` rendrait une chaîne vide sans rien dire : la page
+  // repartirait en production avec une racine creuse, exactement comme avant —
+  // et personne ne le verrait, puisque le JavaScript la remplirait quand même.
+  if (!corps.includes("<h1")) {
+    throw new Error("Accueil : le rendu serveur ne contient pas de titre. Rien n'a été rendu.");
+  }
+
+  await Bun.write(chemin, html.replace(vide, `<div id="racine">${corps}</div>`));
+}
+
 async function poserLesBalisesDeLAccueil() {
   const chemin = `${sortie}/index.html`;
   const html = await Bun.file(chemin).text();
