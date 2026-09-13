@@ -1096,3 +1096,100 @@ fn chaque_requete_ios_annonce_sa_langue() {
         "la langue annoncée ne vient pas des réglages du téléphone"
     );
 }
+
+/// Le catalogue de chaînes iOS reste en phase avec le code qui les affiche.
+///
+/// En SwiftUI, `Text("Publier")` passe par `LocalizedStringKey` : le texte
+/// français EST la clé. Renommer une phrase dans le code sans la renommer dans
+/// le catalogue ne casse rien de visible — la chaîne retombe simplement sur le
+/// français, dans une application anglaise, sans erreur ni avertissement.
+///
+/// Le contrôle porte sur les deux sens :
+///
+/// - chaque clé du catalogue existe encore dans le code Swift ; une clé
+///   orpheline est une phrase qu'on croit traduite et qui ne l'est plus ;
+/// - chaque clé a bien ses deux traductions, non vides.
+#[test]
+fn le_catalogue_ios_est_en_phase_avec_le_code() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
+    let catalogue = std::fs::read_to_string(ios.join("Weave/Localizable.xcstrings"))
+        .expect("Localizable.xcstrings lisible");
+    let catalogue: serde_json::Value =
+        serde_json::from_str(&catalogue).expect("le catalogue est du JSON valide");
+
+    assert_eq!(
+        catalogue["sourceLanguage"], "fr",
+        "la langue source a changé"
+    );
+
+    // Tout le Swift de l'application, d'un seul tenant : une clé peut être
+    // écrite dans n'importe quelle vue.
+    let mut sources = String::new();
+    empiler_le_swift(&ios, &mut sources);
+    assert!(
+        sources.len() > 10_000,
+        "seulement {} octets de Swift lus : le parcours des fichiers a dérivé",
+        sources.len()
+    );
+
+    // Ces noms sont ceux de produits déclarés dans App Store Connect, et
+    // « Pause » est le même mot en anglais : les seules identités voulues.
+    const IDENTITES_VOULUES: [&str; 3] = ["Bilan", "Escale", "Pause"];
+
+    let chaines = catalogue["strings"].as_object().expect("des chaînes");
+    assert!(
+        chaines.len() >= 120,
+        "catalogue étonnamment court : {}",
+        chaines.len()
+    );
+
+    let mut orphelines = Vec::new();
+    for (cle, entree) in chaines {
+        // La clé telle qu'elle est ÉCRITE dans le source : les sauts de ligne
+        // y sont des échappements, pas des retours à la ligne.
+        let litteral = cle
+            .replace('\\', "\\\\")
+            .replace('\n', "\\n")
+            .replace('"', "\\\"");
+        if !sources.contains(&format!("\"{litteral}\"")) {
+            orphelines.push(cle.clone());
+            continue;
+        }
+
+        for langue in ["en", "es"] {
+            let valeur = entree["localizations"][langue]["stringUnit"]["value"]
+                .as_str()
+                .unwrap_or_else(|| panic!("« {cle} » n'a pas de traduction en « {langue} »"));
+            assert!(
+                !valeur.is_empty(),
+                "« {cle} » : traduction « {langue} » vide"
+            );
+            if !IDENTITES_VOULUES.contains(&cle.as_str()) {
+                assert_ne!(valeur, cle, "« {cle} » : « {langue} » reprend le français");
+            }
+        }
+    }
+
+    assert!(
+        orphelines.is_empty(),
+        "ces clés ne sont plus dans le code Swift, et leur traduction ne sert plus : {orphelines:?}"
+    );
+}
+
+/// Concatène tout le Swift d'un répertoire, récursivement.
+fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
+    let Ok(entrees) = std::fs::read_dir(repertoire) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.is_dir() {
+            empiler_le_swift(&chemin, sortie);
+        } else if chemin.extension().is_some_and(|e| e == "swift") {
+            if let Ok(contenu) = std::fs::read_to_string(&chemin) {
+                sortie.push_str(&contenu);
+                sortie.push('\n');
+            }
+        }
+    }
+}
