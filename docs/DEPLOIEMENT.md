@@ -390,24 +390,39 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 | « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B3 manque |
 | Échec de signature iOS | Relancez avec la case « créer les certificats » cochée, **une seule fois** |
 
-## La purge, à planifier
+## La purge : rien à planifier
 
-Le déploiement ne suffit pas : `weave-api purge` doit tourner une fois par
-jour, sinon les comptes supprimés et les messages échus restent en base — et
-la politique de confidentialité annonce le contraire.
+Elle tourne d'elle-même, depuis le service. Aucun module à ajouter, aucune
+tâche à créer — c'était la dernière chose qui demandait une intervention
+d'exploitation, et sans elle la purge n'avait tout simplement pas lieu.
 
-```sh
-heroku addons:create scheduler:standard
-heroku addons:open scheduler
+Le fonctionnement tient en deux règles :
+
+- **une tentative par heure**, pas une purge par heure ;
+- **un verrou dans le cache**, pris en une seule commande `SET NX EX` et tenu
+  vingt-trois heures.
+
+Au plus un passage par jour, donc, quel que soit le nombre de dynos et quelle
+que soit l'heure de leur réveil. Un dyno qui dort ne manque aucun horaire : il
+n'y a pas d'horaire, seulement un verrou à prendre dès qu'on est éveillé.
+
+Le journal dit ce qui a été fait :
+
+```json
+{"message":"purge effectuée","messages":0,"activites":0,"comptes":0,"differes":0}
 ```
 
-Y créer une tâche quotidienne :
+`differes` compte les comptes échus mais retenus par un signalement encore
+ouvert — ils partiront au passage suivant, une fois le dossier clos.
+
+### Si vous préférez un planificateur externe
+
+Une tâche d'entretien n'a rien à faire dans le processus qui sert les requêtes,
+et la commande reste disponible pour qui veut l'appeler de l'extérieur :
 
 ```sh
-./bin-release/weave-api purge
+heroku addons:create scheduler:standard -a weave
+# tâche quotidienne : ./bin-release/weave-api purge
 ```
 
-En conteneur, la commande est `/app/bin-release/weave-api purge`.
-
-La sortie dit ce qui a été fait — messages effacés, comptes effacés, et le cas
-échéant les comptes différés parce qu'un signalement les vise encore.
+Les deux cohabitent sans risque : le verrou vaut aussi pour l'appel externe.
