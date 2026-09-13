@@ -68,3 +68,31 @@ public struct Consentements: Decodable, Sendable {
         etat(kind)?.active ?? false
     }
 }
+
+
+/// L'état d'une demande de vérification de profil.
+public enum EtatVerification: String, Decodable, Sendable {
+    case enAttente = "en_attente"
+    case acceptee
+    case refusee
+}
+
+/// Une demande de vérification, telle que le serveur la tient.
+public struct DemandeVerification: Decodable, Sendable {
+    public let state: EtatVerification
+    public let createdAt: Date
+    public let handledAt: Date?
+    /// Le motif de la décision. Vide tant qu'elle n'est pas prise.
+    ///
+    /// Rendu à qui il concerne : les mentions légales promettent qu'une
+    /// décision de modération se conteste, et un refus dont on ignore la
+    /// raison ne se conteste pas.
+    public let decision: String
+}
+
+public struct EtatDeVerification: Decodable, Sendable {
+    public let verified: Bool
+    public let request: DemandeVerification?
+
+    public var enAttente: Bool { request?.state == .enAttente }
+}

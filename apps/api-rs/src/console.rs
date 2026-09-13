@@ -28,13 +28,23 @@
 //! au dyno : `heroku run`, qui passe par le compte Heroku et son second
 //! facteur. Cela se fait depuis le tableau de bord, donc depuis un téléphone.
 //!
+//! ## Ce que l'appelant doit faire
+//!
+//! `suspendre`, `retablir`, `verifier` et `deverifier` changent ce que porte le
+//! résumé d'identité, qui vit un quart d'heure dans le cache. L'appelant doit
+//! l'oublier — `console_cli` s'en charge, et c'est pourquoi ces fonctions ne
+//! prennent qu'une base : elles restent éprouvables sans Redis.
+//!
 //! ## Ce que la console ne fait pas
 //!
 //! Elle ne juge rien. Clore un dossier ne suspend personne et ne supprime
 //! rien ; suspendre est un geste distinct, qu'il faut poser exprès. Deux
 //! commandes pour deux décisions : celle sur le dossier, celle sur le compte.
 
-use crate::entities::{accounts, audit_events, media_objects, profiles, reports};
+use crate::entities::{
+    accounts, audit_events, media_objects, profiles, reports, subscriptions,
+    verification_requests,
+};
 use chrono::{NaiveDateTime, Utc};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
@@ -241,7 +251,11 @@ pub async fn retablir(db: &DatabaseConnection, compte: &str) -> Result<Issue, Db
 /// raison consignée ne vaudrait pas mieux que pas de badge du tout, et il
 /// vaudrait moins, parce que quelqu'un s'y fierait.
 pub async fn verifier(db: &DatabaseConnection, compte: &str, motif: &str) -> Result<Issue, DbErr> {
-    poser_verification(db, compte, true, "verification_console", motif).await
+    let issue = poser_verification(db, compte, true, "verification_console", motif).await?;
+    // Poser le badge répond à la demande : la laisser en attente la ferait
+    // ressortir à chaque relevé de la file, pour un travail déjà fait.
+    clore_demande(db, compte, crate::routes::verification::ACCEPTEE, motif).await?;
+    Ok(issue)
 }
 
 /// Retire le badge — sur une pièce périmée, un doute, ou une erreur.
@@ -278,6 +292,130 @@ async fn poser_verification(
 
     journaliser(db, Some(compte), action, None, json!({ "motif": motif })).await?;
     Ok(Issue::Fait)
+}
+
+/// Une demande de vérification en attente, telle qu'elle se présente à qui
+/// doit la traiter.
+#[derive(Debug, PartialEq, Eq)]
+pub struct DemandeDeVerification {
+    pub compte: String,
+    pub nom: String,
+    pub palier: String,
+    pub note: String,
+    pub depuis: NaiveDateTime,
+}
+
+/// La file des demandes de vérification, prioritaire d'abord.
+///
+/// Le Grand Tour vend « Vérification de profil accélérée ». C'était invendable
+/// tant qu'aucune file n'existait ; c'est cette fonction qui rend la promesse
+/// tenable — et à condition de relever la file dans l'ordre qu'elle donne.
+///
+/// À palier égal, la plus ancienne d'abord : une priorité n'est pas un droit
+/// de doubler indéfiniment.
+pub async fn verifications_en_attente(
+    db: &DatabaseConnection,
+) -> Result<Vec<DemandeDeVerification>, DbErr> {
+    let lignes = verification_requests::Entity::find()
+        .filter(verification_requests::Column::State.eq(crate::routes::verification::EN_ATTENTE))
+        .order_by_asc(verification_requests::Column::CreatedAt)
+        .all(db)
+        .await?;
+
+    let mut file = Vec::with_capacity(lignes.len());
+    for ligne in lignes {
+        let compte = accounts::Entity::find_by_id(ligne.account_id.as_str())
+            .one(db)
+            .await?;
+        file.push(DemandeDeVerification {
+            palier: palier_de(db, &ligne.account_id).await?,
+            nom: compte
+                .as_ref()
+                .map_or_else(|| "(compte effacé)".to_string(), |c| c.display_name.clone()),
+            compte: ligne.account_id,
+            note: ligne.note,
+            depuis: ligne.created_at,
+        });
+    }
+
+    // Le tri se fait après coup, sur le palier : le rang n'est pas une colonne
+    // de la table des demandes, et l'y recopier le ferait mentir dès qu'un
+    // abonnement change.
+    file.sort_by_key(|d| (std::cmp::Reverse(rang_du_palier(&d.palier)), d.depuis));
+    Ok(file)
+}
+
+/// Le rang de priorité d'un palier dans la file. Seul le Grand Tour achète une
+/// priorité : c'est le seul dont le catalogue l'annonce.
+fn rang_du_palier(palier: &str) -> u8 {
+    u8::from(palier == "grandtour")
+}
+
+async fn palier_de(db: &DatabaseConnection, compte: &str) -> Result<String, DbErr> {
+    Ok(subscriptions::Entity::find()
+        .filter(subscriptions::Column::AccountId.eq(compte))
+        .one(db)
+        .await?
+        .filter(|a| {
+            a.expires_at
+                .map(|echeance| echeance.and_utc() > Utc::now())
+                .unwrap_or(true)
+        })
+        .map_or_else(|| "depart".to_string(), |a| a.tier))
+}
+
+/// Refuse une demande de vérification, sans poser le badge.
+///
+/// Le motif est obligatoire et rendu à la personne : les mentions légales
+/// promettent qu'une décision de modération se conteste, et un refus dont on
+/// ignore la raison ne se conteste pas.
+pub async fn refuser_verification(
+    db: &DatabaseConnection,
+    compte: &str,
+    motif: &str,
+) -> Result<Issue, DbErr> {
+    let close = clore_demande(db, compte, crate::routes::verification::REFUSEE, motif).await?;
+    if close {
+        journaliser(
+            db,
+            Some(compte),
+            "verification_refusee",
+            None,
+            json!({ "motif": motif }),
+        )
+        .await?;
+        return Ok(Issue::Fait);
+    }
+    Ok(Issue::Deja)
+}
+
+/// Clôt la demande en attente d'un compte, s'il y en a une.
+///
+/// Conditionnée sur l'état : deux passages ne réécrivent pas la date de
+/// décision, et une demande déjà tranchée n'est pas rouverte.
+async fn clore_demande(
+    db: &DatabaseConnection,
+    compte: &str,
+    etat: &str,
+    motif: &str,
+) -> Result<bool, DbErr> {
+    let touche = verification_requests::Entity::update_many()
+        .col_expr(verification_requests::Column::State, Expr::value(etat))
+        .col_expr(
+            verification_requests::Column::Decision,
+            Expr::value(motif.to_string()),
+        )
+        .col_expr(
+            verification_requests::Column::HandledAt,
+            Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(verification_requests::Column::AccountId.eq(compte))
+        .filter(
+            verification_requests::Column::State.eq(crate::routes::verification::EN_ATTENTE),
+        )
+        .exec(db)
+        .await?;
+    Ok(touche.rows_affected > 0)
 }
 
 /// Les photos envoyées et jamais examinées, de la plus ancienne à la plus

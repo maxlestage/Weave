@@ -332,12 +332,17 @@ pub fn jeton_pour(compte_id: &str) -> String {
 }
 
 /// Insère un compte utilisable : profil, préférences et abonnement compris.
+///
+/// `verified` vaut FAUX, comme à l'inscription. Le gabarit posait « vrai », ce
+/// qu'aucun parcours réel ne produit : la route d'inscription écrit faux, et
+/// seul un examen humain passe le drapeau à vrai. Un gabarit plus généreux que
+/// la réalité fait passer des tests sur des comptes qui n'existent pas.
 /// Un compte sans ces lignes est à moitié né, et la moitié des routes le
 /// refuseraient pour de mauvaises raisons.
 pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
     let maintenant = "2026-09-12 10:00:00";
     for sql in [
-        format!("INSERT INTO accounts (id,email,emailHash,handle,displayName,birthDate,status,timezone,locale,verified,createdAt,updatedAt) VALUES ('{id}','{id}@exemple.fr','h_{id}','{id}','Compte {id}','2000-01-15 00:00:00','active','Europe/Paris','fr-FR',1,'{maintenant}','{maintenant}')"),
+        format!("INSERT INTO accounts (id,email,emailHash,handle,displayName,birthDate,status,timezone,locale,verified,createdAt,updatedAt) VALUES ('{id}','{id}@exemple.fr','h_{id}','{id}','Compte {id}','2000-01-15 00:00:00','active','Europe/Paris','fr-FR',0,'{maintenant}','{maintenant}')"),
         format!("INSERT INTO profiles (id,accountId,city,latRounded,lonRounded,gender,bio,createdAt,updatedAt) VALUES ('prf_{id}','{id}','Lyon',45.75,4.85,'autre','','{maintenant}','{maintenant}')"),
         format!("INSERT INTO preferences (id,accountId,minAge,maxAge,maxDistanceKm,seekingJson,categoriesJson,updatedAt) VALUES ('pre_{id}','{id}',18,60,25,'[]','[]','{maintenant}')"),
         format!("INSERT INTO subscriptions (id,accountId,tier,environment,inGracePeriod,updatedAt,createdAt) VALUES ('sub_{id}','{id}','{palier}','sandbox',0,'{maintenant}','{maintenant}')"),
@@ -387,3 +392,4 @@ mod conversations;
 mod offres;
 mod activite;
 mod consentements;
+mod verification;
