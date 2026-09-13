@@ -66,6 +66,14 @@ et `audit_events` en `SET NULL` — la trace de l'action survit, son auteur
 devient anonyme. Un test vérifie que la cascade s'applique réellement, y
 compris sous SQLite, où les clés étrangères ne sont pas actives par défaut.
 
+**Les traces techniques** — `audit_events` : identifiant de compte, action,
+adresse IP — sont effacées au bout de douze mois, la durée que le tableau des
+traitements annonce. Rien ne les effaçait : la seconde moitié de la promesse
+était vraie (la suppression du compte détache la trace de son auteur, par
+`ON DELETE SET NULL`), la première ne l'était pas. Une durée annoncée que rien
+n'applique n'est pas une durée : c'est une conservation sans terme, que
+l'article 5 n'autorise pas, sur les données les plus traçantes du service.
+
 **L'exception à retenir** : un compte visé par un signalement non traité n'est
 pas purgé. Sinon, supprimer son compte suffirait à effacer les preuves d'un
 comportement qu'on vient de signaler. Le compte reste hors circulation dans
