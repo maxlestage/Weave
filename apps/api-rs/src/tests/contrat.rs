@@ -205,3 +205,45 @@ fn sources_contiennent(racine: &std::path::Path, aiguille: &str) -> bool {
     }
     false
 }
+
+/// L'application iOS réécrit elle aussi certains nombres du contrat.
+///
+/// `accountPurgeDays` est affiché à qui demande la suppression de son compte :
+/// « tout est effacé sous N jours ». Annoncer autre chose que ce que la purge
+/// applique serait mentir sur un délai que la politique de confidentialité
+/// engage — et c'est un troisième endroit où le même nombre est écrit, sans
+/// que rien ne relie les trois.
+#[test]
+fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Models/Account.swift");
+    let Ok(source) = std::fs::read_to_string(&chemin) else {
+        // Le dépôt iOS peut être absent d'une copie partielle. Le dire plutôt
+        // que d'échouer : ce test garde un accord, il ne réclame pas un
+        // fichier.
+        eprintln!("modèle iOS absent en {} — accord non vérifié", chemin.display());
+        return;
+    };
+
+    let contrat = contrat();
+    for (cote_swift, cote_contrat) in [("accountPurgeDays", "ACCOUNT_PURGE_DAYS")] {
+        let prefixe = format!("public let {cote_swift} = ");
+        let ligne = source
+            .lines()
+            .find(|l| l.trim_start().starts_with(&prefixe))
+            .unwrap_or_else(|| panic!("« {cote_swift} » a disparu du modèle iOS"));
+        let brut: String = ligne.trim_start()[prefixe.len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        let valeur: i64 = brut
+            .parse()
+            .unwrap_or_else(|_| panic!("« {cote_swift} » ne vaut pas un entier : « {ligne} »"));
+
+        assert_eq!(
+            valeur,
+            valeur_du_contrat(&contrat, cote_contrat),
+            "l'application iOS affiche {valeur} pour {cote_swift}, le contrat dit autre chose"
+        );
+    }
+}

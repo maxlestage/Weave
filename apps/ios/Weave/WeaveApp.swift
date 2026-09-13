@@ -88,7 +88,7 @@ final class ModeleApplication {
 
         activites.start()
         await notifications.demanderAutorisation()
-        await chargerCompte()
+        await rafraichirMoi()
         await plans.refresh()
         await synchroniserActivite()
     }
@@ -97,7 +97,7 @@ final class ModeleApplication {
         guard connecte else { return }
         plans.dropPast()
         await plans.refresh()
-        await chargerCompte()
+        await rafraichirMoi()
         await synchroniserActivite()
     }
 
@@ -108,7 +108,7 @@ final class ModeleApplication {
         // d'avoir un compte, il n'y a rien à notifier, et une demande posée
         // trop tôt se refuse par réflexe. iOS ne la repose jamais.
         await notifications.demanderAutorisation()
-        await chargerCompte()
+        await rafraichirMoi()
         await plans.refresh()
         await synchroniserActivite()
     }
@@ -121,7 +121,12 @@ final class ModeleApplication {
         connecte = false
     }
 
-    private func chargerCompte() async {
+    /// Recharge le résumé du compte.
+    ///
+    /// Accessible aux vues : c'est `moi` qui porte le statut, le palier et les
+    /// crédits, et une action qui les change — une pause, un achat — doit
+    /// pouvoir le redemander plutôt que d'attendre le prochain lancement.
+    func rafraichirMoi() async {
         moi = try? await api.me()
     }
 
