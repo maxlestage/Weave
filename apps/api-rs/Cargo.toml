@@ -41,7 +41,11 @@ tokio = { version = "1.53.1", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["fs", "cors", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
+x509-parser = { version = "0.18.1", features = ["verify"] }
 
 [dev-dependencies]
 http-body-util = "0.1.5"
+rcgen = "0.14.10"
+time = "0.3.55"
 tower = { version = "0.5.3", features = ["util"] }

@@ -14,6 +14,7 @@ mod limitation;
 mod live_activity;
 mod migrations;
 mod purge;
+mod storekit;
 mod routes;
 mod temps;
 
@@ -48,6 +49,14 @@ struct AppState {
     /// Partagé : le jeton d'autorisation APNs vit dans le client, et en forger
     /// un par notification coûterait une signature ES256 à chaque fois.
     apns: Arc<apns::ClientApns>,
+    /// La racine à laquelle doit mener la chaîne d'une transaction StoreKit.
+    ///
+    /// Toujours celle d'Apple en production — `main` ne pose rien d'autre, et
+    /// aucune variable d'environnement ne la change : une racine configurable
+    /// depuis l'extérieur serait une porte ouverte sur ce qui protège les
+    /// achats. Seuls les tests en posent une autre, pour pouvoir éprouver le
+    /// chemin complet avec de vraies signatures.
+    racine_storekit: Arc<Vec<u8>>,
 }
 
 /// Choisit le fournisseur cryptographique de rustls, avant tout usage de TLS.
@@ -157,6 +166,8 @@ async fn main() -> anyhow::Result<()> {
         cache,
         config: Arc::new(config),
         apns: Arc::new(apns::ClientApns::new()),
+        // La racine d'Apple, et rien d'autre.
+        racine_storekit: Arc::new(storekit::RACINE_APPLE.to_vec()),
     };
 
     // La purge tourne depuis le service, faute de planificateur externe. Un

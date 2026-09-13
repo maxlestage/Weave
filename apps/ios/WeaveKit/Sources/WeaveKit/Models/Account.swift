@@ -38,6 +38,19 @@ public enum PlanTier: String, Codable, CaseIterable, Sendable {
         case .grandtour: "Grand Tour"
         }
     }
+
+    /// Identifiant StoreKit de l'abonnement, aligné sur le catalogue serveur.
+    ///
+    /// « Départ » est le socle gratuit : il ne s'achète pas, et n'a donc pas
+    /// de produit.
+    ///
+    /// Il n'y a pas d'abonnement annuel : un engagement de douze mois sur un
+    /// service qu'on peut vouloir quitter du jour au lendemain ne rend service
+    /// qu'à celui qui l'encaisse.
+    public var productID: String? {
+        guard self != .depart else { return nil }
+        return "com.weave.app.sub.\(rawValue).monthly"
+    }
 }
 
 /// Produit achetable à l'unité. Miroir de `UnitSku`.

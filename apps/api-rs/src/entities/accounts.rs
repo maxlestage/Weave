@@ -29,6 +29,8 @@ pub struct Model {
     pub last_seen_at: Option<DateTime>,
     #[sea_orm(column_name = "deletionRequestedAt")]
     pub deletion_requested_at: Option<DateTime>,
+    #[sea_orm(column_name = "lastBilanAt")]
+    pub last_bilan_at: Option<DateTime>,
     #[sea_orm(column_name = "createdAt")]
     pub created_at: DateTime,
     #[sea_orm(column_name = "updatedAt")]
