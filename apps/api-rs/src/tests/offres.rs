@@ -6,7 +6,6 @@
 
 use super::Service;
 use axum::http::StatusCode;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use sea_orm::ConnectionTrait;
 use serde_json::json;
 

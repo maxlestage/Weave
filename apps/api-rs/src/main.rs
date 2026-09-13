@@ -6,6 +6,8 @@ mod alerte;
 mod apns;
 mod auth;
 mod cache;
+mod console;
+mod console_cli;
 mod crypto;
 mod db;
 mod droits;
@@ -132,6 +134,17 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         return Ok(());
+    }
+
+    // `weave-api console …` : la modération.
+    //
+    // Elle a besoin du cache, contrairement à `migrate` et `purge` : le résumé
+    // d'identité d'un compte y vit un quart d'heure, et une suspension qui
+    // n'invalide pas ce résumé ne prendrait effet qu'à son expiration.
+    if std::env::args().nth(1).as_deref() == Some("console") {
+        let cache = cache::connecter(&config.cache).await?;
+        let arguments: Vec<String> = std::env::args().skip(2).collect();
+        return console_cli::executer(&db, &cache, &arguments).await;
     }
 
     let cache = cache::connecter(&config.cache).await?;
