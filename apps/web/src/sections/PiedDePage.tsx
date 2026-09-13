@@ -53,7 +53,14 @@ export function PiedDePage() {
         <p className="mt-10 text-sm" style={{ color: "var(--texte-doux)" }}>
           Weave est réservé aux personnes de {MIN_AGE} ans et plus.
         </p>
-        <p className="mt-2 text-sm" style={{ color: "var(--texte-doux)" }}>
+        {/*
+          L'année est calculée au rendu : elle vaut celle de la CONSTRUCTION
+          côté serveur, et celle de la consultation côté client. Les deux ne
+          diffèrent qu'au passage d'une année, et React reprendrait la valeur
+          du client en signalant l'écart. `suppressHydrationWarning` dit que
+          cet écart-là est voulu — c'est exactement ce à quoi il sert.
+        */}
+        <p className="mt-2 text-sm" style={{ color: "var(--texte-doux)" }} suppressHydrationWarning>
           © {new Date().getFullYear()} Weave. Apple, iPhone et Apple Watch sont des marques déposées
           d'Apple Inc.
         </p>
