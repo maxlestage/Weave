@@ -13,6 +13,7 @@ struct ReglagesView: View {
     @State private var fichierExporte: URL?
     @State private var demandeSuppression = false
     @State private var pauseEnCours = false
+    @State private var fiche = false
     @State private var erreur: String?
 
     var body: some View {
@@ -23,6 +24,10 @@ struct ReglagesView: View {
                         LabeledContent("Prénom", value: moi.displayName)
                         LabeledContent("Ville", value: moi.city)
                         LabeledContent("Offre", value: moi.tier.displayName)
+                        // Rien ne permettait de corriger sa fiche : une ville
+                        // mal saisie à l'inscription, ou un déménagement, et
+                        // le fil restait composé autour du mauvais endroit.
+                        Button("Modifier ma fiche") { fiche = true }
                     }
 
                     Section {
@@ -139,6 +144,14 @@ struct ReglagesView: View {
                 } footer: {
                     Text("Vos plans ouverts disparaissent du fil immédiatement. Tout le reste est effacé sous \(accountPurgeDays) jours.")
                 }
+            }
+            .sheet(isPresented: $fiche) {
+                FicheView(
+                    villeInitiale: modele.moi?.city ?? "",
+                    bioInitiale: modele.moi?.bio ?? "",
+                    permetDAnnuler: true
+                )
+                .environment(modele)
             }
             .alert("Supprimer votre compte ?", isPresented: $demandeSuppression) {
                 Button("Annuler", role: .cancel) {}

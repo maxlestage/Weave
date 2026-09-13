@@ -102,13 +102,19 @@ final class ModeleApplication {
     }
 
     func seConnecter() async {
+        // Le compte est relu AVANT d'afficher quoi que ce soit.
+        //
+        // C'est lui qui porte le statut, et donc le choix entre les onglets et
+        // la fiche à remplir. Basculer `connecte` d'abord montrait un instant
+        // un fil vide et des onglets inertes à qui vient de s'inscrire, avant
+        // que l'écran ne se ravise.
+        await rafraichirMoi()
         connecte = true
         activites.start()
         // L'autorisation se demande ici, pas au premier lancement : avant
         // d'avoir un compte, il n'y a rien à notifier, et une demande posée
         // trop tôt se refuse par réflexe. iOS ne la repose jamais.
         await notifications.demanderAutorisation()
-        await rafraichirMoi()
         await plans.refresh()
         await synchroniserActivite()
     }

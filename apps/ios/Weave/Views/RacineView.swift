@@ -9,12 +9,21 @@ struct RacineView: View {
             if !modele.pret {
                 ProgressView().controlSize(.large)
             } else if modele.connecte {
-                Onglets()
+                // Un compte sans fiche ne peut rien faire : le fil est vide et
+                // la publication refusée. On demande donc la fiche avant les
+                // onglets, plutôt que de laisser quelqu'un devant une
+                // application qui ne répond pas.
+                if modele.moi?.status == .onboarding {
+                    FicheView()
+                } else {
+                    Onglets()
+                }
             } else {
                 ConnexionView()
             }
         }
         .animation(.easeInOut(duration: 0.25), value: modele.connecte)
+        .animation(.easeInOut(duration: 0.25), value: modele.moi?.status)
     }
 }
 
