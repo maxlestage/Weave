@@ -319,3 +319,56 @@ async fn un_plan_annule_disparait_de_l_etat() {
         .await;
     assert_eq!(apres["planTitle"], json!(null), "le plan annulé s'affiche encore");
 }
+
+/// Fermer une activité efface sa ligne, elle ne la marque pas close.
+///
+/// La politique de confidentialité promet que les activités en direct sont
+/// « effacées dès la fin de l'activité ». La ligne portait `last_state_json` —
+/// L'INSTANTANÉ DE CE QUI S'EST AFFICHÉ SUR UN ÉCRAN VERROUILLÉ — et restait en
+/// base jusqu'à la péremption de la session, soit des heures après que la
+/// personne l'a fermée.
+#[tokio::test]
+async fn fermer_une_activite_efface_sa_ligne() {
+    let service = Service::monter().await;
+    service.compte("c_fin_efface", "depart").await;
+    appareil(&service, "c_fin_efface", "vendor-efface-0001").await;
+    plan_de(&service, "c_fin_efface", "Un plan qui tient la banniere").await;
+
+    let jeton = "un-jeton-de-session-a-effacer-0001";
+    let (statut, _) = service
+        .post("/v1/live-activity/sessions", Some(&service.jeton("c_fin_efface")), json!({
+            "vendorId": "vendor-efface-0001",
+            "updateToken": jeton,
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+    assert_eq!(lignes_de_session(&service, &service.id("c_fin_efface")).await, 1);
+
+    let (statut, _) = service
+        .delete(
+            &format!("/v1/live-activity/sessions/{jeton}"),
+            Some(&service.jeton("c_fin_efface")),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    assert_eq!(
+        lignes_de_session(&service, &service.id("c_fin_efface")).await,
+        0,
+        "la ligne survit à la fermeture, avec l'instantané de l'écran verrouillé"
+    );
+}
+
+async fn lignes_de_session(service: &Service, compte: &str) -> i64 {
+    use sea_orm::{ConnectionTrait, Statement};
+    service
+        .db
+        .query_one_raw(Statement::from_string(
+            service.db.get_database_backend(),
+            format!("SELECT COUNT(*) AS v FROM live_activity_sessions WHERE accountId='{compte}'"),
+        ))
+        .await
+        .unwrap()
+        .map(|l| l.try_get::<i64>("", "v").unwrap())
+        .unwrap()
+}
