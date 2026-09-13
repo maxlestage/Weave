@@ -245,7 +245,7 @@ fn monter_vitrine(routeur: Router, chemin: Option<&str>) -> Router {
 /// images : leur contenu ne change jamais sous un même nom, ils se gardent
 /// indéfiniment. `index.html`, lui, garde les noms des autres : le mettre en
 /// cache une heure servirait l'ancien site une heure après chaque publication.
-async fn servir_vitrine(requete: Request, suite: Next) -> Response {
+async fn servir_vitrine(mut requete: Request, suite: Next) -> Response {
     // Un POST sur une adresse d'API mal orthographiée arrive ici, et le
     // service de fichiers répondrait « méthode interdite » : un contresens,
     // qui laisse croire que la ressource existe. Elle n'existe pas.
@@ -253,11 +253,21 @@ async fn servir_vitrine(requete: Request, suite: Next) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    let chemin = requete.uri().path();
-    let html = chemin == "/" || chemin.ends_with('/') || chemin.ends_with(".html");
+    ajouter_barre_oblique(&mut requete);
 
     let mut reponse = suite.run(requete).await;
     if reponse.status().is_success() {
+        // Le cache se décide sur le type de contenu, pas sur la forme de
+        // l'adresse. Une page rendue à « /cgv » n'a ni barre oblique finale
+        // ni extension : la déduire du chemin la faisait garder un an comme
+        // une image, et un texte juridique corrigé serait resté invisible
+        // tout ce temps.
+        let html = reponse
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|valeur| valeur.to_str().ok())
+            .is_some_and(|valeur| valeur.starts_with("text/html"));
+
         reponse.headers_mut().insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static(if html {
@@ -268,6 +278,38 @@ async fn servir_vitrine(requete: Request, suite: Next) -> Response {
         );
     }
     reponse
+}
+
+/// Rend « /cgv » à la place de « /cgv/ », sans détour par une redirection.
+///
+/// Chaque page juridique est construite en `cgv/index.html`. Le service de
+/// fichiers y voit un répertoire et répond une 307 vers « /cgv/ » — or c'est
+/// « /cgv » que le pied de page met en lien, que le plan du site déclare, et
+/// que l'URL canonique désigne. Chaque visite payait donc un aller-retour, et
+/// l'adresse annoncée aux moteurs n'était pas celle qui répondait.
+///
+/// La barre oblique est ajoutée avant le service de fichiers plutôt que
+/// renvoyée au navigateur. Une adresse qui porte une extension est un fichier
+/// et n'est pas touchée ; une adresse inexistante reste une 404, le répertoire
+/// n'existant pas davantage que le fichier.
+fn ajouter_barre_oblique(requete: &mut Request) {
+    let chemin = requete.uri().path();
+    if chemin.ends_with('/') || chemin.rsplit('/').next().is_none_or(|f| f.contains('.')) {
+        return;
+    }
+
+    let mut parties = requete.uri().clone().into_parts();
+    let requete_et_suite = match parties.path_and_query.as_ref().and_then(|p| p.query()) {
+        Some(requete) => format!("{chemin}/?{requete}"),
+        None => format!("{chemin}/"),
+    };
+    let Ok(chemin_et_requete) = requete_et_suite.parse() else {
+        return;
+    };
+    parties.path_and_query = Some(chemin_et_requete);
+    if let Ok(uri) = axum::http::Uri::from_parts(parties) {
+        *requete.uri_mut() = uri;
+    }
 }
 
 /// Sonde de santé.
