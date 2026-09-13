@@ -636,3 +636,104 @@ async fn une_transaction_trop_ancienne_est_refusee() {
         .await;
     assert_ne!(statut, StatusCode::OK, "une transaction d'il y a deux jours : {corps}");
 }
+
+/// Un palier qui comprend le bilan ne fait pas payer deux fois.
+///
+/// « Expédition » annonce « Bilan mensuel : quels plans attirent, et
+/// pourquoi » parmi ce qu'il inclut. La route exigeait pourtant un crédit :
+/// quelqu'un versant 14,99 € par mois se voyait demander 2,99 € de plus pour
+/// ce que son abonnement promet.
+#[tokio::test]
+async fn un_palier_qui_comprend_le_bilan_ne_fait_pas_payer_deux_fois() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let auteur = service.compte("c_expedition", "expedition").await;
+    let jeton = service.jeton("c_expedition");
+    service.compte("c_curieux_exp", "depart").await;
+
+    for nom in ["c_expedition", "c_curieux_exp"] {
+        service
+            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
+                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+            }))
+            .await;
+    }
+
+    for titre in ["Un cafe sur la place", "Une balade au bord de leau", "Un concert au hangar"] {
+        let (statut, corps) = service
+            .post("/v1/plans", Some(&jeton), json!({
+                "title": titre,
+                "category": "sortie",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+    }
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt='2020-01-01 12:00:00' WHERE authorId='{auteur}'"
+        ))
+        .await
+        .unwrap();
+
+    // Aucun crédit acheté, et pourtant le bilan doit sortir.
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["bilan"], 0, "le test doit partir sans crédit");
+
+    let (statut, bilan) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_eq!(statut, StatusCode::OK, "le bilan inclus a été refusé : {bilan}");
+    assert_eq!(bilan["plansPasses"], 3);
+
+    // Le second du même mois, lui, se paie : l'abonnement en comprend un.
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "le second bilan du mois devrait demander un crédit : {corps}"
+    );
+
+    // Et avec un crédit, il sort — sans toucher à la part incluse.
+    crate::routes::billing::crediter_pour_test(&service.etat, &auteur, "bilan", 1)
+        .await
+        .expect("achat");
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+}
+
+/// Un palier qui ne comprend pas le bilan le fait payer, comme annoncé.
+#[tokio::test]
+async fn un_palier_sans_bilan_exige_toujours_le_credit() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let auteur = service.compte("c_viree_bilan", "viree").await;
+    let jeton = service.jeton("c_viree_bilan");
+
+    service
+        .put("/v1/me/profile", Some(&jeton), json!({
+            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+        }))
+        .await;
+
+    for titre in ["Un premier plan a soi", "Un deuxieme plan a soi", "Un troisieme plan a soi"] {
+        service
+            .post("/v1/plans", Some(&jeton), json!({
+                "title": titre,
+                "category": "sortie",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }))
+            .await;
+    }
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt='2020-01-01 12:00:00' WHERE authorId='{auteur}'"
+        ))
+        .await
+        .unwrap();
+
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(statut, StatusCode::OK, "« Virée » ne comprend pas le bilan : {corps}");
+}

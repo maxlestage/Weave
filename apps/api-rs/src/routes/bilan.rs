@@ -26,9 +26,9 @@
 //! ne rien vendre du tout.
 
 use crate::{
-    auth::Authentifie,
-    droits::exiger_credit,
-    entities::{join_requests, plans},
+    auth::{Authentifie, CompteAuthentifie},
+    droits::{droits_pour, exiger_credit},
+    entities::{accounts, join_requests, plans},
     error::{invalide, AppError},
     temps::iso8601,
     AppState,
@@ -100,8 +100,18 @@ async fn etablir(
         });
     }
 
-    // Le crédit se dépense une fois qu'on sait qu'il y a un bilan à rendre.
-    exiger_credit(&state, &compte.id, "bilan", "Bilan").await?;
+    // La part incluse dans l'abonnement passe avant le crédit.
+    //
+    // Deux paliers annoncent un « Bilan mensuel » parmi ce qu'ils incluent.
+    // Exiger malgré tout un crédit revenait à faire payer 2,99 € de plus à
+    // quelqu'un qui verse déjà 14,99 € par mois pour, entre autres, cela.
+    //
+    // L'incluse est servie la première ; le crédit ne sert qu'au-delà, pour un
+    // bilan supplémentaire dans le mois ou pour un palier qui n'en comprend
+    // pas. Un bilan payé ne consomme donc pas l'incluse.
+    if !servir_la_part_incluse(&state, &compte).await? {
+        exiger_credit(&state, &compte.id, "bilan", "Bilan").await?;
+    }
 
     let total_demandes: usize = lignes.iter().map(|l| l.demandes).sum();
     let total_acceptees: usize = lignes.iter().map(|l| l.acceptees).sum();
@@ -206,3 +216,45 @@ fn delai(lignes: &[Ligne]) -> Value {
 fn arrondir(valeur: f64) -> f64 {
     (valeur * 10.0).round() / 10.0
 }
+
+/// Sert le bilan inclus dans l'abonnement, s'il est dû.
+///
+/// Rend `true` quand la part incluse vient d'être consommée — l'appelant n'a
+/// alors rien à prélever. Rend `false` quand le palier n'en comprend pas, ou
+/// quand celle du mois a déjà servi.
+///
+/// Une seule écriture conditionnelle : deux demandes simultanées ne peuvent
+/// pas consommer deux fois la même part. Celle qui perd la course retombe sur
+/// le crédit, ce qui est le bon comportement — elle demande un second bilan
+/// dans le même mois.
+async fn servir_la_part_incluse(
+    state: &AppState,
+    compte: &CompteAuthentifie,
+) -> Result<bool, AppError> {
+    if !droits_pour(&compte.tier).bilan {
+        return Ok(false);
+    }
+
+    let maintenant = Utc::now().naive_utc();
+    let seuil = maintenant - chrono::Duration::days(PERIODE_JOURS);
+
+    let servie = accounts::Entity::update_many()
+        .col_expr(
+            accounts::Column::LastBilanAt,
+            sea_orm::sea_query::Expr::value(maintenant),
+        )
+        .filter(accounts::Column::Id.eq(compte.id.as_str()))
+        .filter(
+            sea_orm::Condition::any()
+                .add(accounts::Column::LastBilanAt.is_null())
+                .add(accounts::Column::LastBilanAt.lt(seuil)),
+        )
+        .exec(&state.db)
+        .await?;
+
+    Ok(servie.rows_affected > 0)
+}
+
+/// Ce que « mensuel » veut dire ici. Trente jours plutôt qu'un mois civil :
+/// un abonnement se renouvelle à date, pas au premier du mois.
+const PERIODE_JOURS: i64 = 30;
