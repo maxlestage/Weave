@@ -28,7 +28,7 @@
 //! `deleting`, invisible du fil, sans session valide — et sera purgé lors d'un
 //! passage ultérieur, une fois le signalement clos.
 
-use crate::entities::{accounts, messages, reports};
+use crate::entities::{accounts, live_activity_sessions, messages, reports};
 use chrono::{Duration, Utc};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
@@ -45,6 +45,7 @@ pub struct Bilan {
     pub comptes_effaces: u64,
     /// Comptes échus mais retenus par un signalement encore ouvert.
     pub comptes_differes: u64,
+    pub activites_effacees: u64,
 }
 
 pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
@@ -60,7 +61,21 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
         .await?
         .rows_affected;
 
-    // 2. Les comptes dont le délai est écoulé.
+    // 2. Les activités en direct périmées.
+    //
+    //    L'envoi les ignore déjà — il ne retient que celles dont `stale_at`
+    //    est à venir — mais leurs lignes restaient là, chacune portant un
+    //    `last_state_json` : l'instantané de ce qui s'est affiché sur un écran
+    //    verrouillé. Le garder après la fin de l'activité ne sert plus rien,
+    //    et la minimisation qu'annonce la politique de confidentialité vaut
+    //    aussi pour ce qu'on a cessé d'utiliser.
+    let activites_effacees = live_activity_sessions::Entity::delete_many()
+        .filter(live_activity_sessions::Column::StaleAt.lte(maintenant))
+        .exec(db)
+        .await?
+        .rows_affected;
+
+    // 3. Les comptes dont le délai est écoulé.
     let echeance = maintenant - Duration::days(PURGE_COMPTE_JOURS);
     let echus: Vec<String> = accounts::Entity::find()
         .filter(accounts::Column::DeletionRequestedAt.is_not_null())
@@ -71,7 +86,7 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
         .all(db)
         .await?;
 
-    let mut bilan = Bilan { messages_effaces, ..Default::default() };
+    let mut bilan = Bilan { messages_effaces, activites_effacees, ..Default::default() };
 
     for id in echus {
         if signalement_en_cours(db, &id).await? {
@@ -219,6 +234,59 @@ pub(super) mod tests {
         clos.update(&db).await.expect("clôture");
 
         assert_eq!(executer(&db).await.expect("purge").comptes_effaces, 1);
+    }
+
+    /// Une session périmée s'en va, une session encore vivante reste.
+    #[tokio::test]
+    async fn les_activites_perimees_partent_les_vivantes_restent() {
+        use crate::entities::{devices, live_activity_sessions};
+        let db = base_de_test().await;
+        compte(&db, "porteur", None).await;
+
+        devices::ActiveModel {
+            id: Set("d1".to_string()),
+            account_id: Set("porteur".to_string()),
+            platform: Set("ios".to_string()),
+            vendor_id: Set("v1".to_string()),
+            model: Set(Some("iPhone".to_string())),
+            os_version: Set(Some("26.0".to_string())),
+            app_version: Set(Some("0.1.0".to_string())),
+            apns_token: Set(None),
+            push_to_start_token: Set(None),
+            apns_environment: Set("sandbox".to_string()),
+            last_seen_at: Set(Utc::now().naive_utc()),
+            created_at: Set(Utc::now().naive_utc()),
+        }
+        .insert(&db)
+        .await
+        .expect("appareil inséré");
+
+        for (id, decalage) in [("perimee", -1_i64), ("vivante", 1)] {
+            live_activity_sessions::ActiveModel {
+                id: Set(id.to_string()),
+                account_id: Set("porteur".to_string()),
+                device_id: Set("d1".to_string()),
+                update_token: Set(format!("jeton-{id}")),
+                started_at: Set(Utc::now().naive_utc()),
+                last_state_json: Set(String::new()),
+                last_push_at: Set(None),
+                ended_at: Set(None),
+                stale_at: Set(Utc::now().naive_utc() + Duration::hours(decalage)),
+            }
+            .insert(&db)
+            .await
+            .expect("session insérée");
+        }
+
+        let bilan = executer(&db).await.expect("purge");
+        assert_eq!(bilan.activites_effacees, 1);
+
+        let restantes = live_activity_sessions::Entity::find()
+            .all(&db)
+            .await
+            .expect("lecture");
+        assert_eq!(restantes.len(), 1);
+        assert_eq!(restantes[0].id, "vivante");
     }
 
     #[tokio::test]

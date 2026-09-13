@@ -1,5 +1,14 @@
 import Foundation
 
+/// Délai entre la demande de suppression et l'effacement réel, en jours.
+///
+/// Miroir manuel de `ACCOUNT_PURGE_DAYS` (`packages/contracts/src/invariants.ts`),
+/// comme les autres valeurs partagées : on ne transporte pas de types entre
+/// TypeScript et Swift. La valeur est affichée à qui demande la suppression —
+/// annoncer autre chose que ce que le serveur applique serait mentir sur un
+/// délai que la politique de confidentialité engage.
+public let accountPurgeDays = 30
+
 public enum AccountStatus: String, Codable, Sendable {
     case onboarding
     case active

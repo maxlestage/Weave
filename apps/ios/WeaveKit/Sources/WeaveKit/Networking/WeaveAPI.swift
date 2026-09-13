@@ -268,6 +268,28 @@ public actor WeaveAPI {
         await store.clear()
     }
 
+    // MARK: - Ses données
+
+    /// Récupère l'export de ses données — article 20 du RGPD.
+    ///
+    /// Rendu tel quel, sans décodage : c'est un fichier qu'on emporte, pas une
+    /// structure que l'application exploite. Le décoder pour le réencoder
+    /// risquerait d'en perdre une partie au premier champ ajouté côté serveur.
+    public func exportData() async throws -> Data {
+        let token = try await validToken()
+        return try await sendRaw(.get, "/v1/me/export", token: token)
+    }
+
+    /// Demande la suppression de son compte.
+    ///
+    /// En deux temps côté serveur : le compte sort du fil immédiatement, les
+    /// données sont effacées à l'issue du délai légal. La session locale est
+    /// vidée ici — il n'y a plus rien à rouvrir.
+    public func deleteAccount() async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/auth/account")
+        await store.clear()
+    }
+
     // MARK: - Mécanique
 
     private enum Method: String {
@@ -350,6 +372,37 @@ public actor WeaveAPI {
         } catch {
             throw WeaveAPIError.server(status: http.statusCode, message: "Réponse illisible.")
         }
+    }
+
+    /// Même chemin que `send`, mais rend les octets au lieu de les décoder.
+    ///
+    /// La gestion d'erreur est identique : un export refusé doit produire la
+    /// même erreur typée qu'un appel ordinaire, sinon l'écran qui l'appelle
+    /// devrait traiter deux vocabulaires d'échec.
+    private func sendRaw(_ method: Method, _ path: String, token: String?) async throws -> Data {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method.rawValue
+        request.timeoutInterval = 60
+
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw WeaveAPIError.transport(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw WeaveAPIError.transport("Réponse inattendue.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Self.decodeError(status: http.statusCode, data: data, decoder: decoder)
+        }
+        return data
     }
 
     private static func decodeError(status: Int, data: Data, decoder: JSONDecoder) -> WeaveAPIError {
