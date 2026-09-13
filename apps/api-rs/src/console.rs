@@ -225,6 +225,61 @@ pub async fn retablir(db: &DatabaseConnection, compte: &str) -> Result<Issue, Db
     Ok(Issue::Fait)
 }
 
+/// Pose le badge « vérifié ».
+///
+/// `accounts.verified` est affiché par le fil et par la liste des demandes,
+/// écrit à `false` à l'inscription, et remis à `true` par rien. Le badge ne
+/// pouvait donc apparaître sur aucun profil — et « Vérification de profil
+/// accélérée », vendue avec le palier Grand Tour, portait sur une procédure
+/// qui n'existait à aucune vitesse.
+///
+/// ## Ce que le badge dit, et ce qu'il ne dit pas
+///
+/// Il dit qu'une personne a examiné une pièce et consigné sa décision avec son
+/// motif. Il ne dit pas qu'un contrôle automatique a eu lieu : il n'y en a
+/// aucun. Le motif est obligatoire pour cette raison — un badge posé sans
+/// raison consignée ne vaudrait pas mieux que pas de badge du tout, et il
+/// vaudrait moins, parce que quelqu'un s'y fierait.
+pub async fn verifier(db: &DatabaseConnection, compte: &str, motif: &str) -> Result<Issue, DbErr> {
+    poser_verification(db, compte, true, "verification_console", motif).await
+}
+
+/// Retire le badge — sur une pièce périmée, un doute, ou une erreur.
+///
+/// Réversible par construction : un badge qu'on ne peut pas retirer force à
+/// choisir entre laisser une affirmation fausse en place et supprimer le
+/// compte de quelqu'un.
+pub async fn deverifier(
+    db: &DatabaseConnection,
+    compte: &str,
+    motif: &str,
+) -> Result<Issue, DbErr> {
+    poser_verification(db, compte, false, "deverification_console", motif).await
+}
+
+async fn poser_verification(
+    db: &DatabaseConnection,
+    compte: &str,
+    vise: bool,
+    action: &str,
+    motif: &str,
+) -> Result<Issue, DbErr> {
+    let touche = accounts::Entity::update_many()
+        .col_expr(accounts::Column::Verified, Expr::value(vise))
+        .col_expr(accounts::Column::UpdatedAt, Expr::value(Utc::now().naive_utc()))
+        .filter(accounts::Column::Id.eq(compte))
+        .filter(accounts::Column::Verified.eq(!vise))
+        .exec(db)
+        .await?;
+
+    if touche.rows_affected == 0 {
+        return etat_inchange(db, compte).await;
+    }
+
+    journaliser(db, Some(compte), action, None, json!({ "motif": motif })).await?;
+    Ok(Issue::Fait)
+}
+
 /// Les photos envoyées et jamais examinées, de la plus ancienne à la plus
 /// récente.
 ///
@@ -678,6 +733,76 @@ mod tests {
         );
         assert!(photos_a_examiner(&db).await.expect("lecture").is_empty());
         assert_eq!(photo_retirer(&db, "retire").await.expect("seconde"), Issue::Deja);
+    }
+
+    /// Le badge n'était posable par personne : `verified` s'écrit `false` à
+    /// l'inscription et rien ne le remettait à `true`. « Vérification de profil
+    /// accélérée », vendue avec le Grand Tour, portait donc sur une procédure
+    /// qui n'existait à aucune vitesse.
+    #[tokio::test]
+    async fn le_badge_se_pose_et_se_retire() {
+        let db = base_de_test().await;
+        compte(&db, "a_verifier", "active").await;
+        assert!(!verifie(&db, "a_verifier").await, "personne ne naît vérifié");
+
+        assert_eq!(
+            verifier(&db, "a_verifier", "carte d'identité reçue le 12/09")
+                .await
+                .expect("vérification"),
+            Issue::Fait
+        );
+        assert!(verifie(&db, "a_verifier").await);
+
+        assert_eq!(
+            verifier(&db, "a_verifier", "encore").await.expect("seconde"),
+            Issue::Deja
+        );
+
+        assert_eq!(
+            deverifier(&db, "a_verifier", "pièce périmée").await.expect("retrait"),
+            Issue::Fait,
+            "un badge qu'on ne peut pas retirer force à choisir entre une \
+             affirmation fausse et la suppression d'un compte"
+        );
+        assert!(!verifie(&db, "a_verifier").await);
+
+        assert_eq!(
+            deverifier(&db, "a_verifier", "encore").await.expect("seconde"),
+            Issue::Deja
+        );
+        assert_eq!(
+            verifier(&db, "inconnu", "peu importe").await.expect("inconnu"),
+            Issue::Introuvable
+        );
+    }
+
+    /// Le motif est ce qui rend la décision contestable : il doit atteindre le
+    /// journal d'audit, pas seulement la ligne de commande.
+    #[tokio::test]
+    async fn le_motif_du_badge_atteint_le_journal() {
+        let db = base_de_test().await;
+        compte(&db, "trace", "active").await;
+        verifier(&db, "trace", "passeport vu en visio").await.expect("vérification");
+
+        let trace = audit_events::Entity::find()
+            .filter(audit_events::Column::Action.eq("verification_console"))
+            .filter(audit_events::Column::AccountId.eq("trace"))
+            .one(&db)
+            .await
+            .expect("lecture")
+            .expect("une décision de modération laisse une trace");
+        assert!(trace.meta_json.contains("passeport vu en visio"));
+    }
+
+    async fn verifie(db: &DatabaseConnection, compte: &str) -> bool {
+        accounts::Entity::find_by_id(compte)
+            .select_only()
+            .column(accounts::Column::Verified)
+            .into_tuple::<bool>()
+            .one(db)
+            .await
+            .expect("lecture")
+            .expect("le compte existe")
     }
 
     async fn statut(db: &DatabaseConnection, compte: &str) -> String {

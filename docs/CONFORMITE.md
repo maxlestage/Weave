@@ -131,6 +131,8 @@ heroku run -a weave ./bin-release/weave-api console signalements
 heroku run -a weave ./bin-release/weave-api console clore <dossier> "motif"
 heroku run -a weave ./bin-release/weave-api console suspendre <compte> "motif"
 heroku run -a weave ./bin-release/weave-api console retablir <compte>
+heroku run -a weave ./bin-release/weave-api console verifier <compte> "motif"
+heroku run -a weave ./bin-release/weave-api console deverifier <compte> "motif"
 heroku run -a weave ./bin-release/weave-api console photos
 heroku run -a weave ./bin-release/weave-api console photo-ok <compte>
 heroku run -a weave ./bin-release/weave-api console photo-retirer <compte>
@@ -150,6 +152,15 @@ s'inscrit à `audit_events` avec son motif : le règlement européen sur les
 services numériques (DSA) impose une voie de recours pour les décisions de
 modération, et une décision sans trace ne se conteste pas. `retablir` est cette
 voie.
+
+**Le badge « vérifié »** relevait du même défaut : `accounts.verified` est
+affiché par le fil et la liste des demandes, écrit `false` à l'inscription, et
+remis à `true` par rien. « Vérification de profil accélérée », vendue avec le
+palier Grand Tour, portait donc sur une procédure qui n'existait à aucune
+vitesse. Le badge dit désormais ce qu'il peut dire : qu'une personne a examiné
+une pièce et consigné sa décision avec son motif. Il ne dit pas qu'un contrôle
+automatique a eu lieu — il n'y en a aucun, et **aucune page publique ne définit
+encore ce que le badge affirme**. Cette page-là reste à écrire.
 
 **Ce qui reste à définir** est le processus humain, pas l'outil : qui relève la
 file, sous quel délai, et selon quelle grille. Les photos sont publiées avant
