@@ -157,10 +157,7 @@ impl ClientApns {
             None => requete,
         };
 
-        let reponse = requete
-            .json(&envoi.charge)
-            .send()
-            .await;
+        let reponse = requete.json(&envoi.charge).send().await;
 
         match reponse {
             Ok(r) if r.status().is_success() => Resultat {

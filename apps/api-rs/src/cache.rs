@@ -192,7 +192,10 @@ pub async fn prendre_verrou(
 
 pub async fn oublier(manager: &ConnectionManager, cle: &str) -> redis::RedisResult<()> {
     let mut conn = manager.clone();
-    redis::cmd("DEL").arg(cle).query_async::<()>(&mut conn).await
+    redis::cmd("DEL")
+        .arg(cle)
+        .query_async::<()>(&mut conn)
+        .await
 }
 
 /// Lit un compteur entier. Une clé absente vaut zéro, une valeur illisible
@@ -368,7 +371,10 @@ mod tests_quota {
         }
 
         let reste = compteur(&service.etat.cache, &cle).await;
-        assert_eq!(reste, 0, "le compteur est tombé à {reste} : demandes offertes");
+        assert_eq!(
+            reste, 0,
+            "le compteur est tombé à {reste} : demandes offertes"
+        );
 
         let _ = oublier(&service.etat.cache, &cle).await;
     }
@@ -403,7 +409,10 @@ mod tests {
     use super::*;
 
     fn cache(url: &str, tls_insecure: bool) -> Cache {
-        Cache { url: url.to_string(), tls_insecure }
+        Cache {
+            url: url.to_string(),
+            tls_insecure,
+        }
     }
 
     /// Le défaut qui a fait tomber le dyno : `?insecure=true` est une syntaxe
@@ -435,8 +444,14 @@ mod tests {
     /// ajouter un fragment ferait échouer une connexion en clair.
     #[test]
     fn les_autres_urls_restent_intactes() {
-        assert_eq!(url_effective(&cache("redis://hote:6379", true)), "redis://hote:6379");
-        assert_eq!(url_effective(&cache("rediss://hote:6380", false)), "rediss://hote:6380");
+        assert_eq!(
+            url_effective(&cache("redis://hote:6379", true)),
+            "redis://hote:6379"
+        );
+        assert_eq!(
+            url_effective(&cache("rediss://hote:6380", false)),
+            "rediss://hote:6380"
+        );
     }
 }
 

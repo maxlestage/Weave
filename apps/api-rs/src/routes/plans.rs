@@ -10,20 +10,20 @@
 //! Ce qui se vend, c'est l'horizon de publication et les plans de groupe.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     crypto::signer_url_media,
-    droits::{droits_pour, exiger_credit, HORIZON_CREDIT_JOURS},
-    live_activity,
+    droits::{HORIZON_CREDIT_JOURS, droits_pour, exiger_credit},
     entities::{accounts, join_requests, plans, profiles},
-    error::{invalide, introuvable, AppError, Code},
+    error::{AppError, Code, introuvable, invalide},
     limitation::{consommer, regles},
+    live_activity,
     temps::{age_depuis, iso8601},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{delete, get, post},
-    Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
@@ -31,7 +31,7 @@ use sea_orm::{
     QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Au plus trois plans ouverts à la fois. C'est l'invariant central : il ne
 /// s'achète pas, et aucun palier ne le desserre.
@@ -48,7 +48,14 @@ pub(crate) const TITRE_MAX: usize = 80;
 pub(crate) const NOTE_MAX: usize = 280;
 
 pub(crate) const CATEGORIES: [&str; 8] = [
-    "sortie", "sport", "culture", "repas", "musique", "jeux", "balade", "benevolat",
+    "sortie",
+    "sport",
+    "culture",
+    "repas",
+    "musique",
+    "jeux",
+    "balade",
+    "benevolat",
 ];
 
 pub fn routes() -> Router<AppState> {
@@ -103,7 +110,10 @@ async fn les_miens(
 
     for ligne in lignes {
         let compter = |etat: &str| {
-            compte_par_plan.get(&(ligne.id.clone(), etat.to_string())).copied().unwrap_or(0)
+            compte_par_plan
+                .get(&(ligne.id.clone(), etat.to_string()))
+                .copied()
+                .unwrap_or(0)
         };
         let acceptees = compter("acceptee") as i32;
         let en_attente = compter("envoyee") as u64;
@@ -142,7 +152,10 @@ async fn demandes_recues(
         .ok_or_else(|| introuvable("Plan introuvable."))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+        return Err(AppError::new(
+            Code::Forbidden,
+            "Ce plan n'est pas le vôtre.",
+        ));
     }
 
     let demandes = join_requests::Entity::find()
@@ -189,7 +202,9 @@ async fn demandes_recues(
         // Un compte supprimé entre-temps ne doit pas faire échouer la lecture
         // de toute la liste : sa demande n'a simplement plus d'auteur à
         // montrer.
-        let Some(auteur) = auteurs.get(&demande.author_id) else { continue };
+        let Some(auteur) = auteurs.get(&demande.author_id) else {
+            continue;
+        };
         let photo = photos.get(&auteur.id).cloned();
 
         rendues.push(json!({

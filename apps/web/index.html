@@ -1,62 +1,23 @@
 <!doctype html>
+<!--
+  Le point d'entrée du bundler, et rien de plus.
+
+  Ce fichier portait la tête complète de la page d'accueil : titre,
+  description, balises de partage, données structurées — en français, et une
+  seule fois. Il y a maintenant trois accueils — « / », « /en/ » et « /es/ » —
+  et les trois s'indexent séparément. Une tête française sur la page anglaise
+  la ferait indexer comme française.
+
+  La construction écrit donc la tête des trois pages elle-même, à partir de
+  `src/pages/metadonnees.ts`, et remplace ce fichier dans `dist`. Il ne reste
+  ici que ce dont le bundler a besoin pour trouver le script, la feuille de
+  style (importée par `main.tsx`) et l'icône.
+-->
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#16121f" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
-    <title>Weave — douze fils par jour</title>
-    <meta
-      name="description"
-      content="Weave est une application de rencontre où l'on ne se décrit pas : on publie ce qu'on compte faire, et les autres demandent à venir en disant pourquoi. Pas de cartes à balayer, pas de classement payant."
-    />
-    <!--
-      L'adresse canonique, `og:url` et `og:image` sont posées à la construction,
-      à partir de `SITE.origine`.
-
-      Elles valaient « https://weave.app » en dur — un domaine qui n'est pas le
-      nôtre. Cette page est celle que l'on partage : le lien aurait montré
-      l'image d'un autre site, ou aucune, et `canonical` aurait désigné le
-      domaine d'autrui comme la vraie adresse de nos pages. Les pages juridiques
-      lisaient déjà l'origine ; seule la page d'accueil ne le faisait pas.
-    -->
-    <meta property="og:site_name" content="Weave" />
-    <meta property="og:title" content="Weave — des plans, pas des profils" />
-    <meta
-      property="og:description"
-      content="On publie ce qu'on compte faire jeudi soir. Les autres demandent à venir — en disant pourquoi."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:locale" content="fr_FR" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta
-      property="og:image:alt"
-      content="Weave — des plans, pas des profils. Six fils de couleur tissés."
-    />
+    <title>Weave</title>
     <link rel="icon" href="./public/favicon.svg" type="image/svg+xml" />
-    <!--
-      Données structurées : ce qu'un moteur affiche dans ses résultats. Le type
-      décrit une application mobile, pas un site — c'est le produit, le site
-      n'en est que la présentation.
-    -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "MobileApplication",
-        "name": "Weave",
-        "applicationCategory": "SocialNetworkingApplication",
-        "operatingSystem": "iOS, watchOS",
-        "inLanguage": "fr-FR",
-        "description": "Application de rencontre fondée sur les plans plutôt que sur les profils : on publie ce qu'on compte faire, les autres demandent à venir en écrivant pourquoi.",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "EUR",
-          "description": "Gratuit, avec abonnements et achats à l'unité facultatifs."
-        }
-      }
-    </script>
   </head>
   <body>
     <div id="racine"></div>

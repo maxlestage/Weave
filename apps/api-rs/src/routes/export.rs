@@ -21,21 +21,21 @@
 //! de vérifier ce que le service sait, ce qui est le point du droit d'accès.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     entities::{
         accounts, blocks, consent_records, conversations, credit_balances, devices, join_requests,
         media_objects, messages, plans, preferences, profiles, reports, subscriptions,
         unit_purchases,
     },
-    error::{non_autorise, AppError},
+    error::{AppError, non_autorise},
     limitation::{consommer, regles},
     temps::iso8601,
-    AppState,
 };
-use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, response::IntoResponse, routing::get};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder};
-use base64::{engine::general_purpose::STANDARD, Engine};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/v1/me/export", get(exporter))

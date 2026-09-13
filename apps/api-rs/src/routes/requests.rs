@@ -6,21 +6,21 @@
 //! qui empêche d'arroser.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     cache,
     crypto::signer_url_media,
-    droits::{demandes_restantes, exiger_credit, quota_journalier, RENFORT_GRANT},
+    droits::{RENFORT_GRANT, demandes_restantes, exiger_credit, quota_journalier},
     entities::{accounts, blocks, conversations, join_requests, plans, profiles},
-    error::{introuvable, invalide, AppError, Code},
+    error::{AppError, Code, introuvable, invalide},
     limitation::{consommer, regles},
     live_activity,
     temps::{age_depuis, iso8601, jour_local, secondes_avant_minuit},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{delete, get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -28,7 +28,7 @@ use sea_orm::{
     QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Vingt caractères : assez pour dire pourquoi on veut venir, trop pour un
 /// « salut » envoyé à la chaîne.
@@ -218,7 +218,10 @@ async fn retirer(
     //
     // Seul l'appel qui a réellement changé l'état rembourse.
     let retiree = join_requests::Entity::update_many()
-        .col_expr(join_requests::Column::State, sea_orm::sea_query::Expr::value("retiree"))
+        .col_expr(
+            join_requests::Column::State,
+            sea_orm::sea_query::Expr::value("retiree"),
+        )
         .col_expr(
             join_requests::Column::DecidedAt,
             sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
@@ -267,7 +270,10 @@ async fn refuser(
         .ok_or_else(|| introuvable("Plan introuvable."))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+        return Err(AppError::new(
+            Code::Forbidden,
+            "Ce plan n'est pas le vôtre.",
+        ));
     }
     if demande.state != "envoyee" {
         return Err(invalide("Cette demande est déjà tranchée."));
@@ -462,7 +468,10 @@ async fn accepter(
         .ok_or_else(|| introuvable("Demande introuvable."))?;
 
     if plan.author_id != compte.id {
-        return Err(AppError::new(Code::Forbidden, "Ce plan n'est pas le vôtre."));
+        return Err(AppError::new(
+            Code::Forbidden,
+            "Ce plan n'est pas le vôtre.",
+        ));
     }
     if demande.state != "envoyee" {
         return Err(invalide("Cette demande est déjà tranchée."));
@@ -586,5 +595,7 @@ async fn accepter(
     }
     live_activity::publier_au_mieux(&state, &compte.id).await;
 
-    Ok(Json(json!({ "ok": true, "conversationId": conversation.id })))
+    Ok(Json(
+        json!({ "ok": true, "conversationId": conversation.id }),
+    ))
 }

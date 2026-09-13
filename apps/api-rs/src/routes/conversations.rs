@@ -3,27 +3,27 @@
 //! Sans accusé de lecture : savoir si l'autre a lu n'aide personne à décider.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     crypto::signer_url_media,
     entities::{accounts, conversations, messages, plans, profiles},
-    error::{introuvable, invalide, AppError, Code},
-    limitation::{consommer, Regle},
+    error::{AppError, Code, introuvable, invalide},
+    limitation::{Regle, consommer},
     live_activity,
     temps::{age_depuis, iso8601},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get},
-    Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Borne haute très large, uniquement anti-abus : une conversation entamée ne
 /// doit jamais buter sur un plafond.
@@ -83,7 +83,13 @@ async fn les_miennes(
     let plans_ids: Vec<String> = lignes.iter().map(|l| l.plan_id.clone()).collect();
     let autres_ids: Vec<String> = lignes
         .iter()
-        .map(|l| if l.host_id == compte.id { l.guest_id.clone() } else { l.host_id.clone() })
+        .map(|l| {
+            if l.host_id == compte.id {
+                l.guest_id.clone()
+            } else {
+                l.host_id.clone()
+            }
+        })
         .collect();
     let conversations_ids: Vec<String> = lignes.iter().map(|l| l.id.clone()).collect();
 
@@ -111,7 +117,8 @@ async fn les_miennes(
     // demander les messages qui tombent à cette date-là. Deux messages d'une
     // MÊME conversation à la même milliseconde en rendraient un des deux —
     // c'est l'aperçu d'une liste, et cela n'est pas arrivé.
-    let dates: Vec<chrono::NaiveDateTime> = lignes.iter().filter_map(|l| l.last_message_at).collect();
+    let dates: Vec<chrono::NaiveDateTime> =
+        lignes.iter().filter_map(|l| l.last_message_at).collect();
     let mut derniers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if !dates.is_empty() {
         for (conversation, corps) in messages::Entity::find()
@@ -163,7 +170,10 @@ async fn les_miennes(
         };
 
         let dernier: Option<&String> = derniers.get(&ligne.id);
-        let non_lus = non_lus_par_conversation.get(&ligne.id).copied().unwrap_or(0);
+        let non_lus = non_lus_par_conversation
+            .get(&ligne.id)
+            .copied()
+            .unwrap_or(0);
 
         rendues.push(json!({
             "id": ligne.id,
@@ -218,7 +228,6 @@ async fn photos_signees(
         })
         .collect())
 }
-
 
 #[derive(Deserialize)]
 struct AvantQuand {
@@ -306,13 +315,12 @@ async fn clore(
             let id = conversation.id.clone();
             let ferme_par = compte.id.clone();
             Box::pin(async move {
-                let mut close: conversations::ActiveModel = conversations::Entity::find_by_id(
-                    id.as_str(),
-                )
-                .one(tx)
-                .await?
-                .ok_or(sea_orm::DbErr::RecordNotFound(id.clone()))?
-                .into();
+                let mut close: conversations::ActiveModel =
+                    conversations::Entity::find_by_id(id.as_str())
+                        .one(tx)
+                        .await?
+                        .ok_or(sea_orm::DbErr::RecordNotFound(id.clone()))?
+                        .into();
                 close.closed_at = Set(Some(fermeture));
                 close.closed_by = Set(Some(ferme_par));
                 close.update(tx).await?;

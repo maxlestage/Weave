@@ -42,8 +42,7 @@
 //! commandes pour deux décisions : celle sur le dossier, celle sur le compte.
 
 use crate::entities::{
-    accounts, audit_events, media_objects, profiles, reports, subscriptions,
-    verification_requests,
+    accounts, audit_events, media_objects, profiles, reports, subscriptions, verification_requests,
 };
 use chrono::{NaiveDateTime, Utc};
 use sea_orm::sea_query::Expr;
@@ -178,14 +177,13 @@ pub async fn clore(
 /// Le même état que pose un signalement de minorité, et la même écriture
 /// conditionnelle : un compte déjà suspendu ou en cours de suppression n'est
 /// pas ramené en arrière.
-pub async fn suspendre(
-    db: &DatabaseConnection,
-    compte: &str,
-    motif: &str,
-) -> Result<Issue, DbErr> {
+pub async fn suspendre(db: &DatabaseConnection, compte: &str, motif: &str) -> Result<Issue, DbErr> {
     let touche = accounts::Entity::update_many()
         .col_expr(accounts::Column::Status, Expr::value("suspended"))
-        .col_expr(accounts::Column::UpdatedAt, Expr::value(Utc::now().naive_utc()))
+        .col_expr(
+            accounts::Column::UpdatedAt,
+            Expr::value(Utc::now().naive_utc()),
+        )
         .filter(accounts::Column::Id.eq(compte))
         .filter(accounts::Column::Status.is_in(["active", "paused", "onboarding"]))
         .exec(db)
@@ -221,7 +219,10 @@ pub async fn suspendre(
 pub async fn retablir(db: &DatabaseConnection, compte: &str) -> Result<Issue, DbErr> {
     let touche = accounts::Entity::update_many()
         .col_expr(accounts::Column::Status, Expr::value("active"))
-        .col_expr(accounts::Column::UpdatedAt, Expr::value(Utc::now().naive_utc()))
+        .col_expr(
+            accounts::Column::UpdatedAt,
+            Expr::value(Utc::now().naive_utc()),
+        )
         .filter(accounts::Column::Id.eq(compte))
         .filter(accounts::Column::Status.eq("suspended"))
         .exec(db)
@@ -280,7 +281,10 @@ async fn poser_verification(
 ) -> Result<Issue, DbErr> {
     let touche = accounts::Entity::update_many()
         .col_expr(accounts::Column::Verified, Expr::value(vise))
-        .col_expr(accounts::Column::UpdatedAt, Expr::value(Utc::now().naive_utc()))
+        .col_expr(
+            accounts::Column::UpdatedAt,
+            Expr::value(Utc::now().naive_utc()),
+        )
         .filter(accounts::Column::Id.eq(compte))
         .filter(accounts::Column::Verified.eq(!vise))
         .exec(db)
@@ -410,9 +414,7 @@ async fn clore_demande(
             Expr::value(Utc::now().naive_utc()),
         )
         .filter(verification_requests::Column::AccountId.eq(compte))
-        .filter(
-            verification_requests::Column::State.eq(crate::routes::verification::EN_ATTENTE),
-        )
+        .filter(verification_requests::Column::State.eq(crate::routes::verification::EN_ATTENTE))
         .exec(db)
         .await?;
     Ok(touche.rows_affected > 0)
@@ -436,7 +438,9 @@ pub async fn photos_a_examiner(db: &DatabaseConnection) -> Result<Vec<PhotoEnAtt
         let Some(cle) = fiche.photo_key.clone() else {
             continue;
         };
-        let objet = media_objects::Entity::find_by_id(cle.as_str()).one(db).await?;
+        let objet = media_objects::Entity::find_by_id(cle.as_str())
+            .one(db)
+            .await?;
         let nom = accounts::Entity::find_by_id(fiche.account_id.as_str())
             .one(db)
             .await?
@@ -506,16 +510,29 @@ pub async fn photo_retirer(db: &DatabaseConnection, compte: &str) -> Result<Issu
     maj.updated_at = Set(Utc::now().naive_utc());
     maj.update(db).await?;
 
-    media_objects::Entity::delete_by_id(cle.as_str()).exec(db).await?;
+    media_objects::Entity::delete_by_id(cle.as_str())
+        .exec(db)
+        .await?;
 
-    journaliser(db, Some(compte), "photo_retiree", None, json!({ "cle": cle })).await?;
+    journaliser(
+        db,
+        Some(compte),
+        "photo_retiree",
+        None,
+        json!({ "cle": cle }),
+    )
+    .await?;
     Ok(Issue::Fait)
 }
 
 /// Distingue « ce compte n'existe pas » de « son statut interdisait le geste ».
 async fn etat_inchange(db: &DatabaseConnection, compte: &str) -> Result<Issue, DbErr> {
     Ok(
-        if accounts::Entity::find_by_id(compte).one(db).await?.is_some() {
+        if accounts::Entity::find_by_id(compte)
+            .one(db)
+            .await?
+            .is_some()
+        {
             Issue::Deja
         } else {
             Issue::Introuvable
@@ -528,7 +545,11 @@ async fn photo_inchangee(db: &DatabaseConnection, compte: &str) -> Result<Issue,
         .filter(profiles::Column::AccountId.eq(compte))
         .count(db)
         .await?;
-    Ok(if fiches > 0 { Issue::Deja } else { Issue::Introuvable })
+    Ok(if fiches > 0 {
+        Issue::Deja
+    } else {
+        Issue::Introuvable
+    })
 }
 
 /// Inscrit le geste au journal d'audit.
@@ -646,7 +667,12 @@ mod tests {
         signalement(&db, "d1", "plaignant", "cible", 0).await;
 
         assert_eq!(dossiers_ouverts(&db).await.expect("lecture").len(), 1);
-        assert_eq!(clore(&db, "d1", Some("classé sans suite")).await.expect("clôture"), Issue::Fait);
+        assert_eq!(
+            clore(&db, "d1", Some("classé sans suite"))
+                .await
+                .expect("clôture"),
+            Issue::Fait
+        );
 
         let relu = reports::Entity::find_by_id("d1")
             .one(&db)
@@ -684,9 +710,15 @@ mod tests {
             .expect("lecture")
             .expect("le dossier existe")
             .handled_at;
-        assert_eq!(premiere, seconde, "la date d'instruction est celle de l'instruction");
+        assert_eq!(
+            premiere, seconde,
+            "la date d'instruction est celle de l'instruction"
+        );
 
-        assert_eq!(clore(&db, "jamais_vu", None).await.expect("inconnu"), Issue::Introuvable);
+        assert_eq!(
+            clore(&db, "jamais_vu", None).await.expect("inconnu"),
+            Issue::Introuvable
+        );
     }
 
     /// La clôture rend au compte visé son droit à l'effacement — le seul effet
@@ -714,7 +746,9 @@ mod tests {
         assert_eq!(avant.comptes_differes, 1, "le dossier ouvert retient");
         assert_eq!(avant.comptes_effaces, 0);
 
-        clore(&db, "d3", Some("rien à retenir")).await.expect("clôture");
+        clore(&db, "d3", Some("rien à retenir"))
+            .await
+            .expect("clôture");
 
         let apres = crate::purge::executer(&db).await.expect("purge");
         assert_eq!(apres.comptes_effaces, 1, "le dossier clos ne retient plus");
@@ -758,7 +792,9 @@ mod tests {
         compte(&db, "a_suspendre", "active").await;
 
         assert_eq!(
-            suspendre(&db, "a_suspendre", "faux profil avéré").await.expect("suspension"),
+            suspendre(&db, "a_suspendre", "faux profil avéré")
+                .await
+                .expect("suspension"),
             Issue::Fait
         );
         assert_eq!(statut(&db, "a_suspendre").await, "suspended");
@@ -786,7 +822,9 @@ mod tests {
         compte(&db, "plaignant_s", "active").await;
         signalement(&db, "d4", "plaignant_s", "cible_s", 0).await;
 
-        suspendre(&db, "cible_s", "harcèlement avéré").await.expect("suspension");
+        suspendre(&db, "cible_s", "harcèlement avéré")
+            .await
+            .expect("suspension");
         assert_eq!(
             dossiers_ouverts(&db).await.expect("lecture").len(),
             1,
@@ -828,7 +866,10 @@ mod tests {
         assert_eq!(file[0].compte, "photographe");
         assert_eq!(file[0].type_mime, "image/jpeg");
 
-        assert_eq!(photo_valider(&db, "photographe").await.expect("examen"), Issue::Fait);
+        assert_eq!(
+            photo_valider(&db, "photographe").await.expect("examen"),
+            Issue::Fait
+        );
         assert!(
             photos_a_examiner(&db).await.expect("lecture").is_empty(),
             "une photo examinée quitte la file"
@@ -848,7 +889,10 @@ mod tests {
         compte(&db, "retire", "active").await;
         fiche_avec_photo(&db, "retire", "cle-2").await;
 
-        assert_eq!(photo_retirer(&db, "retire").await.expect("retrait"), Issue::Fait);
+        assert_eq!(
+            photo_retirer(&db, "retire").await.expect("retrait"),
+            Issue::Fait
+        );
 
         let fiche = profiles::Entity::find()
             .filter(profiles::Column::AccountId.eq("retire"))
@@ -870,7 +914,10 @@ mod tests {
             "les octets partent avec la photo"
         );
         assert!(photos_a_examiner(&db).await.expect("lecture").is_empty());
-        assert_eq!(photo_retirer(&db, "retire").await.expect("seconde"), Issue::Deja);
+        assert_eq!(
+            photo_retirer(&db, "retire").await.expect("seconde"),
+            Issue::Deja
+        );
     }
 
     /// Le badge n'était posable par personne : `verified` s'écrit `false` à
@@ -881,7 +928,10 @@ mod tests {
     async fn le_badge_se_pose_et_se_retire() {
         let db = base_de_test().await;
         compte(&db, "a_verifier", "active").await;
-        assert!(!verifie(&db, "a_verifier").await, "personne ne naît vérifié");
+        assert!(
+            !verifie(&db, "a_verifier").await,
+            "personne ne naît vérifié"
+        );
 
         assert_eq!(
             verifier(&db, "a_verifier", "carte d'identité reçue le 12/09")
@@ -892,12 +942,16 @@ mod tests {
         assert!(verifie(&db, "a_verifier").await);
 
         assert_eq!(
-            verifier(&db, "a_verifier", "encore").await.expect("seconde"),
+            verifier(&db, "a_verifier", "encore")
+                .await
+                .expect("seconde"),
             Issue::Deja
         );
 
         assert_eq!(
-            deverifier(&db, "a_verifier", "pièce périmée").await.expect("retrait"),
+            deverifier(&db, "a_verifier", "pièce périmée")
+                .await
+                .expect("retrait"),
             Issue::Fait,
             "un badge qu'on ne peut pas retirer force à choisir entre une \
              affirmation fausse et la suppression d'un compte"
@@ -905,11 +959,15 @@ mod tests {
         assert!(!verifie(&db, "a_verifier").await);
 
         assert_eq!(
-            deverifier(&db, "a_verifier", "encore").await.expect("seconde"),
+            deverifier(&db, "a_verifier", "encore")
+                .await
+                .expect("seconde"),
             Issue::Deja
         );
         assert_eq!(
-            verifier(&db, "inconnu", "peu importe").await.expect("inconnu"),
+            verifier(&db, "inconnu", "peu importe")
+                .await
+                .expect("inconnu"),
             Issue::Introuvable
         );
     }
@@ -920,7 +978,9 @@ mod tests {
     async fn le_motif_du_badge_atteint_le_journal() {
         let db = base_de_test().await;
         compte(&db, "trace", "active").await;
-        verifier(&db, "trace", "passeport vu en visio").await.expect("vérification");
+        verifier(&db, "trace", "passeport vu en visio")
+            .await
+            .expect("vérification");
 
         let trace = audit_events::Entity::find()
             .filter(audit_events::Column::Action.eq("verification_console"))

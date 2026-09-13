@@ -20,20 +20,20 @@
 //! monde d'autre.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     entities::verification_requests,
-    error::{invalide, AppError},
+    error::{AppError, invalide},
     temps::iso8601,
-    AppState,
 };
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, routing::get};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
     Set,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const EN_ATTENTE: &str = "en_attente";
 pub const ACCEPTEE: &str = "acceptee";

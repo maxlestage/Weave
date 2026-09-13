@@ -35,16 +35,16 @@
 //! quand il a eu lieu.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     entities::{consent_records, preferences},
-    error::{invalide, AppError},
+    error::{AppError, invalide},
     temps::iso8601,
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::State,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -52,7 +52,7 @@ use sea_orm::{
     Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Les objets sur lesquels un consentement distinct est demandé.
 /// `packages/contracts` fait foi : `CONSENT_KINDS`.
@@ -239,10 +239,7 @@ async fn dernier_enregistrement<C: sea_orm::ConnectionTrait>(
 ///
 /// Lu par les critères, qui refusent d'enregistrer un genre recherché sans
 /// lui, et par le fil, qui cesse de filtrer dessus quand il tombe.
-pub async fn sensibles_autorisees(
-    db: &DatabaseConnection,
-    compte: &str,
-) -> Result<bool, DbErr> {
+pub async fn sensibles_autorisees(db: &DatabaseConnection, compte: &str) -> Result<bool, DbErr> {
     Ok(dernier_enregistrement(db, compte, DONNEES_SENSIBLES)
         .await?
         .as_ref()

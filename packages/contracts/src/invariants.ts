@@ -138,6 +138,22 @@ export const GENDER_LABELS: Readonly<Record<Gender, string>> = {
   autre: "Autre",
 };
 
+/**
+ * Les mêmes libellés, dans les langues du site.
+ *
+ * Les VALEURS — `femme`, `sport` — ne se traduisent pas : ce sont elles qui
+ * circulent entre l'API, le site et l'application, et un vocabulaire traduit
+ * ferait que deux versions d'une même chose ne se rencontreraient jamais.
+ * Seuls les libellés affichés changent de langue.
+ */
+export const GENDER_LABELS_PAR_LANGUE: Readonly<
+  Record<"fr" | "en" | "es", Readonly<Record<Gender, string>>>
+> = {
+  fr: GENDER_LABELS,
+  en: { femme: "Woman", homme: "Man", non_binaire: "Non-binary", autre: "Other" },
+  es: { femme: "Mujer", homme: "Hombre", non_binaire: "No binario", autre: "Otro" },
+};
+
 /** Catégories de plans. Volontairement peu nombreuses et concrètes. */
 export const PLAN_CATEGORIES = [
   "sortie",
@@ -160,6 +176,32 @@ export const PLAN_CATEGORY_LABELS: Readonly<Record<PlanCategory, string>> = {
   jeux: "Jeux",
   balade: "Balade",
   benevolat: "Bénévolat",
+};
+
+export const PLAN_CATEGORY_LABELS_PAR_LANGUE: Readonly<
+  Record<"fr" | "en" | "es", Readonly<Record<PlanCategory, string>>>
+> = {
+  fr: PLAN_CATEGORY_LABELS,
+  en: {
+    sortie: "Going out",
+    sport: "Sport",
+    culture: "Culture",
+    repas: "Food",
+    musique: "Music",
+    jeux: "Games",
+    balade: "Walk",
+    benevolat: "Volunteering",
+  },
+  es: {
+    sortie: "Salida",
+    sport: "Deporte",
+    culture: "Cultura",
+    repas: "Comida",
+    musique: "Música",
+    jeux: "Juegos",
+    balade: "Paseo",
+    benevolat: "Voluntariado",
+  },
 };
 
 /** Rétention des messages après clôture d'une conversation, en jours. */

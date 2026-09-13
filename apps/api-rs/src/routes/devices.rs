@@ -6,28 +6,31 @@
 //! doivent mettre à jour la même ligne, pas en créer une seconde.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     cache,
     entities::{devices, live_activity_sessions},
-    error::{introuvable, invalide, AppError},
+    error::{AppError, introuvable, invalide},
     live_activity,
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/devices", put(declarer))
         .route("/v1/live-activity/sessions", post(declarer_activite))
-        .route("/v1/live-activity/sessions/{token}", delete(terminer_activite))
+        .route(
+            "/v1/live-activity/sessions/{token}",
+            delete(terminer_activite),
+        )
         .route("/v1/live-activity/state", get(etat_activite))
         .route("/v1/live-activity/start", post(demarrer_activite))
         .route("/v1/watch/summary", get(resume_montre))
@@ -138,7 +141,9 @@ async fn etat_activite(
     Authentifie(compte): Authentifie,
 ) -> Result<Json<Value>, AppError> {
     let etat = live_activity::publier(&state, &compte.id).await?;
-    Ok(Json(serde_json::to_value(etat).unwrap_or_else(|_| json!({}))))
+    Ok(Json(
+        serde_json::to_value(etat).unwrap_or_else(|_| json!({})),
+    ))
 }
 
 /// Démarrer la Live Activity à distance, par « push-to-start ».
@@ -170,12 +175,14 @@ async fn resume_montre(
         .await
         // Le cache peut être indisponible ; la montre doit quand même recevoir
         // une charge lisible plutôt qu'une erreur.
-        .unwrap_or_else(|| json!({
-            "pendingRequests": 0,
-            "awaitingReply": 0,
-            "nextPlan": null,
-            "generatedAt": crate::temps::iso8601(Utc::now()),
-        }));
+        .unwrap_or_else(|| {
+            json!({
+                "pendingRequests": 0,
+                "awaitingReply": 0,
+                "nextPlan": null,
+                "generatedAt": crate::temps::iso8601(Utc::now()),
+            })
+        });
     Ok(Json(resume))
 }
 

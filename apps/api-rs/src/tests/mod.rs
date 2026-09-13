@@ -9,12 +9,10 @@
 //! Le quota de demandes n'a pas d'autre source de vérité, et le simuler
 //! reviendrait à ne pas tester l'invariant central du produit.
 
-use crate::{
-    auth::emettre_jeton, cache, construire_routeur, env::*, AppState,
-};
+use crate::{AppState, auth::emettre_jeton, cache, construire_routeur, env::*};
 use axum::{
     body::Body,
-    http::{header::AUTHORIZATION, Request, StatusCode},
+    http::{Request, StatusCode, header::AUTHORIZATION},
 };
 use http_body_util::BodyExt;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
@@ -58,20 +56,32 @@ fn configuration() -> Env {
     Env {
         mode: Mode::Test,
         port: 0,
-        db: Db { driver: Driver::Sqlite, url: String::new(), ssl_insecure: false },
-        cache: Cache { url: String::new(), tls_insecure: false },
+        db: Db {
+            driver: Driver::Sqlite,
+            url: String::new(),
+            ssl_insecure: false,
+        },
+        cache: Cache {
+            url: String::new(),
+            tls_insecure: false,
+        },
         media: Media {
             signing_secret: SECRET_MEDIA.to_string(),
             base_url: "https://exemple.test/media".to_string(),
             ttl_url_signee_secondes: 600,
         },
         apns: Apns {
-            key_id: None, team_id: None, key_path: None,
+            key_id: None,
+            team_id: None,
+            key_path: None,
             bundle_id: "com.weave.app".to_string(),
             environnement: "sandbox".to_string(),
             configure: false,
         },
-        app_store: AppStore { environnement: "sandbox".to_string(), configure: false },
+        app_store: AppStore {
+            environnement: "sandbox".to_string(),
+            configure: false,
+        },
         auth: Auth {
             jwt_secret: SECRET.to_string(),
             access_ttl_secondes: 900,
@@ -196,7 +206,12 @@ impl Service {
         self.appeler("GET", chemin, jeton, None).await
     }
 
-    pub async fn post(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
+    pub async fn post(
+        &self,
+        chemin: &str,
+        jeton: Option<&str>,
+        corps: Value,
+    ) -> (StatusCode, Value) {
         self.appeler("POST", chemin, jeton, Some(corps)).await
     }
 
@@ -220,7 +235,12 @@ impl Service {
             .body(Body::from(octets))
             .expect("requête bien formée");
 
-        let reponse = self.routeur.clone().oneshot(requete).await.expect("réponse");
+        let reponse = self
+            .routeur
+            .clone()
+            .oneshot(requete)
+            .await
+            .expect("réponse");
         let statut = reponse.status();
         let corps = http_body_util::BodyExt::collect(reponse.into_body())
             .await
@@ -230,11 +250,21 @@ impl Service {
         (statut, valeur)
     }
 
-    pub async fn patch(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
+    pub async fn patch(
+        &self,
+        chemin: &str,
+        jeton: Option<&str>,
+        corps: Value,
+    ) -> (StatusCode, Value) {
         self.appeler("PATCH", chemin, jeton, Some(corps)).await
     }
 
-    pub async fn put(&self, chemin: &str, jeton: Option<&str>, corps: Value) -> (StatusCode, Value) {
+    pub async fn put(
+        &self,
+        chemin: &str,
+        jeton: Option<&str>,
+        corps: Value,
+    ) -> (StatusCode, Value) {
         self.appeler("PUT", chemin, jeton, Some(corps)).await
     }
 
@@ -256,8 +286,17 @@ impl Service {
             .expect("le service répond");
         let statut = reponse.status();
         let entetes = reponse.headers().clone();
-        let octets = reponse.into_body().collect().await.expect("corps lisible").to_bytes();
-        (statut, entetes, String::from_utf8_lossy(&octets).into_owned())
+        let octets = reponse
+            .into_body()
+            .collect()
+            .await
+            .expect("corps lisible")
+            .to_bytes();
+        (
+            statut,
+            entetes,
+            String::from_utf8_lossy(&octets).into_owned(),
+        )
     }
 
     async fn appeler(
@@ -293,7 +332,12 @@ impl Service {
             .await
             .expect("le service répond");
         let statut = reponse.status();
-        let octets = reponse.into_body().collect().await.expect("corps lisible").to_bytes();
+        let octets = reponse
+            .into_body()
+            .collect()
+            .await
+            .expect("corps lisible")
+            .to_bytes();
         let json = serde_json::from_slice(&octets).unwrap_or(Value::Null);
         (statut, json)
     }
@@ -365,10 +409,18 @@ pub fn jeton_pour(compte_id: &str) -> String {
 pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
     let maintenant = "2026-09-12 10:00:00";
     for sql in [
-        format!("INSERT INTO accounts (id,email,emailHash,handle,displayName,birthDate,status,timezone,locale,verified,createdAt,updatedAt) VALUES ('{id}','{id}@exemple.fr','h_{id}','{id}','Compte {id}','2000-01-15 00:00:00','active','Europe/Paris','fr-FR',0,'{maintenant}','{maintenant}')"),
-        format!("INSERT INTO profiles (id,accountId,city,latRounded,lonRounded,gender,bio,createdAt,updatedAt) VALUES ('prf_{id}','{id}','Lyon',45.75,4.85,'autre','','{maintenant}','{maintenant}')"),
-        format!("INSERT INTO preferences (id,accountId,minAge,maxAge,maxDistanceKm,seekingJson,categoriesJson,updatedAt) VALUES ('pre_{id}','{id}',18,60,25,'[]','[]','{maintenant}')"),
-        format!("INSERT INTO subscriptions (id,accountId,tier,environment,inGracePeriod,updatedAt,createdAt) VALUES ('sub_{id}','{id}','{palier}','sandbox',0,'{maintenant}','{maintenant}')"),
+        format!(
+            "INSERT INTO accounts (id,email,emailHash,handle,displayName,birthDate,status,timezone,locale,verified,createdAt,updatedAt) VALUES ('{id}','{id}@exemple.fr','h_{id}','{id}','Compte {id}','2000-01-15 00:00:00','active','Europe/Paris','fr-FR',0,'{maintenant}','{maintenant}')"
+        ),
+        format!(
+            "INSERT INTO profiles (id,accountId,city,latRounded,lonRounded,gender,bio,createdAt,updatedAt) VALUES ('prf_{id}','{id}','Lyon',45.75,4.85,'autre','','{maintenant}','{maintenant}')"
+        ),
+        format!(
+            "INSERT INTO preferences (id,accountId,minAge,maxAge,maxDistanceKm,seekingJson,categoriesJson,updatedAt) VALUES ('pre_{id}','{id}',18,60,25,'[]','[]','{maintenant}')"
+        ),
+        format!(
+            "INSERT INTO subscriptions (id,accountId,tier,environment,inGracePeriod,updatedAt,createdAt) VALUES ('sub_{id}','{id}','{palier}','sandbox',0,'{maintenant}','{maintenant}')"
+        ),
     ] {
         db.execute_unprepared(&sql)
             .await
@@ -377,8 +429,8 @@ pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
 }
 
 mod contrat;
-pub mod storekit;
 mod parcours;
+pub mod storekit;
 
 /// Le schéma des tests est celui que la production appliquera.
 ///
@@ -406,13 +458,13 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
         .await
         .expect("les migrations postérieures à « 0_init » doivent être appliquées");
 }
-mod vitrine;
-mod session;
-mod profil;
-mod demandes;
-mod export;
-mod conversations;
-mod offres;
 mod activite;
 mod consentements;
+mod conversations;
+mod demandes;
+mod export;
+mod offres;
+mod profil;
+mod session;
 mod verification;
+mod vitrine;

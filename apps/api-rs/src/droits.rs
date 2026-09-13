@@ -6,12 +6,12 @@
 //! les plans de groupe.
 
 use crate::{
+    AppState,
     auth::CompteAuthentifie,
     cache,
     entities::credit_balances,
     error::{AppError, Code},
     temps::jour_local,
-    AppState,
 };
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -55,11 +55,51 @@ pub struct Droits {
 /// Le palier inconnu retombe sur « départ » : jamais sur un palier payant.
 pub fn droits_pour(palier: &str) -> Droits {
     match palier {
-        "viree" => Droits { demandes_par_jour: 12, jours_a_l_avance: 14, filtres: "etendus", plans_de_groupe: true, escales_par_mois: 0, bilan: false, assistance_prioritaire: false },
-        "escapade" => Droits { demandes_par_jour: 25, jours_a_l_avance: 30, filtres: "precis", plans_de_groupe: true, escales_par_mois: 1, bilan: false, assistance_prioritaire: false },
-        "expedition" => Droits { demandes_par_jour: 40, jours_a_l_avance: 60, filtres: "precis", plans_de_groupe: true, escales_par_mois: 2, bilan: true, assistance_prioritaire: false },
-        "grandtour" => Droits { demandes_par_jour: 60, jours_a_l_avance: 90, filtres: "precis", plans_de_groupe: true, escales_par_mois: 4, bilan: true, assistance_prioritaire: true },
-        _ => Droits { demandes_par_jour: 5, jours_a_l_avance: 7, filtres: "base", plans_de_groupe: false, escales_par_mois: 0, bilan: false, assistance_prioritaire: false },
+        "viree" => Droits {
+            demandes_par_jour: 12,
+            jours_a_l_avance: 14,
+            filtres: "etendus",
+            plans_de_groupe: true,
+            escales_par_mois: 0,
+            bilan: false,
+            assistance_prioritaire: false,
+        },
+        "escapade" => Droits {
+            demandes_par_jour: 25,
+            jours_a_l_avance: 30,
+            filtres: "precis",
+            plans_de_groupe: true,
+            escales_par_mois: 1,
+            bilan: false,
+            assistance_prioritaire: false,
+        },
+        "expedition" => Droits {
+            demandes_par_jour: 40,
+            jours_a_l_avance: 60,
+            filtres: "precis",
+            plans_de_groupe: true,
+            escales_par_mois: 2,
+            bilan: true,
+            assistance_prioritaire: false,
+        },
+        "grandtour" => Droits {
+            demandes_par_jour: 60,
+            jours_a_l_avance: 90,
+            filtres: "precis",
+            plans_de_groupe: true,
+            escales_par_mois: 4,
+            bilan: true,
+            assistance_prioritaire: true,
+        },
+        _ => Droits {
+            demandes_par_jour: 5,
+            jours_a_l_avance: 7,
+            filtres: "base",
+            plans_de_groupe: false,
+            escales_par_mois: 0,
+            bilan: false,
+            assistance_prioritaire: false,
+        },
     }
 }
 
@@ -78,8 +118,11 @@ pub async fn quota_journalier(state: &AppState, compte: &CompteAuthentifie) -> i
 /// Demandes restantes aujourd'hui. Ne descend jamais sous zéro.
 pub async fn demandes_restantes(state: &AppState, compte: &CompteAuthentifie, quota: i64) -> i64 {
     let jour = jour_local(&compte.timezone, Utc::now());
-    let utilisees =
-        cache::compteur(&state.cache, &cache::cles::demandes_utilisees(&compte.id, &jour)).await;
+    let utilisees = cache::compteur(
+        &state.cache,
+        &cache::cles::demandes_utilisees(&compte.id, &jour),
+    )
+    .await;
     (quota - utilisees).max(0)
 }
 
