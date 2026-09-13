@@ -20,6 +20,8 @@ pub struct Model {
     pub seeking_json: String,
     #[sea_orm(column_name = "categoriesJson", column_type = "Text")]
     pub categories_json: String,
+    #[sea_orm(column_name = "daysJson", column_type = "Text")]
+    pub days_json: String,
     #[sea_orm(column_name = "escaleCity", column_type = "Text", nullable)]
     pub escale_city: Option<String>,
     #[sea_orm(column_name = "escaleUntil")]

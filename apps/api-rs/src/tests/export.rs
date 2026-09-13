@@ -91,7 +91,7 @@ async fn l_export_ne_contient_ni_secret_ni_donnee_d_autrui() {
 #[tokio::test]
 async fn l_export_joint_la_photo_et_rend_de_vraies_listes() {
     let service = Service::monter().await;
-    service.compte("c_export_photo", "depart").await;
+    service.compte("c_export_photo", "escapade").await;
     let jeton = service.jeton("c_export_photo");
 
     let (statut, corps) = service

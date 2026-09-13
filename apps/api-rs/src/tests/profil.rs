@@ -155,7 +155,9 @@ async fn lire_ses_criteres() {
 #[tokio::test]
 async fn ajuster_ses_criteres() {
     let service = Service::monter().await;
-    service.compte("c_ajuste", "depart").await;
+    // « Escapade » vend les critères précis : c'est le palier qu'il faut
+    // pour éprouver leur aller-retour.
+    service.compte("c_ajuste", "escapade").await;
 
     let (statut, _) = service
         .patch("/v1/me/preferences", Some(&service.jeton("c_ajuste")), json!({
