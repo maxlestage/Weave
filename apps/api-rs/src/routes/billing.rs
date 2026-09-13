@@ -313,16 +313,42 @@ struct Transaction {
     environnement: String,
 }
 
+/// La vérification cryptographique de la charge JWS est-elle écrite ?
+///
+/// Elle ne l'est pas. Ce booléen existe pour que la réponse soit à UN seul
+/// endroit, et pour que l'activer soit un geste délibéré plutôt qu'un effet de
+/// bord.
+///
+/// Il faudra, pour le passer à `true` : valider la chaîne de certificats `x5c`
+/// de l'en-tête contre la racine Apple, vérifier la signature ES256, puis
+/// contrôler le `bundleId` et la fraîcheur de la transaction.
+pub(crate) const VERIFICATION_JWS_IMPLEMENTEE: bool = false;
+
+/// La production accepte-t-elle cette transaction ?
+///
+/// La règle précédente était : refuser en production TANT QUE la configuration
+/// App Store est absente. Elle se retournait au pire moment — le jour où l'on
+/// pose `APPSTORE_ISSUER_ID`, c'est-à-dire le geste même par lequel on croit
+/// activer les achats, la porte s'ouvrait sur des charges JWS non vérifiées.
+/// Or décoder du base64 n'est pas vérifier : n'importe qui pouvait encoder un
+/// JSON annonçant le produit de son choix et s'offrir l'abonnement.
+///
+/// La condition ne porte donc plus sur la présence d'identifiants, mais sur
+/// l'existence du code qui vérifie. Configurer l'App Store n'ouvre plus rien
+/// par lui-même.
+fn achat_acceptable(production: bool, verification_ecrite: bool) -> bool {
+    !production || verification_ecrite
+}
+
 /// Vérifie une transaction signée StoreKit 2.
 ///
-/// En production, la charge utile JWS doit être validée auprès de l'App Store
-/// Server API. Tant que les identifiants Apple ne sont pas fournis, **aucune
-/// transaction n'est acceptée en production** : accepter un jeton non vérifié
-/// reviendrait à offrir n'importe quel abonnement à qui sait en forger un.
+/// Hors production, la charge est décodée et crue sur parole : c'est ce qui
+/// permet d'éprouver le parcours d'achat sans compte Apple Developer.
 fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, AppError> {
-    if !state.config.app_store.configure && state.config.is_production() {
+    if !achat_acceptable(state.config.is_production(), VERIFICATION_JWS_IMPLEMENTEE) {
         return Err(invalide(
-            "Vérification des achats indisponible : configuration App Store manquante.",
+            "Vérification des achats indisponible : la validation cryptographique \
+             des transactions App Store n'est pas encore en service.",
         ));
     }
 
@@ -336,14 +362,8 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
     let claims: Value = serde_json::from_slice(&octets)
         .map_err(|_| invalide("Transaction StoreKit illisible."))?;
 
-    if state.config.app_store.configure {
-        // La vérification cryptographique complète est branchée ici lorsque la
-        // clé App Store Connect est fournie.
-        tracing::info!(
-            transaction = ?claims.get("transactionId"),
-            "Vérification StoreKit auprès d'Apple"
-        );
-    }
+    // C'est ici que la vérification prendra place, et `VERIFICATION_JWS_IMPLEMENTEE`
+    // passera à `true` le jour où elle sera écrite.
 
     let product_id = claims
         .get("productId")
@@ -463,4 +483,46 @@ async fn enregistrer_abonnement(
         "tier": palier,
         "renewsAt": iso8601(renouvelle_le),
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// La règle précédente se retournait au pire moment : poser les
+    /// identifiants App Store — le geste par lequel on croit activer les
+    /// achats — ouvrait la production aux charges non vérifiées.
+    ///
+    /// Elle ne dépend plus de la configuration, mais de l'existence du code qui
+    /// vérifie. Ce test tombera le jour où quelqu'un remettra la condition à
+    /// l'endroit, et c'est son but.
+    #[test]
+    fn la_production_refuse_tant_que_la_verification_n_est_pas_ecrite() {
+        assert!(
+            !achat_acceptable(true, false),
+            "en production, sans vérification écrite, aucun achat ne passe"
+        );
+        assert!(
+            achat_acceptable(true, true),
+            "avec la vérification, la production accepte"
+        );
+    }
+
+    /// Hors production, on décode et on croit sur parole : c'est ce qui permet
+    /// d'éprouver le parcours d'achat sans compte Apple Developer.
+    #[test]
+    fn le_developpement_accepte_sans_verification() {
+        assert!(achat_acceptable(false, false));
+    }
+
+    /// Le garde-fou est armé. S'il ne l'était pas sans que la vérification soit
+    /// écrite, la production accepterait n'importe quelle transaction forgée.
+    #[test]
+    fn la_verification_n_est_pas_annoncee_comme_ecrite_par_erreur() {
+        assert!(
+            !VERIFICATION_JWS_IMPLEMENTEE,
+            "si la vérification JWS est écrite, retirez ce test — sinon, le \
+             passer à `true` ouvre la production aux transactions forgées"
+        );
+    }
 }

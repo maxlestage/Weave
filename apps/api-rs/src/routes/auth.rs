@@ -335,16 +335,37 @@ async fn verifier_code(
         .await?
         .ok_or_else(|| non_autorise("Code expiré ou déjà utilisé."))?;
 
-    if defi.attempts >= OTP_MAX_TENTATIVES {
+    use sea_orm::sea_query::ExprTrait;
+
+    // Une tentative se paie d'avance, et en une seule écriture.
+    //
+    // Lire le compteur, comparer, puis l'incrémenter en cas d'échec laissait
+    // N essais simultanés lire tous la même valeur et n'en consommer qu'une :
+    // le plafond de cinq tentatives ne coûtait qu'une tentative, autant de
+    // fois qu'on voulait. Un code à six chiffres ne résiste pas à cela ; seule
+    // la limitation par adresse retenait encore l'attaque, et ce n'est pas à
+    // elle de porter cet invariant.
+    //
+    // Le filtre `attempts < plafond` est la condition : si aucune ligne n'est
+    // touchée, c'est que le plafond est atteint. Une tentative est donc
+    // décomptée même lorsque le code est bon — sans conséquence, puisqu'il est
+    // consommé juste après.
+    let tentative = otp_challenges::Entity::update_many()
+        .col_expr(
+            otp_challenges::Column::Attempts,
+            sea_orm::sea_query::Expr::col(otp_challenges::Column::Attempts).add(1),
+        )
+        .filter(otp_challenges::Column::Id.eq(defi.id.as_str()))
+        .filter(otp_challenges::Column::Attempts.lt(OTP_MAX_TENTATIVES))
+        .exec(&state.db)
+        .await?;
+    if tentative.rows_affected != 1 {
         return Err(non_autorise(
             "Trop de tentatives sur ce code. Demandez-en un nouveau.",
         ));
     }
 
     if !verifier_secret(&corps.code, &defi.code_hash) {
-        let mut essai: otp_challenges::ActiveModel = defi.clone().into();
-        essai.attempts = Set(defi.attempts + 1);
-        essai.update(&state.db).await?;
         return Err(non_autorise("Code incorrect."));
     }
 
@@ -377,10 +398,22 @@ async fn verifier_code(
         }
     };
 
-    // La session est ouverte : le code a joué son rôle, on le retire.
-    let mut consomme: otp_challenges::ActiveModel = defi_actif.into();
-    consomme.consumed_at = Set(Some(Utc::now().naive_utc()));
-    consomme.update(&state.db).await?;
+    // Le code a joué son rôle : on le retire, et là aussi en une écriture
+    // conditionnelle. Deux vérifications concurrentes du même code passaient
+    // toutes deux le filtre `consumedAt IS NULL` du début et ouvraient chacune
+    // une session ; celle qui arrive seconde repart désormais les mains vides.
+    let consomme = otp_challenges::Entity::update_many()
+        .col_expr(
+            otp_challenges::Column::ConsumedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(otp_challenges::Column::Id.eq(defi_actif.id.as_str()))
+        .filter(otp_challenges::Column::ConsumedAt.is_null())
+        .exec(&state.db)
+        .await?;
+    if consomme.rows_affected != 1 {
+        return Err(non_autorise("Code expiré ou déjà utilisé."));
+    }
 
     let session = ouvrir_session(&state, &compte.id, corps.device_id.as_deref()).await?;
 

@@ -224,6 +224,16 @@ async fn publier(
         )));
     }
 
+    // Un premier comptage, avant de dépenser quoi que ce soit.
+    //
+    // Le comptage qui fait foi est plus bas, sous verrou. Celui-ci ne sert
+    // qu'à ne pas prélever un crédit « Horizon » ou « Tablée » à quelqu'un
+    // qu'on va refuser trois lignes plus loin : le crédit se consomme hors
+    // transaction, la transaction ne le rendrait donc pas.
+    if compter_ouverts(&state.db, &compte.id).await? >= MAX_PLANS_OUVERTS {
+        return Err(trop_de_plans());
+    }
+
     // Le palier borne l'horizon ; un crédit « Horizon » l'ouvre une fois.
     if debut > Utc::now() + Duration::days(droits.jours_a_l_avance) {
         exiger_credit(&state, &compte.id, "horizon", "Horizon").await?;
@@ -239,26 +249,33 @@ async fn publier(
         exiger_credit(&state, &compte.id, "tablee", "Tablée").await?;
     }
 
-    // L'invariant : trois plans ouverts, pas un de plus. On ne compte que les
-    // plans à venir — un plan passé n'occupe plus de place.
-    let ouverts = plans::Entity::find()
-        .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
-        .filter(plans::Column::State.eq("ouvert"))
-        .filter(plans::Column::StartsAt.gt(Utc::now().naive_utc()))
-        .count(&state.db)
+    let transaction = state.db.begin().await?;
+
+    // Le verrou du compte, pris avant de compter.
+    //
+    // Compter puis insérer hors transaction laissait deux publications
+    // simultanées lire le même total et passer toutes deux : à deux plans
+    // ouverts, on en obtenait quatre. Écrire sur la ligne du compte sérialise
+    // les publications d'une même personne — la seconde attend la première,
+    // puis compte ce que celle-ci a inséré.
+    accounts::Entity::update_many()
+        .col_expr(
+            accounts::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(accounts::Column::Id.eq(compte.id.as_str()))
+        .exec(&transaction)
         .await?;
-    if ouverts >= MAX_PLANS_OUVERTS {
-        return Err(AppError::new(
-            Code::TooManyPlans,
-            format!(
-                "Vous avez déjà {MAX_PLANS_OUVERTS} plans ouverts. Annulez-en un pour en publier un autre."
-            ),
-        ));
+
+    // Le comptage qui fait foi, sous verrou.
+    if compter_ouverts(&transaction, &compte.id).await? >= MAX_PLANS_OUVERTS {
+        transaction.rollback().await?;
+        return Err(trop_de_plans());
     }
 
     let profil = profiles::Entity::find()
         .filter(profiles::Column::AccountId.eq(compte.id.as_str()))
-        .one(&state.db)
+        .one(&transaction)
         .await?
         .ok_or_else(|| invalide("Renseignez d'abord votre ville."))?;
 
@@ -280,8 +297,10 @@ async fn publier(
         updated_at: Set(Utc::now().naive_utc()),
         ..Default::default()
     }
-    .insert(&state.db)
+    .insert(&transaction)
     .await?;
+
+    transaction.commit().await?;
 
     // Le prochain plan a peut-être changé : la bannière de l'écran verrouillé
     // doit le dire tout de suite.
@@ -292,6 +311,36 @@ async fn publier(
         "title": plan.title,
         "startsAt": iso8601(plan.starts_at.and_utc()),
     })))
+}
+
+/// Compte les plans ouverts à venir d'une personne.
+///
+/// Un plan passé n'occupe plus de place : seuls les plans dont l'heure de
+/// rendez-vous est encore devant nous sont comptés.
+///
+/// Générique sur le connecteur pour qu'on puisse compter aussi bien sur la
+/// base que dans une transaction — c'est exactement la différence entre le
+/// comptage indicatif et celui qui fait foi.
+async fn compter_ouverts<C: sea_orm::ConnectionTrait>(
+    connexion: &C,
+    compte_id: &str,
+) -> Result<u64, sea_orm::DbErr> {
+    plans::Entity::find()
+        .filter(plans::Column::AuthorId.eq(compte_id))
+        .filter(plans::Column::State.eq("ouvert"))
+        .filter(plans::Column::StartsAt.gt(Utc::now().naive_utc()))
+        .count(connexion)
+        .await
+}
+
+/// Le refus, écrit une fois : les deux comptages doivent dire la même chose.
+fn trop_de_plans() -> AppError {
+    AppError::new(
+        Code::TooManyPlans,
+        format!(
+            "Vous avez déjà {MAX_PLANS_OUVERTS} plans ouverts. Annulez-en un pour en publier un autre."
+        ),
+    )
 }
 
 async fn annuler(
