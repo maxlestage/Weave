@@ -15,6 +15,17 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 RUN bun install --frozen-lockfile
 COPY . .
+
+# L'adresse publique du site se renseigne dans `apps/web/src/pages/identite.ts`,
+# avec les mentions légales : un seul fichier à compléter, et il est versionné.
+# Cet argument ne sert qu'à la contourner — une préproduction qui vit à une
+# autre adresse que la production, sans dupliquer le fichier pour autant.
+#
+# Attention : Heroku ne transmet PAS les variables de configuration de
+# l'application aux constructions de conteneur. La poser ici depuis le tableau
+# de bord n'aurait aucun effet ; il faut passer par `identite.ts`.
+ARG SITE_ORIGINE=""
+ENV SITE_ORIGINE=$SITE_ORIGINE
 RUN bun run --filter @weave/web build
 
 # ------------------------------------------------------------------

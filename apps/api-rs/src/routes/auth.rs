@@ -7,7 +7,10 @@ use crate::{
     auth::{emettre_jeton, oublier_compte, Authentifie},
     cache,
     crypto::{code_otp, hacher_secret, hash_email, jeton_opaque, normaliser_email, sha256_hex, verifier_secret},
-    entities::{audit_events, accounts, join_requests, otp_challenges, plans, preferences, refresh_tokens, subscriptions},
+    entities::{
+        accounts, audit_events, conversations, devices, join_requests, otp_challenges, plans,
+        preferences, refresh_tokens, subscriptions,
+    },
     error::{invalide, non_autorise, AppError, Code},
     limitation::{consommer, regles},
     temps::{age_depuis, iso8601},
@@ -20,7 +23,8 @@ use axum::{
 };
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -34,9 +38,11 @@ const OTP_MAX_TENTATIVES: i32 = 5;
 /// Weave est réservé aux majeurs.
 const AGE_MINIMUM: i32 = 18;
 /// Le délai légal avant purge des données d'un compte supprimé.
-/// `packages/contracts/src/invariants.ts` fait foi : les deux doivent
-/// s'accorder, puisque l'application iOS affiche ce nombre.
-const PURGE_COMPTE_JOURS: i64 = 30;
+///
+/// Réexporté depuis `purge`, qui l'applique. Il était écrit ici aussi, et les
+/// deux pouvaient diverger sans bruit : cette route l'annonce à l'application,
+/// et c'est l'autre qui décide du jour de l'effacement.
+use crate::purge::PURGE_COMPTE_JOURS;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -235,6 +241,60 @@ async fn supprimer_compte(
         }
     }
 
+    // Les conversations se closent, et les appareils se taisent.
+    //
+    // Sans cela, pendant les trente jours qui précèdent la purge : le
+    // correspondant continuait d'écrire dans une conversation que plus
+    // personne ne lira jamais — et chaque message poussait une alerte sur le
+    // téléphone de qui venait de partir. Un mois de notifications après avoir
+    // supprimé son compte : c'est l'inverse exact de ce que la suppression
+    // demande, et la page publique promet un compte « inutilisable » entre
+    // temps.
+    //
+    // La conversation close le dit à l'autre côté — « Cette conversation est
+    // close » — plutôt que de laisser écrire dans le vide.
+    let ouvertes: Vec<String> = conversations::Entity::find()
+        .filter(conversations::Column::ClosedAt.is_null())
+        .filter(
+            Condition::any()
+                .add(conversations::Column::HostId.eq(compte.id.as_str()))
+                .add(conversations::Column::GuestId.eq(compte.id.as_str())),
+        )
+        .select_only()
+        .column(conversations::Column::Id)
+        .into_tuple()
+        .all(&state.db)
+        .await?;
+
+    if !ouvertes.is_empty() {
+        conversations::Entity::update_many()
+            .col_expr(
+                conversations::Column::ClosedAt,
+                sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+            )
+            .col_expr(
+                conversations::Column::ClosedBy,
+                sea_orm::sea_query::Expr::value(compte.id.as_str()),
+            )
+            .filter(conversations::Column::Id.is_in(ouvertes))
+            .exec(&state.db)
+            .await?;
+    }
+
+    // Les jetons d'alerte n'ont plus d'usage : leur seul objet était de
+    // pousser vers ce compte. Garder un identifiant d'appareil pour un usage
+    // qui n'existe plus est exactement ce que la politique de confidentialité
+    // s'interdit. Les lignes d'appareil, elles, partent avec la purge.
+    devices::Entity::update_many()
+        .col_expr(devices::Column::ApnsToken, sea_orm::sea_query::Expr::value(Option::<String>::None))
+        .col_expr(
+            devices::Column::PushToStartToken,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .filter(devices::Column::AccountId.eq(compte.id.as_str()))
+        .exec(&state.db)
+        .await?;
+
     if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(&compte.id)).await {
         tracing::warn!(erreur = %erreur, "fil non invalidé");
     }
@@ -314,6 +374,21 @@ struct VerificationCode {
     birth_date: Option<String>,
     timezone: Option<String>,
     device_id: Option<String>,
+}
+
+/// Les statuts pour lesquels aucune session ne doit s'ouvrir.
+///
+/// Rend le motif à dire, ou `None` si la connexion est légitime. Un compte en
+/// pause en fait partie : c'est un état réversible, et c'est en se reconnectant
+/// qu'on en sort.
+fn refus_de_session(statut: &str) -> Option<&'static str> {
+    match statut {
+        "suspended" => Some("Ce compte est suspendu."),
+        "deleting" => {
+            Some("Ce compte est en cours de suppression. Écrivez à l'assistance pour l'annuler.")
+        }
+        _ => None,
+    }
 }
 
 async fn verifier_code(
@@ -413,6 +488,19 @@ async fn verifier_code(
         .await?;
     if consomme.rows_affected != 1 {
         return Err(non_autorise("Code expiré ou déjà utilisé."));
+    }
+
+    // Le statut se vérifie ici, et pas plus tôt : le code doit être consommé
+    // dans tous les cas. Refuser avant de le brûler laisserait un code à six
+    // chiffres valable jusqu'à son expiration, réessayable autant de fois que
+    // le plafond de tentatives le permet.
+    //
+    // Une session ouverte sur un compte suspendu ou en cours de suppression ne
+    // servait à rien — le portier refuse chacun de ses appels — mais elle
+    // laissait croire à une reconnexion réussie. Autant le dire ici, où la
+    // personne peut encore comprendre pourquoi.
+    if let Some(raison) = refus_de_session(&compte.status) {
+        return Err(non_autorise(raison));
     }
 
     let session = ouvrir_session(&state, &compte.id, corps.device_id.as_deref()).await?;
