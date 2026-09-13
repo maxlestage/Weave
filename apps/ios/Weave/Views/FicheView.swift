@@ -1,5 +1,7 @@
 import CoreLocation
+import PhotosUI
 import SwiftUI
+import UIKit
 import WeaveKit
 
 /// La fiche : une ville, un genre, une phrase.
@@ -39,6 +41,9 @@ struct FicheView: View {
     @State private var ville = ""
     @State private var genre: Gender?
     @State private var bio = ""
+    @State private var choixPhoto: PhotosPickerItem?
+    @State private var photo: UIImage?
+    @State private var photoEnCours = false
     @State private var enCours = false
     @State private var erreur: String?
 
@@ -73,6 +78,32 @@ struct FicheView: View {
                     Text("Vous êtes")
                 } footer: {
                     Text("Affiché sur vos plans, et utilisé par les critères des autres.")
+                }
+
+                Section {
+                    PhotosPicker(selection: $choixPhoto, matching: .images) {
+                        HStack(spacing: 14) {
+                            if let photo {
+                                Image(uiImage: photo)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(.circle)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.tint)
+                            }
+                            Text(photo == nil ? "Ajouter une photo" : "Changer de photo")
+                            Spacer()
+                            if photoEnCours { ProgressView() }
+                        }
+                    }
+                    .disabled(photoEnCours)
+                } header: {
+                    Text("Votre photo")
+                } footer: {
+                    Text("Facultative. Elle n'est jamais servie par une adresse devinable : chaque affichage passe par un lien signé qui expire.")
                 }
 
                 Section {
@@ -113,6 +144,10 @@ struct FicheView: View {
                 if ville.isEmpty { ville = villeInitiale }
                 if bio.isEmpty { bio = bioInitiale }
             }
+            .onChange(of: choixPhoto) { _, choix in
+                guard let choix else { return }
+                Task { await envoyerPhoto(choix) }
+            }
         }
         // Pas de geste de fermeture à l'inscription : sans fiche, l'écran
         // d'après est vide et la publication refusée. Mieux vaut un écran dont
@@ -151,12 +186,76 @@ struct FicheView: View {
             )
             // Le dépôt fait passer le compte de « onboarding » à « active » :
             // il faut relire le compte pour que l'application s'en aperçoive.
+            // La photo choisie avant que la fiche n'existe part maintenant :
+            // le serveur la rattache à la fiche, et refusait donc jusqu'ici.
+            if let photo, !permetDAnnuler {
+                await televerser(photo)
+            }
             await modele.rafraichirMoi()
             await modele.plans.refresh()
             if permetDAnnuler { dismiss() }
         } catch {
             erreur = "L'enregistrement n'a pas abouti. Réessayez dans un moment."
         }
+    }
+
+    /// Recompresse la photo choisie, puis l'envoie.
+    ///
+    /// La fiche doit exister d'abord — le serveur refuse une photo sans ville,
+    /// puisqu'elle s'attache à la fiche. À l'inscription, l'envoi est donc
+    /// différé jusqu'au dépôt de la fiche ; ailleurs, il part tout de suite.
+    private func envoyerPhoto(_ choix: PhotosPickerItem) async {
+        photoEnCours = true
+        defer { photoEnCours = false }
+
+        guard let brut = try? await choix.loadTransferable(type: Data.self),
+              let image = UIImage(data: brut)
+        else {
+            erreur = "Cette image n'a pas pu être lue."
+            return
+        }
+
+        let reduite = Self.reduire(image)
+        photo = reduite
+
+        // Sans fiche encore déposée, il n'y a rien à quoi rattacher la photo :
+        // elle partira juste après, dans `enregistrer`.
+        guard permetDAnnuler else { return }
+        await televerser(reduite)
+    }
+
+    private func televerser(_ image: UIImage) async {
+        guard let octets = image.jpegData(compressionQuality: 0.82) else {
+            erreur = "Cette image n'a pas pu être préparée."
+            return
+        }
+        guard octets.count <= photoMaxBytes else {
+            erreur = "Cette image est trop lourde, même après réduction."
+            return
+        }
+        do {
+            _ = try await modele.api.submitPhoto(octets)
+            await modele.rafraichirMoi()
+        } catch {
+            erreur = "L'envoi de la photo n'a pas abouti. Réessayez dans un moment."
+        }
+    }
+
+    /// Ramène le côté le plus long à `photoMaxCote`, en gardant les
+    /// proportions. Une photo déjà plus petite n'est pas agrandie.
+    private static func reduire(_ image: UIImage) -> UIImage {
+        // Les conversions sont écrites plutôt que laissées à l'implicite :
+        // `CGFloat` et `Double` se convertissent seuls depuis Swift 5.5, mais
+        // le lecteur ne sait alors plus dans quel type le calcul se fait.
+        let largeur = Double(image.size.width)
+        let hauteur = Double(image.size.height)
+        let cote = max(largeur, hauteur)
+        guard cote > photoMaxCote else { return image }
+
+        let facteur = photoMaxCote / cote
+        let cible = CGSize(width: largeur * facteur, height: hauteur * facteur)
+        let rendu = UIGraphicsImageRenderer(size: cible)
+        return rendu.image { _ in image.draw(in: CGRect(origin: .zero, size: cible)) }
     }
 
     /// Convertit un nom de ville en coordonnées.
