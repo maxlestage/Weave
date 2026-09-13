@@ -519,6 +519,179 @@ fn la_politique_affiche_la_date_de_la_version_consentie() {
     );
 }
 
+/// Chaque adresse que l'application appelle existe dans le routeur.
+///
+/// ## Pourquoi aucun compilateur ne l'attrape
+///
+/// Une adresse est une chaîne de caractères des deux côtés. « /v1/feed » au
+/// lieu de « /v1/plans » compile parfaitement en Swift, part en production, et
+/// rend une 404 que personne ne relie à une faute de frappe. Le code Swift de
+/// ce dépôt n'a jamais été compilé, faute de macOS — mais même compilé, il
+/// n'aurait rien dit de celle-là.
+///
+/// J'ai fait exactement cette faute en écrivant un test aujourd'hui : « /v1/feed »
+/// pour le fil, qui s'appelle « /v1/plans ». Le test a rendu 404, et c'est le
+/// seul endroit où cela s'est vu.
+///
+/// Le rapprochement se fait sur les chaînes : les paramètres de chemin sont
+/// normalisés de part et d'autre — `{id}` côté axum, `\(id)` côté Swift.
+#[test]
+fn les_adresses_appelees_par_l_application_existent_dans_le_routeur() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
+    if !racine.is_dir() {
+        eprintln!("application iOS absente en {} — accord non vérifié", racine.display());
+        return;
+    }
+
+    let exposees = adresses_du_routeur();
+    let appelees = adresses_appelees(&racine);
+    assert!(
+        !appelees.is_empty(),
+        "aucune adresse trouvée dans l'application : le test ne vérifie plus rien"
+    );
+
+    let inconnues: Vec<&String> = appelees.iter().filter(|a| !exposees.contains(*a)).collect();
+    assert!(
+        inconnues.is_empty(),
+        "l'application appelle des adresses que le routeur n'expose pas : {inconnues:?}"
+    );
+}
+
+/// Le client réseau ne décode aucune date avec une stratégie qui refuse les
+/// millisecondes.
+///
+/// `iso8601` de l'API met TOUJOURS des millisecondes — `SecondsFormat::Millis`.
+/// Or `.iso8601` de Foundation s'appuie sur `.withInternetDateTime`, qui ne les
+/// accepte pas : une date de l'API décodée par cette stratégie échoue, toujours.
+///
+/// Le client a un décodeur qui essaie les deux formes. Le renouvellement de
+/// session, lui, s'en fabriquait un second en `.iso8601`, parce qu'il est
+/// statique et que le premier était propre à l'instance. Chaque renouvellement
+/// échouait donc à décoder sa réponse, et la session tombait au bout du quart
+/// d'heure du jeton d'accès.
+///
+/// Aucun compilateur n'aurait rien dit : les deux décodeurs sont valides, ils
+/// ne lisent simplement pas le même format. Et ce code Swift n'a jamais été
+/// compilé de toute façon.
+///
+/// ## Pourquoi le contrôle s'arrête à la couche réseau
+///
+/// Le trousseau et la complication de la montre emploient aussi `.iso8601` —
+/// et ils ont raison. Ils ENCODENT avec la même stratégie qu'ils décodent :
+/// l'aller-retour est local et symétrique, personne n'y lit du JSON de l'API.
+/// Élargir la règle à ces fichiers reviendrait à corriger du code qui marche.
+#[test]
+fn le_client_reseau_ne_decode_aucune_date_sans_millisecondes() {
+    let reseau = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Networking");
+    if !reseau.is_dir() {
+        eprintln!("client iOS absent en {} — accord non vérifié", reseau.display());
+        return;
+    }
+
+    // L'API met bien des millisecondes : si cela changeait, ce test n'aurait
+    // plus lieu d'être, et mieux vaut qu'il le dise que de garder une règle
+    // devenue sans objet.
+    let date = crate::temps::iso8601(chrono::Utc::now());
+    assert!(
+        date.contains('.'),
+        "l'API n'écrit plus de millisecondes ({date}) : cette règle est à revoir"
+    );
+
+    let mut fautifs = Vec::new();
+    for entree in std::fs::read_dir(&reseau).expect("le répertoire réseau").flatten() {
+        let chemin = entree.path();
+        if chemin.extension().is_some_and(|e| e == "swift") {
+            let source = std::fs::read_to_string(&chemin).unwrap_or_default();
+            if source.contains("dateDecodingStrategy = .iso8601") {
+                fautifs.push(chemin.display().to_string());
+            }
+        }
+    }
+
+    assert!(
+        fautifs.is_empty(),
+        "« .iso8601 » refuse les millisecondes que l'API écrit toujours — \
+         il faut le décodeur partagé, qui accepte les deux formes : {fautifs:?}"
+    );
+}
+
+/// Les adresses déclarées par les routeurs, paramètres normalisés en `{}`.
+fn adresses_du_routeur() -> std::collections::BTreeSet<String> {
+    let mut adresses = std::collections::BTreeSet::new();
+    let routes = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes");
+    for entree in std::fs::read_dir(routes).expect("le répertoire des routes").flatten() {
+        let source = std::fs::read_to_string(entree.path()).unwrap_or_default();
+        let mut reste = source.as_str();
+        // `.route(` peut être suivi d'un retour à la ligne : la déclaration de
+        // la route des photos l'est, à cause de sa limite de corps.
+        while let Some(i) = reste.find(".route(") {
+            reste = &reste[i + ".route(".len()..];
+            let apres = reste.trim_start();
+            if let Some(fin) = apres.strip_prefix('"').and_then(|s| s.find('"').map(|f| &s[..f])) {
+                adresses.insert(normaliser_parametres(fin));
+            }
+        }
+    }
+    adresses
+}
+
+/// Les adresses citées par le client Swift, hors tests.
+fn adresses_appelees(racine: &std::path::Path) -> std::collections::BTreeSet<String> {
+    let mut adresses = std::collections::BTreeSet::new();
+    let mut a_visiter = vec![racine.to_path_buf()];
+    while let Some(chemin) = a_visiter.pop() {
+        let Ok(entrees) = std::fs::read_dir(&chemin) else { continue };
+        for entree in entrees.flatten() {
+            let chemin = entree.path();
+            if chemin.is_dir() {
+                // Les tests du paquet Swift citent des adresses de simulation.
+                if chemin.file_name().is_some_and(|n| n == "Tests") {
+                    continue;
+                }
+                a_visiter.push(chemin);
+            } else if chemin.extension().is_some_and(|e| e == "swift") {
+                let source = std::fs::read_to_string(&chemin).unwrap_or_default();
+                for morceau in source.split('"').skip(1).step_by(2) {
+                    if morceau.starts_with("/v1/") || morceau.starts_with("/media/") {
+                        adresses.insert(normaliser_parametres(morceau));
+                    }
+                }
+            }
+        }
+    }
+    adresses
+}
+
+/// `{id}` d'axum et `\(id)` de Swift désignent la même chose : un paramètre.
+fn normaliser_parametres(adresse: &str) -> String {
+    let mut sortie = String::with_capacity(adresse.len());
+    let mut reste = adresse;
+    loop {
+        let ouvrant = reste.find("\\(").map(|i| (i, "\\(", ')'));
+        let accolade = reste.find('{').map(|i| (i, "{", '}'));
+        let premier = match (ouvrant, accolade) {
+            (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+            (a, b) => a.or(b),
+        };
+        let Some((i, prefixe, fermant)) = premier else {
+            sortie.push_str(reste);
+            break;
+        };
+        sortie.push_str(&reste[..i]);
+        sortie.push_str("{}");
+        let apres = &reste[i + prefixe.len()..];
+        match apres.find(fermant) {
+            Some(f) => reste = &apres[f + 1..],
+            None => break,
+        }
+    }
+    // Une barre oblique finale ne distingue pas deux adresses ici.
+    let taille = sortie.trim_end_matches('/').len();
+    sortie.truncate(taille.max(1));
+    sortie
+}
+
 fn catalogue() -> String {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../packages/contracts/src/catalog.ts");
