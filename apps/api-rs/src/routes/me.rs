@@ -8,7 +8,9 @@ use crate::{
     auth::{oublier_compte, Authentifie},
     cache,
     crypto::signer_url_media,
-    droits::{credits_pour, demandes_restantes, exiger_credit, quota_journalier},
+    droits::{
+        credits_pour, demandes_restantes, exiger_credit, filtre_autorise, quota_journalier, Critere,
+    },
     entities::{accounts, preferences, profiles},
     error::{introuvable, invalide, AppError},
     temps::{age_depuis, iso8601},
@@ -324,6 +326,7 @@ async fn lire_criteres(
         "maxDistanceKm": pref.max_distance_km,
         "seeking": liste_json(&pref.seeking_json),
         "categories": liste_json(&pref.categories_json),
+        "days": jours_json(&pref.days_json),
         "escaleCity": pref.escale_city,
         "escaleUntil": pref.escale_until.map(|d| iso8601(d.and_utc())),
     })))
@@ -344,6 +347,9 @@ struct AjustementCriteres {
     max_distance_km: Option<i32>,
     seeking: Option<Vec<String>>,
     categories: Option<Vec<String>>,
+    /// Jours de la semaine retenus, au sens ISO : 1 pour lundi, 7 pour
+    /// dimanche. Vide ou absent signifie « tous ».
+    days: Option<Vec<i32>>,
 }
 
 /// Ajuster les critères du fil.
@@ -394,6 +400,40 @@ async fn ajuster_criteres(
         }
     }
 
+    if let Some(jours) = &corps.days {
+        if jours.len() > 7 {
+            return Err(invalide("Sept jours au plus."));
+        }
+        if let Some(hors) = jours.iter().find(|j| !(1..=7).contains(*j)) {
+            return Err(invalide(&format!(
+                "Jour inconnu : {hors}. De 1 (lundi) à 7 (dimanche)."
+            )));
+        }
+    }
+
+    // Chaque critère vendu par palier est refusé à qui ne l'a pas.
+    //
+    // Le refus ne porte que sur les critères RENSEIGNÉS : vider une liste
+    // reste possible pour tout le monde, sinon quelqu'un dont l'abonnement
+    // expire ne pourrait plus défaire ce qu'il avait posé.
+    // La liste est exhaustive, y compris pour l'âge et la distance que tous
+    // les paliers autorisent : ainsi, restreindre l'un d'eux un jour tiendra
+    // dans `filtre_autorise` seul, sans qu'il faille penser à le brancher ici.
+    for (critere, renseigne) in [
+        (Critere::Age, corps.min_age.is_some() || corps.max_age.is_some()),
+        (Critere::Distance, corps.max_distance_km.is_some()),
+        (Critere::Genre, corps.seeking.as_ref().is_some_and(|l| !l.is_empty())),
+        (Critere::Categorie, corps.categories.as_ref().is_some_and(|l| !l.is_empty())),
+        (Critere::Jour, corps.days.as_ref().is_some_and(|l| !l.is_empty())),
+    ] {
+        if renseigne && !filtre_autorise(&compte.tier, critere) {
+            return Err(AppError::new(
+                crate::error::Code::EntitlementRequired,
+                format!("Filtrer par {} demande une offre supérieure.", critere.nom()),
+            ));
+        }
+    }
+
     let pref = preferences::Entity::find()
         .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
         .one(&state.db)
@@ -415,6 +455,9 @@ async fn ajuster_criteres(
     }
     if let Some(liste) = corps.categories {
         ajuste.categories_json = Set(serde_json::to_string(&liste).unwrap_or_else(|_| "[]".into()));
+    }
+    if let Some(liste) = corps.days {
+        ajuste.days_json = Set(serde_json::to_string(&liste).unwrap_or_else(|_| "[]".into()));
     }
     ajuste.updated_at = Set(Utc::now().naive_utc());
     ajuste.update(&state.db).await?;
@@ -493,4 +536,12 @@ async fn lire(
         // Le site et l'application iOS lisent ce champ tel quel.
         created_at: iso8601(ligne.created_at.and_utc()),
     }))
+}
+
+/// Relit la liste des jours, stockée en texte JSON comme les autres.
+///
+/// Une colonne illisible vaut « aucun » : un critère abîmé ne doit pas rendre
+/// le fil inaccessible.
+pub(crate) fn jours_json(brut: &str) -> Vec<i32> {
+    serde_json::from_str(brut).unwrap_or_default()
 }

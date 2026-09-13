@@ -161,3 +161,105 @@ mod tests {
         }
     }
 }
+
+/// Ce que chaque profondeur de filtre autorise.
+///
+/// ## Pourquoi cette table existe
+///
+/// Le catalogue vend une profondeur de filtres par palier — « base »,
+/// « étendus », « précis » — et le champ n'était lu nulle part : les critères
+/// du fil acceptaient les mêmes réglages à tous les paliers. Quelqu'un payant
+/// pour des « critères précis » avait exactement ce que le socle gratuit
+/// offrait déjà.
+///
+/// ## Ce que le catalogue dit, et ce qu'il ne dit pas
+///
+/// « Escapade » nomme ce que « précis » recouvre : « catégorie, jour, distance
+/// fine ». Les deux premiers sont des critères identifiables et sont traités
+/// ici. La « distance fine » n'est définie nulle part — aucun palier ne dit
+/// quelle granularité serait grossière —, elle n'est donc pas restreinte :
+/// inventer une limite reviendrait à retirer quelque chose au nom d'une
+/// promesse que personne n'a formulée.
+///
+/// « Étendus » n'est explicité par aucun palier. Le genre recherché lui est
+/// attribué ici parce qu'il faut bien que « étendus » veuille dire quelque
+/// chose entre « base » et « précis ».
+///
+/// ## Comment revenir en arrière
+///
+/// Toute la règle tient dans cette fonction. La rendre permissive pour tous —
+/// `true` partout — rétablit le comportement d'avant sans toucher à rien
+/// d'autre, et c'est un arbitrage commercial, pas une correction.
+pub fn filtre_autorise(palier: &str, critere: Critere) -> bool {
+    let profondeur = droits_pour(palier).filtres;
+    match critere {
+        // L'âge et la distance sont le socle : tout le monde y a droit.
+        Critere::Age | Critere::Distance => true,
+        Critere::Genre => matches!(profondeur, "etendus" | "precis"),
+        Critere::Categorie | Critere::Jour => profondeur == "precis",
+    }
+}
+
+/// Les critères du fil, pour la table ci-dessus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Critere {
+    Age,
+    Distance,
+    Genre,
+    Categorie,
+    Jour,
+}
+
+impl Critere {
+    /// Le nom qu'on rend à qui se voit refuser le critère.
+    pub fn nom(self) -> &'static str {
+        match self {
+            Critere::Age => "l'âge",
+            Critere::Distance => "la distance",
+            Critere::Genre => "le genre recherché",
+            Critere::Categorie => "la catégorie",
+            Critere::Jour => "le jour",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_filtres {
+    use super::*;
+
+    /// Le socle gratuit garde l'âge et la distance.
+    ///
+    /// Restreindre ces deux-là viderait le fil de tout réglage utile et ferait
+    /// du palier gratuit une démonstration plutôt qu'un service.
+    #[test]
+    fn le_socle_garde_l_age_et_la_distance() {
+        assert!(filtre_autorise("depart", Critere::Age));
+        assert!(filtre_autorise("depart", Critere::Distance));
+    }
+
+    /// Et il n'a pas ce que les paliers payants vendent.
+    #[test]
+    fn le_socle_n_a_pas_les_criteres_vendus() {
+        assert!(!filtre_autorise("depart", Critere::Genre));
+        assert!(!filtre_autorise("depart", Critere::Categorie));
+        assert!(!filtre_autorise("depart", Critere::Jour));
+    }
+
+    /// « Escapade » nomme catégorie et jour : elle doit les avoir.
+    #[test]
+    fn escapade_a_ce_que_son_argumentaire_nomme() {
+        for critere in [Critere::Genre, Critere::Categorie, Critere::Jour] {
+            assert!(
+                filtre_autorise("escapade", critere),
+                "« Escapade » vend « critères précis : catégorie, jour » : {critere:?}"
+            );
+        }
+    }
+
+    /// Un palier inconnu retombe sur le socle, jamais sur le plus généreux.
+    #[test]
+    fn un_palier_inconnu_retombe_sur_le_socle() {
+        assert!(!filtre_autorise("inconnu", Critere::Categorie));
+        assert!(filtre_autorise("inconnu", Critere::Age));
+    }
+}
