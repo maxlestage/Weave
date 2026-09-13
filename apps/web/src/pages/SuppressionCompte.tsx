@@ -100,7 +100,9 @@ const ARTICLES: readonly Article[] = [
             cela, supprimer son compte suffirait à effacer les preuves d'un comportement qu'on vient
             de signaler. Tant qu'un signalement reste ouvert, la purge de votre compte est donc
             reportée — il demeure invisible et inutilisable dans l'intervalle, puis il est effacé
-            dès le dossier clos.
+            dès le dossier clos. <strong>Ce report est borné à quatre-vingt-dix jours :</strong> une
+            instruction qui n'a pas eu lieu en trois mois ne justifie plus de conserver vos données,
+            et votre compte est effacé même si le dossier est resté ouvert.
           </li>
           <li>
             <strong>Les traces techniques</strong> de vos actions sensibles, dans notre journal
