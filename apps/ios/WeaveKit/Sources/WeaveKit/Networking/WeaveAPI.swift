@@ -92,7 +92,19 @@ public actor WeaveAPI {
         return encoder
     }()
 
-    private let decoder: JSONDecoder = {
+    /// Le décodeur, partagé par TOUT le client — renouvellement de session
+    /// compris.
+    ///
+    /// Il était propre à l'instance, et le renouvellement, qui est statique,
+    /// s'en fabriquait un second en `.iso8601`. Or `.iso8601` s'appuie sur
+    /// `.withInternetDateTime`, qui REFUSE les fractions de seconde — et l'API
+    /// en met toujours : `expiresAt` vaut « …T16:30:00.000Z ».
+    ///
+    /// Chaque renouvellement échouait donc à décoder sa réponse, et la session
+    /// tombait au bout du quart d'heure du jeton d'accès. Aucun compilateur
+    /// n'aurait rien dit : les deux décodeurs sont parfaitement valides, ils ne
+    /// lisent simplement pas le même format.
+    private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let text = try decoder.singleValueContainer().decode(String.self)
@@ -426,7 +438,7 @@ public actor WeaveAPI {
         struct Result: Decodable { let photoUrl: URL? }
         let token = try await validToken()
         let brut = try await sendRawUpload(.put, "/v1/me/photo", token: token, payload: image)
-        return try decoder.decode(Result.self, from: brut).photoUrl
+        return try Self.decoder.decode(Result.self, from: brut).photoUrl
     }
 
     // MARK: - Se protéger
@@ -589,13 +601,13 @@ public actor WeaveAPI {
         }
 
         guard (200..<300).contains(http.statusCode) else {
-            throw Self.decodeError(status: http.statusCode, data: data, decoder: decoder)
+            throw Self.decodeError(status: http.statusCode, data: data, decoder: Self.decoder)
         }
 
         if T.self == EmptyResponse.self { return EmptyResponse() as! T }
 
         do {
-            return try decoder.decode(T.self, from: data)
+            return try Self.decoder.decode(T.self, from: data)
         } catch {
             throw WeaveAPIError.server(status: http.statusCode, message: "Réponse illisible.")
         }
@@ -636,7 +648,7 @@ public actor WeaveAPI {
             throw WeaveAPIError.transport("Réponse inattendue.")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw Self.decodeError(status: http.statusCode, data: data, decoder: decoder)
+            throw Self.decodeError(status: http.statusCode, data: data, decoder: Self.decoder)
         }
         return data
     }
@@ -662,7 +674,7 @@ public actor WeaveAPI {
             throw WeaveAPIError.transport("Réponse inattendue.")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw Self.decodeError(status: http.statusCode, data: data, decoder: decoder)
+            throw Self.decodeError(status: http.statusCode, data: data, decoder: Self.decoder)
         }
         return data
     }
@@ -737,9 +749,9 @@ public actor WeaveAPI {
         }
 
         struct Envelope: Decodable { let session: Session }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let renewed = try decoder.decode(Envelope.self, from: data).session
+        // Le décodeur partagé, et pas un second : c'est en s'en fabriquant un
+        // que ce chemin avait cessé de lire les dates de l'API.
+        let renewed = try Self.decoder.decode(Envelope.self, from: data).session
         await store.save(renewed)
         return renewed
     }
