@@ -269,12 +269,24 @@ impl Service {
 /// et deux tests partageant la même se disputeraient le même seau.
 fn adresse_appelante() -> axum::extract::ConnectInfo<std::net::SocketAddr> {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    static COMPTEUR: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
     let n = COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    // 127.x.y.z : bouclage, jamais routable, et seize millions d'adresses.
-    let octets = n.to_be_bytes();
+
+    // 127.p.y.z — et le `p` compte autant que le reste.
+    //
+    // Ce compteur repart à zéro à chaque exécution, alors que les seaux de
+    // débit vivent quinze minutes dans un Redis partagé entre toutes. Deux
+    // exécutions rapprochées réutilisaient donc les mêmes premières adresses
+    // et se disputaient leurs seaux : à partir de la cinquième, la suite
+    // rendait 429 sur des appels parfaitement légitimes, et l'échec accusait
+    // le code plutôt que la mécanique du test.
+    //
+    // L'octet du processus sépare les exécutions ; les deux suivants laissent
+    // soixante-cinq mille appels à chacune.
+    let processus = std::process::id() as u8;
+    let [haut, bas] = n.to_be_bytes();
     axum::extract::ConnectInfo(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(127, octets[1], octets[2], octets[3])),
+        IpAddr::V4(Ipv4Addr::new(127, processus, haut, bas)),
         4000,
     ))
 }

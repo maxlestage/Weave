@@ -258,3 +258,52 @@ async fn un_jeton_ne_se_renouvelle_qu_une_fois() {
     let reussites = [a.0, b.0].iter().filter(|s| s.is_success()).count();
     assert_eq!(reussites, 1, "un jeton, une rotation — obtenu {reussites}");
 }
+
+/// Cinq tentatives, pas une de plus — même lancées ensemble.
+///
+/// Le compteur était lu, comparé, puis réécrit. N essais simultanés lisaient
+/// tous la même valeur et n'en consommaient qu'une : le plafond ne coûtait
+/// qu'une tentative, autant de fois qu'on voulait. Un code à six chiffres ne
+/// résiste pas à cela.
+#[tokio::test]
+async fn le_plafond_de_tentatives_tient_meme_en_rafale() {
+    let service = Service::monter().await;
+    let email = service.email("rafale");
+
+    let (statut, _) = service
+        .post("/v1/auth/otp/request", None, json!({ "email": email }))
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    // Huit essais faux lancés ensemble, pour un plafond de cinq.
+    let mauvais = json!({ "email": email, "code": "000000" });
+    let r = tokio::join!(
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+        service.post("/v1/auth/otp/verify", None, mauvais.clone()),
+    );
+    let reponses = [r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7];
+
+    let incorrects = reponses
+        .iter()
+        .filter(|(_, corps)| corps["message"].as_str() == Some("Code incorrect."))
+        .count();
+    assert!(
+        incorrects <= 5,
+        "le plafond de cinq tentatives a été franchi : {incorrects} essais décomptés"
+    );
+
+    // Et le plafond est bien atteint : un neuvième essai est refusé comme tel.
+    let (_, corps) = service
+        .post("/v1/auth/otp/verify", None, mauvais.clone())
+        .await;
+    assert!(
+        corps["message"].as_str().unwrap_or("").contains("Trop de tentatives"),
+        "après la rafale, le code doit être épuisé — obtenu : {corps}"
+    );
+}
