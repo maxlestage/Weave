@@ -48,14 +48,18 @@ const ARTICLES: readonly Article[] = [
           des critères, l'horizon de publication et les plans de groupe.
         </p>
         <Tableau
-          entetes={["Palier", "Par mois", "Par an", "Ce qu'il ajoute"]}
+          entetes={["Palier", "Par mois", "Ce qu'il ajoute"]}
           lignes={PAYANTS.map((tier) => [
             <strong>{tier.name}</strong>,
             formatPrice(tier.monthlyPriceCents),
-            tier.yearlyPriceCents === null ? "—" : formatPrice(tier.yearlyPriceCents),
             tier.tagline,
           ])}
         />
+        <p>
+          <strong>Tous les abonnements sont mensuels.</strong> Il n'existe pas d'engagement à
+          l'année : un service qu'on peut vouloir quitter du jour au lendemain ne se prépaie pas sur
+          douze mois.
+        </p>
         <p>
           <strong>Aucun palier n'achète de visibilité.</strong> Payer n'a jamais pour effet de faire
           remonter un plan devant celui de quelqu'un d'autre, et le plafond de demandes quotidiennes

@@ -69,13 +69,8 @@ public final class BoutiqueController {
         chargement = true
         defer { chargement = false }
 
-        var identifiants: [String] = UnitSku.allCases.map(\.productID)
-        for palier in PlanTier.allCases {
-            if let ids = palier.productIDs {
-                identifiants.append(ids.monthly)
-                identifiants.append(ids.yearly)
-            }
-        }
+        let identifiants = UnitSku.allCases.map(\.productID)
+            + PlanTier.allCases.compactMap(\.productID)
 
         guard let charges = try? await Product.products(for: identifiants) else { return }
         produits = Dictionary(uniqueKeysWithValues: charges.map { ($0.id, $0) })

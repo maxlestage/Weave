@@ -42,13 +42,17 @@ fn unite_depuis_produit(produit_id: &str) -> Option<(&'static str, &'static str,
 }
 
 /// Le catalogue, tel qu'il est décrit dans les contrats partagés.
-/// (palier, nom, prix mensuel en centimes, prix annuel, identifiants StoreKit)
-const OFFRES: [(&str, &str, i64, Option<i64>); 5] = [
-    ("depart", "Départ", 0, None),
-    ("viree", "Virée", 499, Some(4490)),
-    ("escapade", "Escapade", 899, Some(7990)),
-    ("expedition", "Expédition", 1499, Some(12990)),
-    ("grandtour", "Grand Tour", 2499, Some(20990)),
+/// (palier, nom, prix mensuel en centimes)
+///
+/// Il n'y a pas d'abonnement annuel : un engagement de douze mois sur un
+/// service qu'on peut vouloir quitter du jour au lendemain ne rend service
+/// qu'à celui qui l'encaisse.
+const OFFRES: [(&str, &str, i64); 5] = [
+    ("depart", "Départ", 0),
+    ("viree", "Virée", 499),
+    ("escapade", "Escapade", 899),
+    ("expedition", "Expédition", 1499),
+    ("grandtour", "Grand Tour", 2499),
 ];
 
 pub fn routes() -> Router<AppState> {
@@ -294,7 +298,7 @@ async fn notification_app_store(
 ) -> Result<Json<Value>, AppError> {
     let transaction = verifier_transaction(&state, &corps.signed_payload)?;
 
-    let Some((palier, _periode)) = palier_depuis_produit(&transaction.product_id) else {
+    let Some(palier) = palier_depuis_produit(&transaction.product_id) else {
         return Ok(Json(json!({ "ok": true, "ignored": true })));
     };
 
@@ -352,18 +356,15 @@ fn prix(centimes: i64) -> String {
 async fn catalogue() -> Json<Value> {
     let tiers: Vec<Value> = OFFRES
         .iter()
-        .map(|(palier, nom, mensuel, annuel)| {
+        .map(|(palier, nom, mensuel)| {
             let d = crate::droits::droits_pour(palier);
             json!({
                 "tier": palier,
                 "name": nom,
                 "monthlyPriceCents": mensuel,
                 "monthlyPrice": prix(*mensuel),
-                "yearlyPriceCents": annuel,
-                "yearlyPrice": annuel.map(prix),
                 "storeKit": {
                     "monthly": (*mensuel > 0).then(|| format!("{BUNDLE}.sub.{palier}.monthly")),
-                    "yearly": annuel.map(|_| format!("{BUNDLE}.sub.{palier}.yearly")),
                 },
                 "entitlements": {
                     "requestsPerDay": d.demandes_par_jour,
@@ -552,16 +553,16 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
 }
 
 /// Retrouve le palier depuis l'identifiant de produit StoreKit.
-fn palier_depuis_produit(produit: &str) -> Option<(&'static str, &'static str)> {
-    for (palier, _, _, _) in OFFRES.iter() {
-        if produit == format!("{BUNDLE}.sub.{palier}.monthly") {
-            return Some((palier, "monthly"));
-        }
-        if produit == format!("{BUNDLE}.sub.{palier}.yearly") {
-            return Some((palier, "yearly"));
-        }
-    }
-    None
+///
+/// Seul le mensuel est reconnu. Un identifiant annuel — il n'en est plus
+/// vendu — tombe donc dans l'inconnu et la transaction est refusée, ce qui est
+/// le bon comportement : mieux vaut refuser un produit qu'on ne vend plus que
+/// d'accorder un palier sur une durée qu'on ne sait plus tenir.
+fn palier_depuis_produit(produit: &str) -> Option<&'static str> {
+    OFFRES
+        .iter()
+        .map(|(palier, ..)| *palier)
+        .find(|palier| produit == format!("{BUNDLE}.sub.{palier}.monthly"))
 }
 
 async fn enregistrer_abonnement(
@@ -574,16 +575,18 @@ async fn enregistrer_abonnement(
     }
     let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
 
-    let (palier, periode) = palier_depuis_produit(&transaction.product_id).ok_or_else(|| {
+    let palier = palier_depuis_produit(&transaction.product_id).ok_or_else(|| {
         invalide(&format!(
             "Produit d'abonnement inconnu : {}",
             transaction.product_id
         ))
     })?;
 
-    let renouvelle_le = transaction.expire_le.unwrap_or_else(|| {
-        Utc::now() + Duration::days(if periode == "yearly" { 365 } else { 30 })
-    });
+    // Un mois, faute d'échéance annoncée par Apple. C'est la seule durée
+    // vendue.
+    let renouvelle_le = transaction
+        .expire_le
+        .unwrap_or_else(|| Utc::now() + Duration::days(30));
 
     let existant = subscriptions::Entity::find()
         .filter(subscriptions::Column::AccountId.eq(compte.id.as_str()))
@@ -594,7 +597,8 @@ async fn enregistrer_abonnement(
         Some(ligne) => {
             let mut maj: subscriptions::ActiveModel = ligne.into();
             maj.tier = Set(palier.to_string());
-            maj.period = Set(Some(periode.to_string()));
+            // La seule période vendue.
+            maj.period = Set(Some("monthly".to_string()));
             maj.store_kit_product_id = Set(Some(transaction.product_id));
             maj.original_transaction_id = Set(Some(transaction.original_transaction_id));
             maj.renews_at = Set(Some(renouvelle_le.naive_utc()));
@@ -610,7 +614,7 @@ async fn enregistrer_abonnement(
                 id: Set(cuid2::create_id()),
                 account_id: Set(compte.id.clone()),
                 tier: Set(palier.to_string()),
-                period: Set(Some(periode.to_string())),
+                period: Set(Some("monthly".to_string())),
                 store_kit_product_id: Set(Some(transaction.product_id)),
                 original_transaction_id: Set(Some(transaction.original_transaction_id)),
                 renews_at: Set(Some(renouvelle_le.naive_utc())),

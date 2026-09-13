@@ -7,10 +7,7 @@ import {
   formatPrice,
   type FilterDepth,
 } from "@weave/contracts";
-import { useState } from "react";
 import { Carte, Etiquette, filVar, Section, type Fil } from "../composants.tsx";
-
-type Periode = "mensuel" | "annuel";
 
 /** Chaque palier porte sa couleur. */
 const COULEURS: Record<string, Fil> = {
@@ -36,8 +33,6 @@ function horizon(jours: number): string {
 }
 
 export function Offres() {
-  const [periode, setPeriode] = useState<Periode>("mensuel");
-
   return (
     <Section
       id="offres"
@@ -45,43 +40,12 @@ export function Offres() {
       titre="Quatre abonnements, et tout à l'unité"
       chapeau={`Aucune offre n'achète de visibilité : payer ne fait jamais remonter un plan. Ce qui se paie, c'est l'horizon de publication, la finesse des critères et les plans de groupe. Le nombre de demandes reste borné partout — au minimum ${REQUESTS_PER_DAY_FLOOR} par jour.`}
     >
-      <div
-        className="inline-flex rounded-full p-1"
-        role="group"
-        aria-label="Choisir la périodicité"
-        style={{ border: "1px solid var(--bordure)" }}
-      >
-        {(["mensuel", "annuel"] as const).map((valeur) => (
-          <button
-            key={valeur}
-            type="button"
-            aria-pressed={periode === valeur}
-            onClick={() => setPeriode(valeur)}
-            className="rounded-full px-4 py-2 text-sm font-semibold capitalize"
-            style={
-              periode === valeur
-                ? { background: "var(--accent)", color: "var(--sur-accent)" }
-                : { color: "var(--texte-doux)" }
-            }
-          >
-            {valeur}
-          </button>
-        ))}
-      </div>
-
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {PLAN_TIERS.map((tier) => {
           const offre = TIERS[tier];
           const gratuit = offre.monthlyPriceCents === 0;
-          const cents =
-            periode === "annuel" && offre.yearlyPriceCents !== null
-              ? offre.yearlyPriceCents
-              : offre.monthlyPriceCents;
-          const suffixe = gratuit
-            ? ""
-            : periode === "annuel" && offre.yearlyPriceCents !== null
-              ? " / an"
-              : " / mois";
+          const cents = offre.monthlyPriceCents;
+          const suffixe = gratuit ? "" : " / mois";
 
           const couleur = COULEURS[tier] ?? 6;
 

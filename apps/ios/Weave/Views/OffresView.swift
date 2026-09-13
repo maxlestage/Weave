@@ -24,22 +24,11 @@ struct OffresView: View {
     @Environment(ModeleApplication.self) private var modele
     @Environment(\.dismiss) private var dismiss
 
-    @State private var annuel = false
     @State private var erreur: String?
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Picker("Rythme", selection: $annuel) {
-                        Text("Mensuel").tag(false)
-                        Text("Annuel").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                } footer: {
-                    Text("Un abonnement se résilie dans les réglages de votre compte Apple, pas ici — c'est Apple qui l'encaisse.")
-                }
-
                 Section {
                     ForEach(PlanTier.allCases.filter { $0 != .depart }, id: \.self) { palier in
                         ligneAbonnement(palier)
@@ -47,7 +36,7 @@ struct OffresView: View {
                 } header: {
                     Text("Abonnements")
                 } footer: {
-                    Text("Aucun palier ne fait remonter vos plans, et le plafond de trois plans ouverts ne se desserre pour aucune somme. Ce qui se paie, c'est l'horizon de publication, la finesse des critères et les plans de groupe.")
+                    Text("Tous les abonnements sont mensuels, et se résilient dans les réglages de votre compte Apple — c'est Apple qui les encaisse.\n\nAucun palier ne fait remonter vos plans, et le plafond de trois plans ouverts ne se desserre pour aucune somme. Ce qui se paie, c'est l'horizon de publication, la finesse des critères et les plans de groupe.")
                 }
 
                 Section {
@@ -98,8 +87,7 @@ struct OffresView: View {
 
     @ViewBuilder
     private func ligneAbonnement(_ palier: PlanTier) -> some View {
-        let identifiant = annuel ? palier.productIDs?.yearly : palier.productIDs?.monthly
-        let produit = identifiant.flatMap { modele.boutique.produits[$0] }
+        let produit = palier.productID.flatMap { modele.boutique.produits[$0] }
         let actuel = modele.moi?.tier == palier
 
         Button {
