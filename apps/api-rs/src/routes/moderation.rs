@@ -7,7 +7,9 @@
 use crate::{
     auth::Authentifie,
     cache,
-    entities::{accounts, blocks, conversations, join_requests, messages, plans, reports},
+    entities::{
+        accounts, audit_events, blocks, conversations, join_requests, messages, plans, reports,
+    },
     error::{invalide, AppError},
     limitation::{consommer, Regle},
     AppState,
@@ -37,6 +39,13 @@ const REGLE_SIGNALEMENT: Regle = Regle {
 /// conversation à la main. Deux définitions auraient laissé le blocage et la
 /// clôture promettre des délais différents pour les mêmes messages.
 use super::conversations::RETENTION_MESSAGES_JOURS;
+
+/// Le motif qui ne peut pas attendre l'examen d'un dossier.
+///
+/// La politique de confidentialité s'y engage publiquement : un signalement
+/// indiquant qu'un compte appartient à une personne mineure « entraîne la
+/// suspension immédiate du compte ». Elle le disait sans que rien ne le fasse.
+pub(crate) const MOTIF_MINEUR: &str = "mineur";
 
 const MOTIFS: [&str; 6] = [
     "contenu_sexuel",
@@ -114,6 +123,7 @@ async fn signaler(
         return Err(invalide("Les précisions ne peuvent pas dépasser 1000 caractères."));
     }
 
+    let motif = corps.reason.clone();
     reports::ActiveModel {
         id: Set(cuid2::create_id()),
         author_id: Set(compte.id.clone()),
@@ -129,6 +139,10 @@ async fn signaler(
     // de qui elle vient de signaler pendant que l'équipe examine le dossier.
     poser_blocage(&state, &compte.id, &corps.account_id).await?;
     couper_entre(&state, &compte.id, &corps.account_id).await?;
+
+    if motif == MOTIF_MINEUR {
+        suspendre_pour_examen(&state, &compte.id, &corps.account_id).await?;
+    }
 
     Ok(Json(json!({ "ok": true })))
 }
@@ -206,6 +220,72 @@ async fn mettre_en_pause(
     crate::live_activity::publier_au_mieux(&state, &compte.id).await;
 
     Ok(Json(json!({ "ok": true })))
+}
+
+/// Suspend un compte signalé comme appartenant à une personne mineure.
+///
+/// ## Pourquoi c'est automatique
+///
+/// Weave est réservé aux majeurs, et la politique de confidentialité promet la
+/// suspension immédiate. Attendre l'examen humain d'un dossier laisserait
+/// l'accès ouvert pendant ce temps ; c'est le seul motif où le délai coûte
+/// plus cher que l'erreur.
+///
+/// ## Ce que cela coûte, et pourquoi on l'accepte
+///
+/// Un signalement n'est pas une preuve. Celui-ci suffit donc à mettre un
+/// compte hors circulation, et quelqu'un de malveillant peut s'en servir pour
+/// faire taire un majeur. Trois choses bornent l'abus : les signalements sont
+/// plafonnés à vingt par jour et par personne, chacun porte le nom de son
+/// auteur, et la suspension s'inscrit au journal d'audit avec ce nom — un
+/// usage répété se voit et se sanctionne.
+///
+/// La suspension se lève à la main, après examen. Elle n'efface rien : le
+/// compte et ses données restent, et le dossier s'instruit.
+///
+/// Une seule écriture conditionnelle : un compte déjà suspendu ou en cours de
+/// suppression n'est pas ramené en arrière, et le journal ne consigne que les
+/// suspensions qui ont réellement eu lieu.
+async fn suspendre_pour_examen(
+    state: &AppState,
+    auteur: &str,
+    cible: &str,
+) -> Result<(), AppError> {
+    let suspendu = accounts::Entity::update_many()
+        .col_expr(accounts::Column::Status, sea_orm::sea_query::Expr::value("suspended"))
+        .col_expr(
+            accounts::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(accounts::Column::Id.eq(cible))
+        .filter(accounts::Column::Status.is_in(["active", "paused", "onboarding"]))
+        .exec(&state.db)
+        .await?;
+
+    if suspendu.rows_affected == 0 {
+        return Ok(());
+    }
+
+    audit_events::ActiveModel {
+        id: Set(cuid2::create_id()),
+        account_id: Set(Some(cible.to_string())),
+        action: Set("suspension_signalement_mineur".to_string()),
+        subject: Set(Some(auteur.to_string())),
+        meta_json: Set(json!({ "motif": MOTIF_MINEUR }).to_string()),
+        ip: Set(None),
+        created_at: Set(Utc::now().naive_utc()),
+    }
+    .insert(&state.db)
+    .await?;
+
+    // Le résumé du compte vit un quart d'heure dans le cache : sans cet oubli,
+    // la suspension ne prendrait effet qu'à son expiration — et « immédiate »
+    // ne serait vrai que sur le papier.
+    crate::auth::oublier_compte(state, cible).await;
+    oublier_fil(state, cible).await;
+
+    tracing::warn!(compte = cible, "compte suspendu sur signalement de minorité");
+    Ok(())
 }
 
 /// Pose un blocage s'il n'existe pas déjà. Bloquer deux fois n'est pas une

@@ -362,3 +362,67 @@ async fn reprendre_apres_une_pause_rend_ses_plans() {
         "le plan n'est pas revenu : la pause aura coûté un plan"
     );
 }
+
+/// Un signalement de minorité suspend le compte tout de suite.
+///
+/// La politique de confidentialité s'y engage publiquement — « entraîne la
+/// suspension immédiate du compte ». Elle le disait sans que rien ne le fasse :
+/// le signalement n'écrivait qu'une ligne, et le compte continuait de publier
+/// et d'écrire en attendant qu'une personne ouvre le dossier.
+#[tokio::test]
+async fn un_signalement_de_minorite_suspend_le_compte_signale() {
+    let service = Service::monter().await;
+    let vigilant = service.compte("c_vigilant", "depart").await;
+    let signale = service.compte("c_signale_mineur", "depart").await;
+
+    let (statut, corps) = service
+        .post("/v1/reports", Some(&service.jeton("c_vigilant")), json!({
+            "accountId": signale,
+            "reason": "mineur",
+            "details": "Le profil indique etre au lycee en seconde.",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let _ = vigilant;
+
+    // Le compte n'ouvre plus rien : c'est ce que « suspendu » doit vouloir dire.
+    let (statut, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_signale_mineur")))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "le compte signalé comme mineur répond encore : {corps}"
+    );
+}
+
+/// Les autres motifs, eux, ne suspendent personne.
+///
+/// Un signalement n'est pas une preuve. Suspendre sur n'importe quel motif
+/// ferait de la fonction une arme : il suffirait de signaler pour faire taire.
+/// La minorité est la seule exception, parce que le délai y coûte plus cher
+/// que l'erreur.
+#[tokio::test]
+async fn un_signalement_ordinaire_ne_suspend_pas() {
+    let service = Service::monter().await;
+    service.compte("c_plaignant", "depart").await;
+    let vise = service.compte("c_vise_ordinaire", "depart").await;
+
+    let (statut, corps) = service
+        .post("/v1/reports", Some(&service.jeton("c_plaignant")), json!({
+            "accountId": vise,
+            "reason": "arnaque",
+            "details": "Demande de l argent des le premier message.",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_vise_ordinaire")))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "un signalement ordinaire a suffi à couper un compte : {corps}"
+    );
+}
