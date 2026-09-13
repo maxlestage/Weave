@@ -167,6 +167,47 @@ file, sous quel délai, et selon quelle grille. Les photos sont publiées avant
 examen — la file est donc a posteriori, et `photos` la donne de la plus
 ancienne à la plus récente.
 
+## Consentement de l'article 9
+
+Les personnes que l'on cherche, rapprochées de son propre genre, peuvent
+révéler l'orientation sexuelle. Le règlement range cette information parmi les
+catégories particulières de l'article 9 : elle ne peut être traitée que sur un
+**consentement explicite et distinct**.
+
+La politique de confidentialité le promet depuis le début, et nomme même
+l'écran où le retirer. `consent_records` existait pour le consigner, avec son
+objet, sa version, sa date d'octroi et sa date de retrait — et **rien ne
+l'écrivait**. Aucune route, aucun parcours. Le critère de genre s'enregistrait
+sans qu'aucun consentement n'ait jamais été demandé, l'export « vos
+consentements » rendait une liste vide à tout le monde, et « Réglages ›
+Confidentialité » désignait un écran qui n'existait pas.
+
+| Promesse de la page | Ce qui la tient |
+| --- | --- |
+| demandé séparément, jamais par une case unique | `POST /v1/me/consents`, un objet à la fois ; les autres critères ne demandent rien |
+| retirable à tout moment depuis l'application | `POST /v1/me/consents/revoke`, et l'écran Réglages › Confidentialité |
+| le service continue, avec un fil non filtré sur ce critère | le retrait efface `seekingJson` ; le fil cesse d'y filtrer |
+| le retrait est enregistré avec sa date | `revokedAt` posé sur tout enregistrement encore ouvert |
+| la période d'activité est conservée | les enregistrements ne sont jamais supprimés, seulement datés |
+| un changement substantiel fait redemander le consentement | un consentement porte `POLICY_VERSION` ; une version antérieure cesse de valoir |
+
+**Retirer, c'est arrêter le traitement.** Un retrait qui laisserait le critère
+en base ferait durer un traitement de données sensibles sans base légale. Le
+critère est donc effacé ; la trace du consentement, elle, reste — c'est la
+période d'activité qui permet d'établir que le traitement était licite quand il
+a eu lieu.
+
+**La péremption est le chemin sans écriture.** Le retrait efface le critère,
+mais un changement de version ne repasse sur aucune ligne : le critère reste en
+base alors que le consentement ne vaut plus. Le fil relit donc le consentement à
+chaque composition, et c'est ce qui fait que le traitement s'arrête vraiment
+plutôt qu'à la prochaine fois que la personne touche à ses critères.
+
+**La version ne s'écrit qu'une fois.** `POLICY_VERSION` et la date affichée au
+bas des pages juridiques viennent du même endroit, et un test tient leur
+accord : deux dates écrites séparément auraient fini par attester de deux
+textes différents.
+
 ## Sous-traitants
 
 Le cœur de Weave ne dépend d'aucun service tiers de traitement de données

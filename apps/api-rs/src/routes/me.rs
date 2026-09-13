@@ -21,6 +21,7 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
+use super::consentements;
 use chrono::{Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
@@ -434,6 +435,23 @@ async fn ajuster_criteres(
         }
     }
 
+    // Le genre recherché relève de l'article 9 : il ne s'enregistre que sur un
+    // consentement explicite, distinct et en cours de validité.
+    //
+    // Le refus ne porte, là encore, que sur une liste RENSEIGNÉE : vider la
+    // sienne reste possible sans consentement — c'est même ce que fait le
+    // retrait, et il ne doit pas buter sur son propre effet.
+    if corps.seeking.as_ref().is_some_and(|l| !l.is_empty())
+        && !consentements::sensibles_autorisees(&state.db, &compte.id).await?
+    {
+        return Err(AppError::new(
+            crate::error::Code::Forbidden,
+            "Chercher par genre demande votre consentement aux données sensibles, \
+             à donner dans Réglages › Confidentialité."
+                .to_string(),
+        ));
+    }
+
     let pref = preferences::Entity::find()
         .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
         .one(&state.db)
@@ -468,7 +486,12 @@ async fn ajuster_criteres(
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn oublier_fil(state: &AppState, compte_id: &str) {
+/// Oublie le fil composé pour ce compte.
+///
+/// Partagée : les critères, la modération et les consentements changent tous
+/// ce que le fil doit retenir, et trois copies de ces trois lignes auraient
+/// fini par ne plus oublier la même clé.
+pub(crate) async fn oublier_fil(state: &AppState, compte_id: &str) {
     if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(compte_id)).await {
         tracing::warn!(erreur = %erreur, "fil non invalidé");
     }

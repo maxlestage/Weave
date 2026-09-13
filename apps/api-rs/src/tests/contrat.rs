@@ -276,6 +276,77 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
     }
 }
 
+/// Les objets de consentement, et la version des textes.
+///
+/// La version est ce qui décide qu'un consentement cesse de valoir. Écrite
+/// deux fois — une pour la page, une pour l'API — elle finirait par désigner
+/// deux textes différents : l'API tiendrait pour périmé un consentement que la
+/// page affiche comme en vigueur, ou l'inverse. La seconde est la pire : le
+/// traitement de données sensibles continuerait sur un consentement que le
+/// texte affiché ne couvre plus.
+#[test]
+fn les_consentements_sont_les_memes_des_deux_cotes() {
+    let source = contrat();
+
+    assert_eq!(
+        liste_du_contrat(&source, "CONSENT_KINDS"),
+        trier(&crate::routes::consentements::OBJETS),
+        "les objets de consentement divergent"
+    );
+    assert_eq!(
+        chaine_du_contrat(&source, "POLICY_VERSION"),
+        crate::routes::consentements::VERSION_POLITIQUE,
+        "la version des textes diverge : un consentement vaudrait d'un côté et \
+         pas de l'autre"
+    );
+}
+
+/// La date affichée au bas des pages juridiques est celle de la version qui
+/// gouverne les consentements.
+///
+/// Deux dates écrites séparément auraient fini par diverger : la page aurait
+/// attesté d'un texte, la base d'un autre — et c'est cette date qui établit
+/// quelle version a été acceptée.
+#[test]
+fn la_date_affichee_est_celle_de_la_version_en_vigueur() {
+    let source = contrat();
+    let version = chaine_du_contrat(&source, "POLICY_VERSION");
+    let affichee = chaine_du_contrat(&source, "POLICY_UPDATED_LABEL");
+
+    let mois = [
+        "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
+        "octobre", "novembre", "décembre",
+    ];
+    let (annee, reste) = version.split_once('-').expect("version ISO : AAAA-MM-JJ");
+    let (mois_iso, jour) = reste.split_once('-').expect("version ISO : AAAA-MM-JJ");
+    let rang: usize = mois_iso.parse().expect("mois numérique");
+    let attendue = format!(
+        "{} {} {annee}",
+        jour.trim_start_matches('0'),
+        mois[rang - 1]
+    );
+
+    assert_eq!(
+        affichee, attendue,
+        "la date affichée ne correspond pas à la version en vigueur"
+    );
+}
+
+/// Lit `export const NOM = "valeur"` du contrat.
+fn chaine_du_contrat(source: &str, nom: &str) -> String {
+    let prefixe = format!("export const {nom} = ");
+    let ligne = source
+        .lines()
+        .find(|l| l.starts_with(&prefixe))
+        .unwrap_or_else(|| panic!("« {nom} » a disparu du contrat partagé"));
+    ligne[prefixe.len()..]
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .trim_matches('"')
+        .to_string()
+}
+
 /// Lit une liste `export const NOM = ["a", "b"]` du contrat, triée.
 fn liste_du_contrat(source: &str, nom: &str) -> Vec<String> {
     let debut = source
@@ -329,6 +400,10 @@ fn les_vocabulaires_de_l_application_ios_sont_ceux_du_contrat() {
         // le site n'en a pas l'usage. L'accord se tient donc directement
         // entre l'application et la route qui les refuse.
         ("Moderation.swift", "ReportReason", trier(&crate::routes::moderation::MOTIFS)),
+        // Un objet de consentement que l'application nommerait autrement se
+        // ferait refuser par la route, et l'accord ne pourrait pas être donné
+        // — le traitement resterait bloqué sans que rien ne dise pourquoi.
+        ("Consentement.swift", "ConsentKind", liste_du_contrat(&contrat, "CONSENT_KINDS")),
     ] {
         let source = std::fs::read_to_string(racine.join(fichier))
             .unwrap_or_else(|e| panic!("{fichier} illisible : {e}"));
