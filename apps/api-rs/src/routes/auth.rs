@@ -38,9 +38,11 @@ const OTP_MAX_TENTATIVES: i32 = 5;
 /// Weave est réservé aux majeurs.
 const AGE_MINIMUM: i32 = 18;
 /// Le délai légal avant purge des données d'un compte supprimé.
-/// `packages/contracts/src/invariants.ts` fait foi : les deux doivent
-/// s'accorder, puisque l'application iOS affiche ce nombre.
-const PURGE_COMPTE_JOURS: i64 = 30;
+///
+/// Réexporté depuis `purge`, qui l'applique. Il était écrit ici aussi, et les
+/// deux pouvaient diverger sans bruit : cette route l'annonce à l'application,
+/// et c'est l'autre qui décide du jour de l'effacement.
+use crate::purge::PURGE_COMPTE_JOURS;
 
 pub fn routes() -> Router<AppState> {
     Router::new()

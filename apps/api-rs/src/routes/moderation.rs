@@ -32,7 +32,11 @@ const REGLE_SIGNALEMENT: Regle = Regle {
 };
 
 /// Les messages d'une conversation close sont purgés après ce délai.
-const RETENTION_MESSAGES_JOURS: i64 = 90;
+///
+/// Réexporté depuis `conversations`, qui pose la même date quand on clôt une
+/// conversation à la main. Deux définitions auraient laissé le blocage et la
+/// clôture promettre des délais différents pour les mêmes messages.
+use super::conversations::RETENTION_MESSAGES_JOURS;
 
 const MOTIFS: [&str; 6] = [
     "contenu_sexuel",
