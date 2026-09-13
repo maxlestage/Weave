@@ -331,6 +331,11 @@ async fn ecrire(
     // C'est le destinataire dont l'écran change, pas l'expéditeur.
     live_activity::publier_au_mieux(&state, &destinataire).await;
 
+    // La Live Activity ne compte que des plans et des demandes : un message ne
+    // l'anime pas, et sans alerte le destinataire ne l'apprenait qu'en ouvrant
+    // l'application. L'alerte ne cite ni le message ni son auteur.
+    crate::alerte::prevenir_message(&state, &destinataire).await;
+
     Ok(Json(json!({
         "id": message.id,
         "conversationId": message.conversation_id,
