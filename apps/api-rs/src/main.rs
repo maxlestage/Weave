@@ -129,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
         println!("  • activités effacées : {}", bilan.activites_effacees);
         println!("  • comptes effacés   : {}", bilan.comptes_effaces);
         println!("  • traces effacées   : {}", bilan.traces_effacees);
+        println!("  • consentements     : {}", bilan.consentements_effaces);
         if bilan.comptes_differes > 0 {
             println!(
                 "  • comptes différés : {} (signalement encore ouvert)",
