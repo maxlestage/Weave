@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Une phrase, pas une biographie.
-const BIO_MAX_CARACTERES: usize = 160;
+pub(crate) const BIO_MAX_CARACTERES: usize = 160;
 
 /// Les genres acceptés, pour la fiche comme pour les critères.
 ///

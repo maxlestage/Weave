@@ -57,7 +57,7 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
 
     // Chaque ligne : le nom dans le contrat, la constante Rust qui doit lui
     // répondre. La liste ne couvre que ce que l'API réécrit de son côté.
-    let accords: [(&str, i64); 11] = [
+    let accords: [(&str, i64); 12] = [
         ("MAX_OPEN_PLANS", crate::routes::plans::MAX_PLANS_OUVERTS as i64),
         ("ACCOUNT_PURGE_DAYS", crate::purge::PURGE_COMPTE_JOURS),
         (
@@ -75,6 +75,7 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
         ),
         ("REQUEST_MIN_CHARS", crate::routes::requests::MESSAGE_MIN as i64),
         ("REQUEST_MAX_CHARS", crate::routes::requests::MESSAGE_MAX as i64),
+        ("BIO_MAX_CHARS", crate::routes::me::BIO_MAX_CARACTERES as i64),
     ];
 
     let mut ecarts = Vec::new();
@@ -229,18 +230,31 @@ fn sources_contiennent(racine: &std::path::Path, aiguille: &str) -> bool {
 /// que rien ne relie les trois.
 #[test]
 fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
-    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../ios/WeaveKit/Sources/WeaveKit/Models/Account.swift");
-    let Ok(source) = std::fs::read_to_string(&chemin) else {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Models");
+    if !racine.is_dir() {
         // Le dépôt iOS peut être absent d'une copie partielle. Le dire plutôt
         // que d'échouer : ce test garde un accord, il ne réclame pas un
         // fichier.
-        eprintln!("modèle iOS absent en {} — accord non vérifié", chemin.display());
+        eprintln!("modèles iOS absents en {} — accord non vérifié", racine.display());
         return;
-    };
+    }
+    // Les constantes sont réparties entre les fichiers de modèle : les
+    // chercher toutes plutôt que d'en nommer un seul, sinon déplacer une
+    // constante suffirait à désarmer le test sans que personne ne le voie.
+    let mut source = String::new();
+    for entree in std::fs::read_dir(&racine).expect("modèles lisibles").flatten() {
+        if entree.path().extension().is_some_and(|e| e == "swift") {
+            source.push_str(&std::fs::read_to_string(entree.path()).expect("modèle lisible"));
+            source.push('\n');
+        }
+    }
 
     let contrat = contrat();
-    for (cote_swift, cote_contrat) in [("accountPurgeDays", "ACCOUNT_PURGE_DAYS")] {
+    for (cote_swift, cote_contrat) in [
+        ("accountPurgeDays", "ACCOUNT_PURGE_DAYS"),
+        ("bioMaxChars", "BIO_MAX_CHARS"),
+    ] {
         let prefixe = format!("public let {cote_swift} = ");
         let ligne = source
             .lines()
@@ -283,4 +297,118 @@ fn trier(valeurs: &[&str]) -> Vec<String> {
     let mut triees: Vec<String> = valeurs.iter().map(|v| (*v).to_string()).collect();
     triees.sort();
     triees
+}
+
+/// Les vocabulaires écrits en Swift doivent être ceux du contrat.
+///
+/// C'est le côté qu'aucun test ne tenait, et cela s'est vu : « suspendu »
+/// manquait à `PlanState` sans que rien ne le signale, et l'écran « Mes plans »
+/// serait tombé entier au premier plan d'un compte en pause. Une énumération
+/// `Codable` non facultative ne pardonne pas une valeur qu'elle ignore.
+#[test]
+fn les_vocabulaires_de_l_application_ios_sont_ceux_du_contrat() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Models");
+    if !racine.is_dir() {
+        eprintln!("modèles iOS absents en {} — accord non vérifié", racine.display());
+        return;
+    }
+
+    let contrat = contrat();
+    let domaine = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packages/contracts/src/domain.ts"),
+    )
+    .expect("contrat de domaine lisible");
+
+    // Chaque ligne : le fichier Swift, l'énumération, et la liste de référence.
+    for (fichier, enumeration, reference) in [
+        ("Gender.swift", "Gender", liste_du_contrat(&contrat, "GENDERS")),
+        ("Plan.swift", "PlanState", liste_du_type(&domaine, "PlanState")),
+        // Les motifs de signalement ne passent pas par le contrat partagé :
+        // le site n'en a pas l'usage. L'accord se tient donc directement
+        // entre l'application et la route qui les refuse.
+        ("Moderation.swift", "ReportReason", trier(&crate::routes::moderation::MOTIFS)),
+    ] {
+        let source = std::fs::read_to_string(racine.join(fichier))
+            .unwrap_or_else(|e| panic!("{fichier} illisible : {e}"));
+        let cotes_swift = cas_de_l_enumeration(&source, enumeration);
+        assert_eq!(
+            cotes_swift, reference,
+            "« {enumeration} » ({fichier}) ne dit pas la même chose que le contrat"
+        );
+    }
+}
+
+/// Lit un `export type NOM = "a" | "b";` du contrat, trié.
+fn liste_du_type(source: &str, nom: &str) -> Vec<String> {
+    let debut = source
+        .find(&format!("export type {nom} ="))
+        .unwrap_or_else(|| panic!("« {nom} » a disparu du contrat"));
+    let fin = source[debut..].find(';').expect("déclaration fermée") + debut;
+
+    let mut valeurs: Vec<String> = source[debut..fin]
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    valeurs.sort();
+    valeurs
+}
+
+/// Les valeurs brutes des cas d'une énumération Swift à valeur de chaîne.
+///
+/// Un cas sans valeur explicite — `case femme` — vaut son propre nom ; un cas
+/// avec — `case nonBinaire = "non_binaire"` — vaut ce qui est écrit. C'est
+/// exactement la règle de Swift, et c'est ce que le serveur recevra.
+fn cas_de_l_enumeration(source: &str, nom: &str) -> Vec<String> {
+    let debut = source
+        .find(&format!("enum {nom}"))
+        .unwrap_or_else(|| panic!("« {nom} » a disparu des modèles iOS"));
+    let corps_debut = source[debut..].find('{').expect("un corps") + debut + 1;
+
+    let mut profondeur = 1usize;
+    let mut fin = corps_debut;
+    for (decalage, caractere) in source[corps_debut..].char_indices() {
+        match caractere {
+            '{' => profondeur += 1,
+            '}' => {
+                profondeur -= 1;
+                if profondeur == 0 {
+                    fin = corps_debut + decalage;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut valeurs = Vec::new();
+    for ligne in source[corps_debut..fin].lines() {
+        let ligne = ligne.trim();
+        let Some(reste) = ligne.strip_prefix("case ") else {
+            continue;
+        };
+        // « case .autre: "Autre" » est un motif de `switch`, pas la
+        // déclaration d'un cas : le point qui l'ouvre les distingue. Sans cette
+        // écarte, les libellés d'affichage entraient dans le vocabulaire.
+        if reste.trim_start().starts_with('.') {
+            continue;
+        }
+
+        // « case ouvert, complet » — la forme condensée compte autant.
+        for cas in reste.split(',') {
+            let cas = cas.trim();
+            let valeur = match cas.split_once('=') {
+                Some((_, brute)) => brute.trim().trim_matches('"').to_string(),
+                None => cas.to_string(),
+            };
+            if !valeur.is_empty() {
+                valeurs.push(valeur);
+            }
+        }
+    }
+    valeurs.sort();
+    valeurs
 }
