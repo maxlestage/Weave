@@ -6,7 +6,6 @@
 
 use crate::{
     auth::Authentifie,
-    cache,
     entities::{
         accounts, audit_events, blocks, conversations, join_requests, messages, plans, reports,
     },
@@ -39,6 +38,7 @@ const REGLE_SIGNALEMENT: Regle = Regle {
 /// conversation à la main. Deux définitions auraient laissé le blocage et la
 /// clôture promettre des délais différents pour les mêmes messages.
 use super::conversations::RETENTION_MESSAGES_JOURS;
+use super::me::oublier_fil;
 
 /// Le motif qui ne peut pas attendre l'examen d'un dossier.
 ///
@@ -400,8 +400,3 @@ async fn couper_entre(state: &AppState, a: &str, b: &str) -> Result<(), AppError
     Ok(())
 }
 
-async fn oublier_fil(state: &AppState, compte_id: &str) {
-    if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(compte_id)).await {
-        tracing::warn!(erreur = %erreur, "fil non invalidé");
-    }
-}

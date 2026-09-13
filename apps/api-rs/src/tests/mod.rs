@@ -167,6 +167,26 @@ impl Service {
         format!("{nom}-{}@exemple.fr", self.suffixe)
     }
 
+    /// Donne le consentement aux données sensibles.
+    ///
+    /// Nécessaire avant tout `seeking` : le genre recherché relève de
+    /// l'article 9, et la route le refuse sans consentement en cours de
+    /// validité. C'est une méthode plutôt qu'un appel recopié pour que la
+    /// version du texte ne vive qu'à un endroit dans les tests.
+    pub async fn consentir(&self, jeton: &str) {
+        let (statut, corps) = self
+            .post(
+                "/v1/me/consents",
+                Some(jeton),
+                serde_json::json!({
+                    "kind": crate::routes::consentements::DONNEES_SENSIBLES,
+                    "version": crate::routes::consentements::VERSION_POLITIQUE,
+                }),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::OK, "consentement refusé : {corps}");
+    }
+
     /// Un jeton d'accès pour un compte nommé dans un test.
     pub fn jeton(&self, nom: &str) -> String {
         jeton_pour(&self.id(nom))
@@ -366,3 +386,4 @@ mod export;
 mod conversations;
 mod offres;
 mod activite;
+mod consentements;
