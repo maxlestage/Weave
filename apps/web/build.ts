@@ -42,8 +42,7 @@ if (!resultat.success) {
 }
 
 await copierRessourcesPubliques();
-await prerendreLAccueil();
-await poserLesBalisesDeLAccueil();
+await ecrireLesAccueils(resultat);
 await ecrirePagesJuridiques(resultat);
 await ecrireFichiersDeReferencement();
 await verifierQu_AucuneAdresseN_EstEcriteEnDur();
@@ -54,18 +53,31 @@ avertirDesMentionsIncompletes();
  * consulté surtout en 4G : l'afficher à chaque construction rend visible toute
  * dérive, au lieu de la découvrir en production.
  */
-const tailles = resultat.outputs
-  .map((fichier) => ({
-    nom: fichier.path.slice(sortie.length + 1),
-    brut: fichier.size,
-  }))
-  .sort((a, b) => b.brut - a.brut);
+const { LANGUES: LANGUES_LIVREES, chemin: cheminDeLangue } = await import("./src/langues.ts");
+
+// Les fichiers sont MESURÉS SUR LE DISQUE, et non repris de `resultat.outputs`.
+// La construction réécrit `index.html` après le bundler — et en produit deux
+// autres, un par langue, que le bundler n'a jamais vus. La taille annoncée
+// aurait été celle du gabarit d'entrée, pour une page qui ne part plus.
+const livres = [
+  ...resultat.outputs
+    .map((fichier) => fichier.path.slice(sortie.length + 1))
+    .filter((nom) => !nom.endsWith(".html")),
+  ...LANGUES_LIVREES.map((langue) => `${cheminDeLangue(langue).slice(1)}index.html`),
+];
+
+const tailles = await Promise.all(
+  livres.map(async (nom) => {
+    const contenu = await Bun.file(`${sortie}/${nom}`).bytes();
+    return { nom, brut: contenu.length, gzip: gzipSync(contenu).length };
+  }),
+);
+tailles.sort((a, b) => b.brut - a.brut);
 
 const ko = (octets: number) => `${(octets / 1024).toFixed(2)} ko`;
 
-for (const { nom, brut } of tailles) {
-  const contenu = await Bun.file(`${sortie}/${nom}`).bytes();
-  console.log(`  ${nom.padEnd(28)} ${ko(brut).padStart(10)}  gzip ${ko(gzipSync(contenu).length)}`);
+for (const { nom, brut, gzip } of tailles) {
+  console.log(`  ${nom.padEnd(28)} ${ko(brut).padStart(10)}  gzip ${ko(gzip)}`);
 }
 
 /*
@@ -129,14 +141,7 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
     "mentions-legales": MentionsLegales,
   };
 
-  // La feuille de style porte une empreinte : on la retrouve dans la sortie
-  // plutôt que de la deviner, sinon un changement de nom casserait le style
-  // sans casser la construction.
-  const style = construction.outputs.find((f) => f.path.endsWith(".css"));
-  const icone = construction.outputs.find((f) => f.path.endsWith(".svg"));
-  if (!style) throw new Error("Feuille de style introuvable dans la construction.");
-
-  const nom = (chemin: string) => chemin.slice(sortie.length + 1);
+  const { style, icone } = ressourcesConstruites(construction);
 
   for (const doc of DOCUMENTS) {
     const Composant = COMPOSANTS[doc.slug];
@@ -157,8 +162,8 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
     <meta property="og:description" content="${doc.description}" />
     <meta property="og:type" content="article" />
     <meta property="og:locale" content="fr_FR" />${balisesAbsolues(doc.slug)}
-    <link rel="icon" href="/${icone ? nom(icone.path) : "favicon.svg"}" type="image/svg+xml" />
-    <link rel="stylesheet" href="/${nom(style.path)}" />
+    <link rel="icon" href="/${icone}" type="image/svg+xml" />
+    <link rel="stylesheet" href="/${style}" />
   </head>
   <body>
     <div id="racine">${corps}</div>
@@ -170,42 +175,29 @@ async function ecrirePagesJuridiques(construction: Awaited<ReturnType<typeof Bun
 }
 
 /*
- * Pose sur la page d'accueil les balises qui demandent une adresse absolue.
+ * Les trois pages d'accueil : « / » en français, « /en/ » et « /es/ ».
  *
- * L'accueil est produit par le bundler à partir d'`index.html`, qui ne peut
- * rien calculer : ses `canonical`, `og:url` et `og:image` valaient donc
- * « https://weave.app » ÉCRITS EN DUR — un domaine qui n'est pas le nôtre.
+ * Une seule application React, rendue trois fois avec une langue différente.
+ * Ce sont de vraies pages à de vraies adresses, et non un choix conservé dans
+ * le navigateur : une page traduite doit pouvoir se partager, se mettre en
+ * signet, et surtout s'indexer — un moteur n'appuie sur aucun bouton.
  *
- * C'est la page que l'on partage. Le lien aurait montré l'image d'un autre
- * site, ou aucune, et `canonical` aurait désigné ce domaine comme la véritable
- * adresse de nos pages — de quoi remettre à quelqu'un d'autre le référencement
- * du site. Les pages juridiques, elles, lisaient déjà l'origine : seule
- * l'accueil ne le faisait pas, et c'était la seule qui comptait pour cela.
- */
-/*
- * Rend la page d'accueil en HTML, comme les pages juridiques le sont déjà.
+ * Le rendu en HTML vaut pour les trois, pour la raison qu'il valait déjà pour
+ * une :
  *
- * Elle ne livrait qu'un `<div id="racine"></div>` VIDE : tout le contenu
- * arrivait par deux cent trente-sept kilo-octets de JavaScript. Trois
- * conséquences, et la première est la plus coûteuse pour un site dont le rôle
- * est de se faire trouver :
- *
- * - un robot qui n'exécute pas de JavaScript ne voit RIEN. Les aperçus de lien
- *   s'en tirent — ils lisent les balises `og:` de l'entête — mais un moteur
- *   qui n'exécute pas de script indexe une page vide ;
+ * - un robot qui n'exécute pas de JavaScript ne voit RIEN d'une racine vide.
+ *   Les aperçus de lien s'en tirent — ils lisent les balises `og:` — mais un
+ *   moteur qui n'exécute pas de script indexe une page vide ;
  * - si le paquet ne se charge pas, le visiteur voit une page blanche ;
  * - le premier affichage attend le paquet entier, sur un site consulté surtout
  *   en 4G.
  *
- * Le commentaire des pages juridiques le disait déjà : rendues ici, « elles
- * s'affichent sans JavaScript, donc aussi pour un robot d'indexation ou un
- * navigateur qui l'a désactivé ». L'accueil avait été laissé de côté.
- *
  * Le JavaScript reste servi, et `main.tsx` HYDRATE ce balisage au lieu de le
  * remplacer : le menu mobile et les questions dépliantes fonctionnent comme
- * avant.
+ * avant. Il relit la langue dans l'adresse, pour retrouver exactement l'arbre
+ * rendu ici.
  */
-async function prerendreLAccueil() {
+async function ecrireLesAccueils(construction: Awaited<ReturnType<typeof Bun.build>>) {
   // `renderToString`, et non `renderToStaticMarkup` comme les pages juridiques.
   //
   // Les deux rendent le même HTML à un détail près : `renderToStaticMarkup`
@@ -222,61 +214,183 @@ async function prerendreLAccueil() {
   const { renderToString } = await import("react-dom/server");
   const { createElement } = await import("react");
   const { App } = await import("./src/App.tsx");
+  const { LANGUES, LANGUE_PAR_DEFAUT, chemin } = await import("./src/langues.ts");
+  const { METADONNEES } = await import("./src/pages/metadonnees.ts");
 
-  const chemin = `${sortie}/index.html`;
-  const html = await Bun.file(chemin).text();
+  const { style, icone, script } = ressourcesConstruites(construction);
 
-  const vide = '<div id="racine"></div>';
-  if (!html.includes(vide)) {
-    throw new Error("Accueil : la racine n'est pas celle qu'on attendait.");
+  // Le rendu de chaque langue, pour pouvoir les comparer ensuite.
+  const rendus = new Map<string, string>();
+
+  for (const langue of LANGUES) {
+    const meta = METADONNEES[langue];
+    const corps = renderToString(createElement(App, { langue }));
+
+    // Le rendu a-t-il produit quelque chose ?
+    //
+    // Une erreur dans un composant, une exportation renommée, et
+    // `renderToString` rendrait une chaîne vide sans rien dire : la page
+    // repartirait en production avec une racine creuse — et personne ne le
+    // verrait, puisque le JavaScript la remplirait quand même.
+    if (!corps.includes("<h1")) {
+      throw new Error(`Accueil « ${langue} » : le rendu serveur ne contient pas de titre.`);
+    }
+
+    rendus.set(langue, corps);
+    const adresse = chemin(langue);
+
+    /*
+     * `hreflang` : ce qui dit à un moteur que ces trois pages sont la même,
+     * dans trois langues. Sans ces balises, il les prend pour trois pages
+     * distinctes au contenu voisin, et n'en garde souvent qu'une.
+     *
+     * Elles exigent des adresses absolues : sans origine connue, elles sont
+     * omises plutôt qu'écrites contre un hôte qui ne répond pas. `x-default`
+     * désigne la version servie à qui ne demande aucune de ces langues.
+     */
+    const alternatives = ORIGINE
+      ? [
+          ...LANGUES.map(
+            (autre) =>
+              `    <link rel="alternate" hreflang="${autre}" href="${ORIGINE}${chemin(autre)}" />`,
+          ),
+          `    <link rel="alternate" hreflang="x-default" href="${ORIGINE}${chemin(LANGUE_PAR_DEFAUT)}" />`,
+        ]
+      : [];
+
+    // Le protocole Open Graph nomme les autres langues disponibles ; un
+    // réseau social sert alors l'aperçu dans celle de son lecteur.
+    const autresLocales = LANGUES.filter((autre) => autre !== langue).map(
+      (autre) =>
+        `    <meta property="og:locale:alternate" content="${METADONNEES[autre].ogLocale}" />`,
+    );
+
+    const canonique = ORIGINE
+      ? [`    <link rel="canonical" href="${ORIGINE}${adresse}" />`]
+      : // Sans origine, pas de canonique : une adresse relative ne dirait rien
+        // de plus que la page elle-même, et une adresse inventée dirait
+        // quelque chose de faux.
+        [];
+
+    const structurees = {
+      "@context": "https://schema.org",
+      "@type": "MobileApplication",
+      name: "Weave",
+      applicationCategory: "SocialNetworkingApplication",
+      operatingSystem: "iOS, watchOS",
+      inLanguage: meta.bcp47,
+      description: meta.applicationDescription,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "EUR",
+        description: meta.offreDescription,
+      },
+    };
+
+    const html = `<!doctype html>
+<html lang="${langue}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#16121f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
+    <title>${echappe(meta.titre)}</title>
+    <meta name="description" content="${echappe(meta.description)}" />
+${[...canonique, ...alternatives].join("\n")}
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:site_name" content="Weave" />
+    <meta property="og:title" content="${echappe(meta.partageTitre)}" />
+    <meta property="og:description" content="${echappe(meta.partageDescription)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="${meta.ogLocale}" />
+${autresLocales.join("\n")}
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="${echappe(meta.partageImageAlt)}" />${balisesAbsolues(adresse.slice(1))}
+    <link rel="icon" href="/${icone}" type="image/svg+xml" />
+    <link rel="stylesheet" href="/${style}" />
+    <script type="application/ld+json">
+${JSON.stringify(structurees, null, 2).replace(/^/gm, "      ")}
+    </script>
+  </head>
+  <body>
+    <div id="racine">${corps}</div>
+    <script type="module" src="/${script}"></script>
+  </body>
+</html>
+`;
+
+    // « / » est `index.html` à la racine ; « /en/ » est `en/index.html`.
+    const fichier = langue === LANGUE_PAR_DEFAUT ? "index.html" : `${langue}/index.html`;
+    await Bun.write(`${sortie}/${fichier}`, html);
   }
 
-  const corps = renderToString(createElement(App));
-
-  // Le rendu a-t-il produit quelque chose ?
-  //
-  // Une erreur dans un composant, une exportation renommée, et
-  // `renderToString` rendrait une chaîne vide sans rien dire : la page
-  // repartirait en production avec une racine creuse, exactement comme avant —
-  // et personne ne le verrait, puisque le JavaScript la remplirait quand même.
-  if (!corps.includes("<h1")) {
-    throw new Error("Accueil : le rendu serveur ne contient pas de titre. Rien n'a été rendu.");
+  /*
+   * Deux langues qui affichent le même titre, c'est une traduction qui n'est
+   * pas arrivée jusqu'à la page.
+   *
+   * Le cas se produit sans rien casser : un fournisseur de langue oublié, un
+   * `useTraduction` remplacé par une constante française, et « /es/ » sort en
+   * français — avec le bon `lang`, le bon titre d'onglet et les bonnes balises
+   * `hreflang`. La page paraît traduite partout sauf dans son contenu, et
+   * c'est précisément l'endroit qu'on ne relit pas à chaque construction.
+   *
+   * Le contrôle porte sur le `<h1>`, et non sur la page entière : celle-ci
+   * diffère toujours un peu d'une langue à l'autre — le choix de langue y
+   * marque la langue courante, le pied de page y préfixe ses ancres — même
+   * quand plus rien n'est traduit. Le titre, lui, ne vient que de la
+   * traduction.
+   */
+  const titres = new Map<string, string>();
+  for (const [langue, corps] of rendus) {
+    const titre = corps.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1]?.replace(/<[^>]*>/g, "");
+    if (titre === undefined) throw new Error(`Accueil « ${langue} » : titre introuvable.`);
+    const deja = titres.get(titre);
+    if (deja !== undefined) {
+      throw new Error(
+        `Accueil : « ${deja} » et « ${langue} » affichent le même titre. ` +
+          "Une des deux traductions n'atteint pas la page.",
+      );
+    }
+    titres.set(titre, langue);
   }
-
-  await Bun.write(chemin, html.replace(vide, `<div id="racine">${corps}</div>`));
 }
 
-async function poserLesBalisesDeLAccueil() {
-  const chemin = `${sortie}/index.html`;
-  const html = await Bun.file(chemin).text();
+/**
+ * Les noms empreintés des fichiers produits.
+ *
+ * On les retrouve dans la sortie plutôt que de les deviner : un changement de
+ * nom casserait le style ou le script sans casser la construction.
+ */
+function ressourcesConstruites(construction: Awaited<ReturnType<typeof Bun.build>>) {
+  const nom = (chemin: string) => chemin.slice(sortie.length + 1);
+  const trouve = (fin: string, quoi: string) => {
+    const fichier = construction.outputs.find((f) => f.path.endsWith(fin));
+    if (!fichier) throw new Error(`${quoi} introuvable dans la construction.`);
+    return nom(fichier.path);
+  };
+  return {
+    style: trouve(".css", "Feuille de style"),
+    script: trouve(".js", "Script"),
+    icone: trouve(".svg", "Icône"),
+  };
+}
 
-  const canonique = ORIGINE
-    ? `    <link rel="canonical" href="${ORIGINE}/" />`
-    : // Sans origine, pas de canonique : une adresse relative « / » sur la
-      // page d'accueil ne dit rien de plus que la page elle-même, et une
-      // adresse inventée dirait quelque chose de faux.
-      "";
-
-  // L'icône de l'écran d'accueil et le manifeste sont posés ici, et non dans
-  // `index.html`, parce que le bundler suit les `<link>` qu'il y trouve : il
-  // tenterait de résoudre ces deux fichiers comme des entrées de construction,
-  // et échouerait. Ils sont copiés tels quels, à une adresse fixe.
-  //
-  // Sans `apple-touch-icon`, « Ajouter à l'écran d'accueil » pose une capture
-  // de la page en guise d'icône. Sans manifeste, le raccourci porte le titre
-  // complet de la page plutôt que « Weave ».
-  const icones = [
-    `    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />`,
-    `    <link rel="manifest" href="/site.webmanifest" />`,
-  ];
-
-  const pose = [canonique, balisesAbsolues("").trimStart(), ...icones].filter(Boolean).join("\n");
-
-  const marque = '<meta property="og:site_name" content="Weave" />';
-  if (!html.includes(marque)) {
-    throw new Error("Accueil : ancrage des balises d'adresse introuvable.");
-  }
-  await Bun.write(chemin, html.replace(marque, `${pose}\n    ${marque}`));
+/**
+ * Échappe ce qui casserait un attribut HTML.
+ *
+ * Ces textes sont les nôtres, pas ceux d'un visiteur : le risque n'est pas
+ * l'injection mais l'apostrophe droite ou le guillemet qui refermerait
+ * l'attribut au milieu d'une phrase — et la balise ne dirait plus rien.
+ */
+function echappe(texte: string): string {
+  return texte
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 /*
@@ -309,7 +423,15 @@ function balisesAbsolues(slug: string): string {
  */
 async function ecrireFichiersDeReferencement() {
   const { DOCUMENTS } = await import("./src/pages/documents.ts");
-  const adresses = ["", ...DOCUMENTS.map((doc) => doc.slug)];
+  const { LANGUES, chemin } = await import("./src/langues.ts");
+
+  // Les trois accueils y figurent chacun : ils ont des adresses distinctes,
+  // et `hreflang` dit qu'ils sont la même page — il ne les remplace pas dans
+  // le plan. Les pages juridiques n'existent qu'en français, une fois.
+  const adresses = [
+    ...LANGUES.map((langue) => chemin(langue).slice(1)),
+    ...DOCUMENTS.map((doc) => doc.slug),
+  ];
   const jour = new Date().toISOString().slice(0, 10);
 
   // `robots.txt` est toujours écrit : il autorise l'exploration, et c'est le
@@ -383,15 +505,16 @@ async function ecrireFichiersDeReferencement() {
  * sont du contenu : ils désignent autrui, et c'est bien ce qu'on leur demande.
  */
 async function verifierQu_AucuneAdresseN_EstEcriteEnDur() {
+  const { LANGUES, chemin } = await import("./src/langues.ts");
   const pages = [
-    "index.html",
+    ...LANGUES.map((langue) => `${chemin(langue).slice(1)}index.html`),
     ...(await import("./src/pages/documents.ts")).DOCUMENTS.map((d) => `${d.slug}/index.html`),
   ];
 
   // `rel="canonical"`, puis les propriétés Open Graph et Twitter qui portent
   // une adresse. Chacune répond à la question « où cette page vit-elle ? ».
   const balises =
-    /<link[^>]+rel="canonical"[^>]+href="([^"]+)"|<meta[^>]+(?:property|name)="(?:og:url|og:image|twitter:image)"[^>]+content="([^"]+)"/g;
+    /<link[^>]+rel="(?:canonical|alternate)"[^>]+href="([^"]+)"|<meta[^>]+(?:property|name)="(?:og:url|og:image|twitter:image)"[^>]+content="([^"]+)"/g;
 
   const fautes: string[] = [];
   for (const page of pages) {

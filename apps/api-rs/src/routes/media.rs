@@ -5,26 +5,24 @@
 //! inscrit dans la signature, donc impossible à modifier côté client.
 
 use crate::{
-    limitation::{consommer, regles},
+    AppState,
     auth::Authentifie,
     crypto::{signer_url_media, verifier_signature_media},
     entities::{media_objects, profiles},
-    error::{introuvable, invalide, AppError, Code},
-    AppState,
+    error::{AppError, Code, introuvable, invalide},
+    limitation::{consommer, regles},
 };
 use axum::{
+    Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
     http::header,
     response::{IntoResponse, Response},
     routing::{get, put},
-    Json, Router,
 };
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Taille maximale d'une photo de profil.
 ///
@@ -42,18 +40,19 @@ pub(crate) const PHOTO_MAX_OCTETS: usize = 2 * 1024 * 1024;
 /// tard un `image/jpeg` qui n'en est pas.
 const SIGNATURES: [(&[u8], &str); 3] = [
     (&[0xFF, 0xD8, 0xFF], "image/jpeg"),
-    (&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A], "image/png"),
+    (
+        &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A],
+        "image/png",
+    ),
     // HEIC : « ....ftypheic », le type de marque au neuvième octet.
     (b"ftyp", "image/heic"),
 ];
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/media/{key}", get(servir))
-        .route(
-            "/v1/me/photo",
-            put(deposer_photo).layer(DefaultBodyLimit::max(PHOTO_MAX_OCTETS)),
-        )
+    Router::new().route("/media/{key}", get(servir)).route(
+        "/v1/me/photo",
+        put(deposer_photo).layer(DefaultBodyLimit::max(PHOTO_MAX_OCTETS)),
+    )
 }
 
 /// Reconnaît le format d'une image à ses premiers octets, ou rien.
@@ -224,7 +223,10 @@ mod tests {
     /// faire.
     #[test]
     fn le_format_se_lit_dans_les_octets() {
-        assert_eq!(type_reconnu(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00]), Some("image/jpeg"));
+        assert_eq!(
+            type_reconnu(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00]),
+            Some("image/jpeg")
+        );
         assert_eq!(
             type_reconnu(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00]),
             Some("image/png")

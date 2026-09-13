@@ -28,7 +28,11 @@ async fn sans_jeton_valable_rien_n_est_accessible() {
         assert_eq!(statut, StatusCode::UNAUTHORIZED, "{chemin} sans jeton");
 
         let (statut, _) = service.get(chemin, Some("pas-un-jeton")).await;
-        assert_eq!(statut, StatusCode::UNAUTHORIZED, "{chemin} avec un faux jeton");
+        assert_eq!(
+            statut,
+            StatusCode::UNAUTHORIZED,
+            "{chemin} avec un faux jeton"
+        );
     }
 }
 
@@ -37,7 +41,9 @@ async fn un_jeton_valable_pour_un_compte_inexistant_est_refuse() {
     // Un compte supprimé laisse des jetons valides en circulation : ils ne
     // doivent plus ouvrir la porte.
     let service = Service::monter().await;
-    let (statut, _) = service.get("/v1/me", Some(&service.jeton("compte_fantome"))).await;
+    let (statut, _) = service
+        .get("/v1/me", Some(&service.jeton("compte_fantome")))
+        .await;
     assert_eq!(statut, StatusCode::UNAUTHORIZED);
 }
 
@@ -78,7 +84,11 @@ async fn trois_plans_ouverts_et_pas_un_de_plus() {
 
     for n in 1..=3 {
         let (statut, _) = service
-            .post("/v1/plans", Some(&jeton), plan(&format!("Un plan numero {n} pour tester")))
+            .post(
+                "/v1/plans",
+                Some(&jeton),
+                plan(&format!("Un plan numero {n} pour tester")),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "le plan {n} devait passer");
     }
@@ -86,7 +96,11 @@ async fn trois_plans_ouverts_et_pas_un_de_plus() {
     // Le palier le plus cher ne desserre pas l'invariant : c'est tout l'objet
     // de la règle.
     let (statut, corps) = service
-        .post("/v1/plans", Some(&jeton), plan("Le plan de trop pour cet essai"))
+        .post(
+            "/v1/plans",
+            Some(&jeton),
+            plan("Le plan de trop pour cet essai"),
+        )
         .await;
     assert_eq!(statut, StatusCode::CONFLICT);
     assert_eq!(corps["error"], "too_many_plans");
@@ -117,14 +131,26 @@ async fn deux_publications_concurrentes_ne_depassent_pas_le_plafond() {
 
     for n in 1..=2 {
         let (statut, corps) = service
-            .post("/v1/plans", Some(&jeton), plan(&format!("Un plan deja la numero {n}")))
+            .post(
+                "/v1/plans",
+                Some(&jeton),
+                plan(&format!("Un plan deja la numero {n}")),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
 
     let (a, b) = tokio::join!(
-        service.post("/v1/plans", Some(&jeton), plan("La troisieme place a prendre")),
-        service.post("/v1/plans", Some(&jeton), plan("La quatrieme qui doit tomber")),
+        service.post(
+            "/v1/plans",
+            Some(&jeton),
+            plan("La troisieme place a prendre")
+        ),
+        service.post(
+            "/v1/plans",
+            Some(&jeton),
+            plan("La quatrieme qui doit tomber")
+        ),
     );
 
     let passees = [a.0, b.0].iter().filter(|s| s.is_success()).count();
@@ -155,27 +181,39 @@ async fn un_plan_se_publie_a_l_avance_et_avec_un_vrai_titre() {
 
     // Trop court : un titre de trois lettres ne dit pas ce qu'on va faire.
     let (statut, _) = service
-        .post("/v1/plans", Some(&jeton), json!({ "title": "Bof", "category": "sortie", "startsAt": dans_deux_jours }))
+        .post(
+            "/v1/plans",
+            Some(&jeton),
+            json!({ "title": "Bof", "category": "sortie", "startsAt": dans_deux_jours }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Dans dix minutes : personne n'aurait le temps de le voir.
     let (statut, _) = service
-        .post("/v1/plans", Some(&jeton), json!({
-            "title": "Un titre parfaitement valable",
-            "category": "sortie",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&jeton),
+            json!({
+                "title": "Un titre parfaitement valable",
+                "category": "sortie",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::minutes(10)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Catégorie inventée.
     let (statut, _) = service
-        .post("/v1/plans", Some(&jeton), json!({
-            "title": "Un titre parfaitement valable",
-            "category": "teleportation",
-            "startsAt": dans_deux_jours,
-        }))
+        .post(
+            "/v1/plans",
+            Some(&jeton),
+            json!({
+                "title": "Un titre parfaitement valable",
+                "category": "teleportation",
+                "startsAt": dans_deux_jours,
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 }
@@ -187,26 +225,38 @@ async fn une_demande_exige_un_message_ecrit() {
     service.compte("c_invite", "depart").await;
 
     let (statut, plan) = service
-        .post("/v1/plans", Some(&service.jeton("c_hote")), json!({
-            "title": "Un plan a rejoindre pour cet essai",
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_hote")),
+            json!({
+                "title": "Un plan a rejoindre pour cet essai",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
     let plan_id = plan["id"].as_str().unwrap();
 
     // « Salut » n'est pas une demande : c'est un geste.
     let (statut, _) = service
-        .post("/v1/requests", Some(&service.jeton("c_invite")), json!({ "planId": plan_id, "message": "Salut" }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton("c_invite")),
+            json!({ "planId": plan_id, "message": "Salut" }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 
     let (statut, corps) = service
-        .post("/v1/requests", Some(&service.jeton("c_invite")), json!({
-            "planId": plan_id,
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton("c_invite")),
+            json!({
+                "planId": plan_id,
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
     // Le quota du palier de départ est de cinq, une vient d'être dépensée.
@@ -214,10 +264,14 @@ async fn une_demande_exige_un_message_ecrit() {
 
     // On ne redemande pas deux fois.
     let (statut, corps) = service
-        .post("/v1/requests", Some(&service.jeton("c_invite")), json!({
-            "planId": plan_id,
-            "message": "Je retente ma chance avec un message different.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton("c_invite")),
+            json!({
+                "planId": plan_id,
+                "message": "Je retente ma chance avec un message different.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::CONFLICT);
     assert_eq!(corps["error"], "already_requested");
@@ -230,18 +284,26 @@ async fn on_ne_demande_pas_a_venir_a_son_propre_plan() {
     let jeton = &service.jeton("c_solo");
 
     let (_, plan) = service
-        .post("/v1/plans", Some(&jeton), json!({
-            "title": "Mon propre plan pour cet essai",
-            "category": "repas",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&jeton),
+            json!({
+                "title": "Mon propre plan pour cet essai",
+                "category": "repas",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
 
     let (statut, _) = service
-        .post("/v1/requests", Some(&jeton), json!({
-            "planId": plan["id"].as_str().unwrap(),
-            "message": "Je voudrais venir a mon propre plan, ce qui na pas de sens.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&jeton),
+            json!({
+                "planId": plan["id"].as_str().unwrap(),
+                "message": "Je voudrais venir a mon propre plan, ce qui na pas de sens.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
 }
@@ -253,18 +315,36 @@ async fn le_fil_ecarte_ses_propres_plans() {
     service.compte("c_autre", "depart").await;
 
     let demain = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
-    service.post("/v1/plans", Some(&service.jeton("c_fil")), json!({
-        "title": "Le plan de celui qui regarde", "category": "sortie", "startsAt": demain,
-    })).await;
-    service.post("/v1/plans", Some(&service.jeton("c_autre")), json!({
-        "title": "Le plan de quelquun dautre", "category": "sortie", "startsAt": demain,
-    })).await;
+    service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_fil")),
+            json!({
+                "title": "Le plan de celui qui regarde", "category": "sortie", "startsAt": demain,
+            }),
+        )
+        .await;
+    service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_autre")),
+            json!({
+                "title": "Le plan de quelquun dautre", "category": "sortie", "startsAt": demain,
+            }),
+        )
+        .await;
 
-    let (statut, corps) = service.get("/v1/plans", Some(&service.jeton("c_fil"))).await;
+    let (statut, corps) = service
+        .get("/v1/plans", Some(&service.jeton("c_fil")))
+        .await;
     assert_eq!(statut, StatusCode::OK);
 
     let plans = corps["plans"].as_array().unwrap();
-    assert_eq!(plans.len(), 1, "le fil devait ne garder que le plan d'autrui");
+    assert_eq!(
+        plans.len(),
+        1,
+        "le fil devait ne garder que le plan d'autrui"
+    );
     assert_eq!(plans[0]["title"], "Le plan de quelquun dautre");
 }
 
@@ -281,7 +361,11 @@ async fn le_catalogue_ne_vend_aucune_visibilite() {
         let droits = &offre["entitlements"];
         // Aucun palier ne porte de droit de mise en avant. Si l'un venait à en
         // gagner un, ce test doit être revu en même temps que la règle.
-        assert!(droits.get("boost").is_none(), "{} porte un droit de mise en avant", offre["tier"]);
+        assert!(
+            droits.get("boost").is_none(),
+            "{} porte un droit de mise en avant",
+            offre["tier"]
+        );
         assert!(droits["requestsPerDay"].as_i64().unwrap() >= 5);
     }
 }
@@ -322,9 +406,15 @@ async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
     let chemin = url.strip_prefix("https://exemple.test").unwrap();
 
     let (statut, entetes, corps) = service.get_brut(chemin).await;
-    assert_eq!(statut, StatusCode::OK, "l'URL d'origine doit passer : {corps}");
     assert_eq!(
-        entetes.get(axum::http::header::CONTENT_TYPE).map(|v| v.to_str().unwrap()),
+        statut,
+        StatusCode::OK,
+        "l'URL d'origine doit passer : {corps}"
+    );
+    assert_eq!(
+        entetes
+            .get(axum::http::header::CONTENT_TYPE)
+            .map(|v| v.to_str().unwrap()),
         Some("image/jpeg"),
         "le type de contenu doit être celui déduit des octets"
     );
@@ -332,7 +422,11 @@ async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
     // Le flou fait partie de la charge signée.
     let deflouté = chemin.replace("blur=0", "blur=8");
     let (statut, _, _) = service.get_brut(&deflouté).await;
-    assert_eq!(statut, StatusCode::FORBIDDEN, "changer le flou doit invalider");
+    assert_eq!(
+        statut,
+        StatusCode::FORBIDDEN,
+        "changer le flou doit invalider"
+    );
 }
 
 /// Un flou correctement signé est refusé, jamais servi net.
@@ -351,7 +445,13 @@ async fn un_flou_demande_mais_non_applique_est_refuse() {
     // ici les ferait diverger au premier changement, et le test signerait
     // pour un service qui n'est plus celui qu'on éprouve.
     let media = &service.etat.config.media;
-    let url = signer_url_media(&media.base_url, &media.signing_secret, "photo-quelconque", 600, 8);
+    let url = signer_url_media(
+        &media.base_url,
+        &media.signing_secret,
+        "photo-quelconque",
+        600,
+        8,
+    );
     let chemin = url.strip_prefix("https://exemple.test").unwrap();
 
     let (statut, _, corps) = service.get_brut(chemin).await;
@@ -375,11 +475,15 @@ async fn reprendre_apres_une_pause_rend_ses_plans() {
     let jeton = service.jeton("c_pause_plans");
 
     let (statut, corps) = service
-        .post("/v1/plans", Some(&jeton), json!({
-            "title": "Un plan qui doit survivre a la pause",
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(3)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&jeton),
+            json!({
+                "title": "Un plan qui doit survivre a la pause",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(3)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -426,11 +530,15 @@ async fn un_signalement_de_minorite_suspend_le_compte_signale() {
     let signale = service.compte("c_signale_mineur", "depart").await;
 
     let (statut, corps) = service
-        .post("/v1/reports", Some(&service.jeton("c_vigilant")), json!({
-            "accountId": signale,
-            "reason": "mineur",
-            "details": "Le profil indique etre au lycee en seconde.",
-        }))
+        .post(
+            "/v1/reports",
+            Some(&service.jeton("c_vigilant")),
+            json!({
+                "accountId": signale,
+                "reason": "mineur",
+                "details": "Le profil indique etre au lycee en seconde.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     let _ = vigilant;
@@ -459,11 +567,15 @@ async fn un_signalement_ordinaire_ne_suspend_pas() {
     let vise = service.compte("c_vise_ordinaire", "depart").await;
 
     let (statut, corps) = service
-        .post("/v1/reports", Some(&service.jeton("c_plaignant")), json!({
-            "accountId": vise,
-            "reason": "arnaque",
-            "details": "Demande de l argent des le premier message.",
-        }))
+        .post(
+            "/v1/reports",
+            Some(&service.jeton("c_plaignant")),
+            json!({
+                "accountId": vise,
+                "reason": "arnaque",
+                "details": "Demande de l argent des le premier message.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -495,23 +607,36 @@ async fn deposer_sa_fiche_ouvre_le_compte() {
         .post("/v1/auth/otp/request", None, json!({ "email": email }))
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    let code = corps["devCode"].as_str().expect("le code hors production").to_string();
+    let code = corps["devCode"]
+        .as_str()
+        .expect("le code hors production")
+        .to_string();
 
     let (statut, corps) = service
-        .post("/v1/auth/otp/verify", None, json!({
-            "email": email,
-            "code": code,
-            "displayName": "Camille",
-            "birthDate": "1994-03-08",
-        }))
+        .post(
+            "/v1/auth/otp/verify",
+            None,
+            json!({
+                "email": email,
+                "code": code,
+                "displayName": "Camille",
+                "birthDate": "1994-03-08",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    let acces = corps["session"]["accessToken"].as_str().expect("un accès").to_string();
+    let acces = corps["session"]["accessToken"]
+        .as_str()
+        .expect("un accès")
+        .to_string();
 
     // Sans fiche : le compte est né, et il ne sert à rien.
     let (statut, moi) = service.get("/v1/me", Some(&acces)).await;
     assert_eq!(statut, StatusCode::OK, "{moi}");
-    assert_eq!(moi["status"], "onboarding", "le compte devrait attendre sa fiche");
+    assert_eq!(
+        moi["status"], "onboarding",
+        "le compte devrait attendre sa fiche"
+    );
 
     let plan = json!({
         "title": "Un cafe pour faire connaissance",
@@ -527,13 +652,17 @@ async fn deposer_sa_fiche_ouvre_le_compte() {
 
     // La fiche déposée : c'est l'appel que l'application ne faisait nulle part.
     let (statut, corps) = service
-        .put("/v1/me/profile", Some(&acces), json!({
-            "city": "Nantes",
-            "latitude": 47.2184,
-            "longitude": -1.5536,
-            "gender": "femme",
-            "bio": "Je connais tous les bars a chats de la ville.",
-        }))
+        .put(
+            "/v1/me/profile",
+            Some(&acces),
+            json!({
+                "city": "Nantes",
+                "latitude": 47.2184,
+                "longitude": -1.5536,
+                "gender": "femme",
+                "bio": "Je connais tous les bars a chats de la ville.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -565,21 +694,43 @@ async fn un_genre_hors_vocabulaire_est_refuse() {
         })
     };
 
-    let (statut, corps) = service.put("/v1/me/profile", Some(&jeton), fiche("Femme")).await;
-    refuse(statut, &corps, "validation", &format!("« Femme » majuscule devrait être refusé : {corps}"));
+    let (statut, corps) = service
+        .put("/v1/me/profile", Some(&jeton), fiche("Femme"))
+        .await;
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("« Femme » majuscule devrait être refusé : {corps}"),
+    );
 
-    let (statut, corps) = service.put("/v1/me/profile", Some(&jeton), fiche("femme")).await;
+    let (statut, corps) = service
+        .put("/v1/me/profile", Some(&jeton), fiche("femme"))
+        .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     // Et les critères de recherche suivent le même vocabulaire.
     service.consentir(&jeton).await;
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["Homme"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["Homme"] }),
+        )
         .await;
-    refuse(statut, &corps, "validation", &format!("un genre cherché hors liste : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("un genre cherché hors liste : {corps}"),
+    );
 
     let (statut, corps) = service
-        .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme", "non_binaire"] }))
+        .patch(
+            "/v1/me/preferences",
+            Some(&jeton),
+            json!({ "seeking": ["homme", "non_binaire"] }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 }
@@ -614,12 +765,20 @@ async fn un_telephone_qui_change_de_mains_cesse_de_notifier_le_precedent() {
     });
 
     let (statut, corps) = service
-        .put("/v1/devices", Some(&service.jeton("c_premier_tel")), declaration.clone())
+        .put(
+            "/v1/devices",
+            Some(&service.jeton("c_premier_tel")),
+            declaration.clone(),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     let (statut, corps) = service
-        .put("/v1/devices", Some(&service.jeton("c_second_tel")), declaration)
+        .put(
+            "/v1/devices",
+            Some(&service.jeton("c_second_tel")),
+            declaration,
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -666,12 +825,16 @@ async fn une_photo_se_depose_se_relit_et_se_remplace() {
 
     // La fiche d'abord : une photo sans ville n'aurait nulle part où aller.
     let (statut, corps) = service
-        .put("/v1/me/profile", Some(&jeton), json!({
-            "city": "Bordeaux",
-            "latitude": 44.84,
-            "longitude": -0.58,
-            "gender": "autre",
-        }))
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({
+                "city": "Bordeaux",
+                "latitude": 44.84,
+                "longitude": -0.58,
+                "gender": "autre",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -684,14 +847,19 @@ async fn une_photo_se_depose_se_relit_et_se_remplace() {
 
     let (statut, corps) = service.put_octets("/v1/me/photo", &jeton, jpeg(1)).await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
-    let url = corps["photoUrl"].as_str().expect("une URL signée").to_string();
+    let url = corps["photoUrl"]
+        .as_str()
+        .expect("une URL signée")
+        .to_string();
 
     // Et elle se relit, par l'URL signée, avec son type déduit des octets.
     let chemin = url.strip_prefix("https://exemple.test").unwrap();
     let (statut, entetes, _) = service.get_brut(chemin).await;
     assert_eq!(statut, StatusCode::OK);
     assert_eq!(
-        entetes.get(axum::http::header::CONTENT_TYPE).map(|v| v.to_str().unwrap()),
+        entetes
+            .get(axum::http::header::CONTENT_TYPE)
+            .map(|v| v.to_str().unwrap()),
         Some("image/jpeg")
     );
 
@@ -716,7 +884,16 @@ async fn un_fichier_qui_n_est_pas_une_image_est_refuse() {
     let jeton = service.jeton("c_faux_media");
 
     let (statut, corps) = service
-        .put_octets("/v1/me/photo", &jeton, b"<?php system($_GET[0]); ?>".to_vec())
+        .put_octets(
+            "/v1/me/photo",
+            &jeton,
+            b"<?php system($_GET[0]); ?>".to_vec(),
+        )
         .await;
-    refuse(statut, &corps, "validation", &format!("un fichier arbitraire a été stocké : {corps}"));
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("un fichier arbitraire a été stocké : {corps}"),
+    );
 }

@@ -17,13 +17,13 @@ mod live_activity;
 mod migrations;
 mod partage;
 mod purge;
-mod storekit;
 mod routes;
+mod storekit;
 mod temps;
 
+mod env;
 #[cfg(test)]
 mod tests;
-mod env;
 
 // Les 18 entités sont engendrées d'un bloc depuis la base ; celles qu'aucune
 // route ne consomme encore signaleraient du code mort à chaque compilation.
@@ -31,12 +31,12 @@ mod env;
 mod entities;
 
 use axum::{
+    Json, Router,
     extract::{Request, State},
-    http::{header, HeaderValue, StatusCode},
+    http::{HeaderValue, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::get,
-    Json, Router,
 };
 use redis::aio::ConnectionManager;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
@@ -286,7 +286,10 @@ async fn servir_vitrine(mut requete: Request, suite: Next) -> Response {
     // Un POST sur une adresse d'API mal orthographiée arrive ici, et le
     // service de fichiers répondrait « méthode interdite » : un contresens,
     // qui laisse croire que la ressource existe. Elle n'existe pas.
-    if !matches!(*requete.method(), axum::http::Method::GET | axum::http::Method::HEAD) {
+    if !matches!(
+        *requete.method(),
+        axum::http::Method::GET | axum::http::Method::HEAD
+    ) {
         return StatusCode::NOT_FOUND.into_response();
     }
 
@@ -369,7 +372,9 @@ fn porte_une_empreinte(chemin: &str) -> bool {
         return false;
     };
     empreinte.len() >= 6
-        && empreinte.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && empreinte
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         && empreinte.chars().any(|c| c.is_ascii_digit())
 }
 
@@ -445,7 +450,7 @@ async fn arret_demande() {
     let ctrl_c = async { tokio::signal::ctrl_c().await.ok() };
     #[cfg(unix)]
     let sigterm = async {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
         match signal(SignalKind::terminate()) {
             Ok(mut s) => {
                 s.recv().await;

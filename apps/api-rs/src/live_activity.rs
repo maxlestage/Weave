@@ -7,19 +7,19 @@
 //! d'autre sans rien révéler de qui vous voyez.
 
 use crate::{
+    AppState,
     apns::{Envoi, TypeEnvoi},
     cache,
     entities::{devices, join_requests, live_activity_sessions, plans},
     error::AppError,
     temps::iso8601,
-    AppState,
 };
 use chrono::{Duration, NaiveDateTime, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Type d'attributs ActivityKit ; doit correspondre au nom Swift exact.
 const TYPE_ATTRIBUTS: &str = "WeaveActivityAttributes";
