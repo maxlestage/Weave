@@ -80,17 +80,33 @@ async fn les_miens(
     let maintenant = Utc::now().naive_utc();
     let mut rendus = Vec::with_capacity(lignes.len());
 
+    // Les deux comptages de chaque plan, en une requête groupée plutôt qu'en
+    // deux par plan. Un compte qui a publié vingt fois ouvrait quarante
+    // allers-retours pour afficher sa propre liste.
+    let mut compte_par_plan: std::collections::HashMap<(String, String), i64> =
+        std::collections::HashMap::new();
+    for (plan_id, etat, nombre) in join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.is_in(lignes.iter().map(|l| l.id.clone())))
+        .filter(join_requests::Column::State.is_in(vec!["acceptee", "envoyee"]))
+        .select_only()
+        .column(join_requests::Column::PlanId)
+        .column(join_requests::Column::State)
+        .column_as(join_requests::Column::Id.count(), "nombre")
+        .group_by(join_requests::Column::PlanId)
+        .group_by(join_requests::Column::State)
+        .into_tuple::<(String, String, i64)>()
+        .all(&state.db)
+        .await?
+    {
+        compte_par_plan.insert((plan_id, etat), nombre);
+    }
+
     for ligne in lignes {
-        let acceptees = join_requests::Entity::find()
-            .filter(join_requests::Column::PlanId.eq(ligne.id.as_str()))
-            .filter(join_requests::Column::State.eq("acceptee"))
-            .count(&state.db)
-            .await? as i32;
-        let en_attente = join_requests::Entity::find()
-            .filter(join_requests::Column::PlanId.eq(ligne.id.as_str()))
-            .filter(join_requests::Column::State.eq("envoyee"))
-            .count(&state.db)
-            .await?;
+        let compter = |etat: &str| {
+            compte_par_plan.get(&(ligne.id.clone(), etat.to_string())).copied().unwrap_or(0)
+        };
+        let acceptees = compter("acceptee") as i32;
+        let en_attente = compter("envoyee") as u64;
 
         rendus.push(json!({
             "id": ligne.id,
@@ -136,30 +152,45 @@ async fn demandes_recues(
         .all(&state.db)
         .await?;
 
-    let mut rendues = Vec::with_capacity(demandes.len());
-    for demande in demandes {
-        let auteur = accounts::Entity::find_by_id(demande.author_id.as_str())
-            .one(&state.db)
-            .await?;
-        // Un compte supprimé entre-temps ne doit pas faire échouer la lecture
-        // de toute la liste : sa demande n'a simplement plus d'auteur à
-        // montrer.
-        let Some(auteur) = auteur else { continue };
+    // Les auteurs et leurs photos, en deux requêtes plutôt qu'en deux par
+    // demande.
+    let auteurs_ids: Vec<String> = demandes.iter().map(|d| d.author_id.clone()).collect();
 
-        let photo = profiles::Entity::find()
-            .filter(profiles::Column::AccountId.eq(auteur.id.as_str()))
-            .one(&state.db)
-            .await?
-            .and_then(|p| p.photo_key)
-            .map(|cle| {
+    let auteurs: std::collections::HashMap<String, accounts::Model> = accounts::Entity::find()
+        .filter(accounts::Column::Id.is_in(auteurs_ids.clone()))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|a| (a.id.clone(), a))
+        .collect();
+
+    let photos: std::collections::HashMap<String, String> = profiles::Entity::find()
+        .filter(profiles::Column::AccountId.is_in(auteurs_ids))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .filter_map(|p| {
+            let cle = p.photo_key?;
+            Some((
+                p.account_id,
                 signer_url_media(
                     &state.config.media.base_url,
                     &state.config.media.signing_secret,
                     &cle,
                     state.config.media.ttl_url_signee_secondes,
                     0,
-                )
-            });
+                ),
+            ))
+        })
+        .collect();
+
+    let mut rendues = Vec::with_capacity(demandes.len());
+    for demande in demandes {
+        // Un compte supprimé entre-temps ne doit pas faire échouer la lecture
+        // de toute la liste : sa demande n'a simplement plus d'auteur à
+        // montrer.
+        let Some(auteur) = auteurs.get(&demande.author_id) else { continue };
+        let photo = photos.get(&auteur.id).cloned();
 
         rendues.push(json!({
             "id": demande.id,

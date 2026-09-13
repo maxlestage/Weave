@@ -324,3 +324,99 @@ async fn deux_retraits_simultanes_ne_rendent_qu_une_unite() {
         "un seul retrait, donc une seule unité rendue : {apres}"
     );
 }
+
+/// « Mes plans » et les demandes reçues ne mélangent pas les lignes entre elles.
+///
+/// Chaque plan coûtait DEUX comptages, et chaque demande reçue DEUX requêtes —
+/// l'auteur et sa fiche. Tout tient maintenant en requêtes groupées, et ce
+/// test tient ce qui doit y survivre : chaque plan porte SES places restantes
+/// et SES demandes en attente, chaque demande SON auteur.
+#[tokio::test]
+async fn mes_plans_et_leurs_demandes_ne_melangent_pas_les_lignes() {
+    let service = Service::monter().await;
+    // Palier « virée » : les plans de groupe y sont compris, donc une capacité
+    // supérieure à une place — sans quoi une acceptation remplit le plan et
+    // les deux comptages ne se distinguent plus.
+    service.compte("c_mel_hote", "viree").await;
+    for n in 0..3 {
+        service.compte(&format!("c_mel_invite{n}"), "depart").await;
+    }
+
+    let creux = plan_de_groupe(&service, "Un plan que personne ne demande").await;
+    let couru = plan_de_groupe(&service, "Un plan que tout le monde demande").await;
+
+    // Trois demandes sur le second, aucune sur le premier — et l'une acceptée.
+    let mut demandes = Vec::new();
+    for n in 0..3 {
+        let (_, corps) = demander(&service, &format!("c_mel_invite{n}"), &couru).await;
+        demandes.push(corps["id"].as_str().expect("un identifiant").to_string());
+    }
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{}/accept", demandes[0]),
+            Some(&service.jeton("c_mel_hote")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Mes plans : chacun ses propres comptes.
+    let (_, miens) = service.get("/v1/plans/mine", Some(&service.jeton("c_mel_hote"))).await;
+    let ligne = |id: &str| {
+        miens
+            .as_array()
+            .expect("une liste")
+            .iter()
+            .find(|p| p["id"] == id)
+            .unwrap_or_else(|| panic!("plan absent : {miens}"))
+            .clone()
+    };
+
+    let vide = ligne(&creux);
+    assert_eq!(vide["pendingRequests"], 0, "le plan sans demande : {vide}");
+    assert_eq!(vide["seatsLeft"], 4, "le plan sans demande : {vide}");
+
+    let plein = ligne(&couru);
+    assert_eq!(plein["pendingRequests"], 2, "deux demandes restent en attente : {plein}");
+    assert_eq!(plein["seatsLeft"], 3, "une acceptation prend une place : {plein}");
+
+    // Les demandes reçues : chacune son auteur.
+    let (statut, recues) = service
+        .get(&format!("/v1/plans/{couru}/requests"), Some(&service.jeton("c_mel_hote")))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{recues}");
+    let recues = recues.as_array().expect("une liste");
+    assert_eq!(recues.len(), 2, "seules les demandes en attente sont rendues : {recues:?}");
+
+    for demande in recues {
+        let auteur = demande["author"]["id"].as_str().unwrap_or_default();
+        assert!(
+            auteur.starts_with("c_mel_invite"),
+            "l'auteur rendu n'est pas celui de la demande : {demande}"
+        );
+        assert_eq!(
+            demande["author"]["displayName"],
+            format!("Compte {auteur}"),
+            "le nom rendu n'est pas celui de l'auteur : {demande}"
+        );
+    }
+
+    // Deux demandes, deux auteurs distincts.
+    let auteurs: std::collections::HashSet<&str> =
+        recues.iter().filter_map(|d| d["author"]["id"].as_str()).collect();
+    assert_eq!(auteurs.len(), 2, "le même auteur rendu deux fois : {recues:?}");
+}
+
+/// Un plan de groupe publié par « c_mel_hote ».
+async fn plan_de_groupe(service: &Service, titre: &str) -> String {
+    let (statut, corps) = service
+        .post("/v1/plans", Some(&service.jeton("c_mel_hote")), json!({
+            "title": titre,
+            "category": "balade",
+            "capacity": 4,
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    corps["id"].as_str().expect("un identifiant").to_string()
+}

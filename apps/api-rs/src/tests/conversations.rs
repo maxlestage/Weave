@@ -212,3 +212,132 @@ async fn la_liste_ne_montre_que_les_siennes() {
     assert_eq!(statut, StatusCode::OK);
     assert_eq!(corps.as_array().expect("un tableau").len(), 0, "{corps}");
 }
+
+/// Ouvre une conversation de plus pour un hôte DÉJÀ créé.
+///
+/// `conversation_ouverte` crée les deux comptes : s'en servir trois fois donne
+/// trois hôtes d'une conversation chacun, ce qui ne met jamais deux lignes
+/// dans la même liste. C'est précisément ce qu'il faut pour éprouver un
+/// regroupement.
+async fn conversation_de_plus(service: &Service, hote: &str, invite: &str, titre: &str) -> String {
+    service.compte(invite, "depart").await;
+
+    let (statut, plan) = service
+        .post("/v1/plans", Some(&service.jeton(hote)), json!({
+            "title": titre,
+            "category": "balade",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{plan}");
+
+    let (statut, demande) = service
+        .post("/v1/requests", Some(&service.jeton(invite)), json!({
+            "planId": plan["id"].as_str().unwrap(),
+            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{demande}");
+
+    let (statut, accepte) = service
+        .post(
+            &format!("/v1/requests/{}/accept", demande["id"].as_str().unwrap()),
+            Some(&service.jeton(hote)),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{accepte}");
+    accepte["conversationId"].as_str().expect("une conversation").to_string()
+}
+
+/// La liste dit vrai sur PLUSIEURS conversations d'un même compte.
+///
+/// Elle interrogeait la base cinq fois par conversation — le plan, l'autre
+/// personne, sa fiche pour la photo, le dernier message, le compte des
+/// non-lus. Cent conversations sont rendues au plus, soit jusqu'à cinq cents
+/// allers-retours pour ouvrir l'écran des messages.
+///
+/// Tout est chargé en cinq requêtes. Ce test tient ce qui doit survivre au
+/// regroupement : chaque ligne porte SON dernier message, SON compte de
+/// non-lus et SON plan — et non ceux de sa voisine.
+///
+/// Ma première version donnait un hôte différent à chaque conversation : les
+/// listes n'en contenaient qu'une, et prendre n'importe laquelle donnait la
+/// bonne réponse. Elle passait avec le mélange en place.
+#[tokio::test]
+async fn la_liste_ne_melange_pas_les_conversations_d_un_meme_compte() {
+    let service = Service::monter().await;
+    service.compte("c_liste_hote", "depart").await;
+
+    let mut ouvertes = Vec::new();
+    for n in 0..3 {
+        let invite = format!("c_liste_invite{n}");
+        let titre = format!("Un plan numero {n} dont on parle");
+        ouvertes.push((
+            conversation_de_plus(&service, "c_liste_hote", &invite, &titre).await,
+            invite,
+            titre,
+        ));
+    }
+
+    // Un nombre et un texte différents par conversation : un mélange se voit.
+    for (rang, (conversation, invite, _)) in ouvertes.iter().enumerate() {
+        for message in 0..=rang {
+            let (statut, corps) = service
+                .post(
+                    &format!("/v1/conversations/{conversation}/messages"),
+                    Some(&service.jeton(invite)),
+                    json!({ "body": format!("Message {message} de la conversation {rang}") }),
+                )
+                .await;
+            assert_eq!(statut, StatusCode::OK, "{corps}");
+        }
+    }
+
+    let (statut, liste) = service
+        .get("/v1/conversations", Some(&service.jeton("c_liste_hote")))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{liste}");
+    let lignes = liste.as_array().expect("une liste");
+    assert_eq!(lignes.len(), 3, "les trois conversations doivent être là : {liste}");
+
+    for (rang, (conversation, _, titre)) in ouvertes.iter().enumerate() {
+        let ligne = lignes
+            .iter()
+            .find(|c| c["id"] == conversation.as_str())
+            .unwrap_or_else(|| panic!("conversation {rang} absente : {liste}"));
+
+        assert_eq!(ligne["unread"], rang as i64 + 1, "non-lus de la conversation {rang} : {ligne}");
+        assert_eq!(
+            ligne["lastMessage"],
+            format!("Message {rang} de la conversation {rang}"),
+            "dernier message de la conversation {rang} : {ligne}"
+        );
+        assert_eq!(ligne["planTitle"], titre.as_str(), "plan de la conversation {rang} : {ligne}");
+    }
+}
+
+/// Une conversation sans aucun message ne disparaît pas de la liste.
+///
+/// Le dernier message et les non-lus viennent de deux requêtes groupées : une
+/// conversation absente de leur résultat doit rendre « aucun message » et zéro,
+/// pas sortir de la liste.
+#[tokio::test]
+async fn une_conversation_sans_message_figure_dans_la_liste() {
+    let service = Service::monter().await;
+    let conversation = conversation_ouverte(&service, "c_muette_hote", "c_muette_invite").await;
+
+    let (statut, liste) = service
+        .get("/v1/conversations", Some(&service.jeton("c_muette_hote")))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{liste}");
+
+    let ligne = liste
+        .as_array()
+        .expect("une liste")
+        .iter()
+        .find(|c| c["id"] == conversation.as_str())
+        .unwrap_or_else(|| panic!("la conversation muette a disparu : {liste}"));
+    assert_eq!(ligne["unread"], 0, "{ligne}");
+    assert!(ligne["lastMessage"].is_null(), "{ligne}");
+}

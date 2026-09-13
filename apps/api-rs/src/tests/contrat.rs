@@ -692,6 +692,69 @@ fn normaliser_parametres(adresse: &str) -> String {
     sortie
 }
 
+/// La boucle qui compose le fil n'interroge pas la base.
+///
+/// Elle le faisait pour CHAQUE plan : l'auteur, sa fiche quand le genre est
+/// filtré, et les demandes reçues. Jusqu'à trois cents plans sont lus — soit
+/// jusqu'à neuf cents allers-retours pour composer un seul fil, sur une base
+/// qui vit au bout du réseau. C'est le chemin le plus chaud du produit :
+/// l'écran d'accueil de l'application.
+///
+/// Tout est désormais chargé en trois requêtes avant la boucle, et la boucle
+/// ne fait plus que trier en mémoire.
+///
+/// ## Pourquoi ce test lit le source
+///
+/// Compter les requêtes réellement exécutées demanderait la journalisation de
+/// SeaORM, donc une dépendance de plus dans le binaire de production — pour
+/// éprouver une propriété qui se lit dans le texte. Et un test de durée ne
+/// dirait rien : sur SQLite en mémoire, neuf cents requêtes sont rapides.
+///
+/// Le contrôle est donc structurel, et il est franc sur ce qu'il vérifie : que
+/// le corps de la boucle ne contient aucun appel à la base.
+#[test]
+fn la_boucle_du_fil_n_interroge_pas_la_base() {
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/fil.rs"),
+    )
+    .expect("le module du fil");
+
+    let marque = "for ligne in lignes {";
+    let debut = source
+        .find(marque)
+        .expect("la boucle qui compose le fil a changé de forme : ce test est à revoir");
+
+    // Le corps s'arrête à l'accolade qui referme le `for`.
+    let apres = &source[debut + marque.len()..];
+    let mut profondeur = 1usize;
+    let mut fin = apres.len();
+    for (i, c) in apres.char_indices() {
+        match c {
+            '{' => profondeur += 1,
+            '}' => {
+                profondeur -= 1;
+                if profondeur == 0 {
+                    fin = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let corps = &apres[..fin];
+
+    let appels: Vec<&str> = ["(&state.db)", "(&transaction)", ".all(db)", ".one(db)"]
+        .into_iter()
+        .filter(|a| corps.contains(a))
+        .collect();
+
+    assert!(
+        appels.is_empty(),
+        "la boucle du fil interroge la base ({appels:?}) : une requête par plan, \
+         jusqu'à trois cents fois. Tout doit être chargé avant la boucle."
+    );
+}
+
 fn catalogue() -> String {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../packages/contracts/src/catalog.ts");

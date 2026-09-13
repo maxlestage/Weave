@@ -274,13 +274,59 @@ async fn composer(
         .all(&state.db)
         .await?;
 
+    // Tout ce dont la boucle a besoin, en trois requêtes plutôt qu'en trois par
+    // plan.
+    //
+    // La boucle interrogeait la base pour CHAQUE plan : l'auteur, sa fiche
+    // quand le genre est filtré, et les demandes reçues. Jusqu'à trois cents
+    // plans sont lus — soit jusqu'à NEUF CENTS ALLERS-RETOURS pour composer un
+    // seul fil, sur une base qui vit au bout du réseau.
+    //
+    // C'est le chemin le plus chaud du produit : l'écran d'accueil de
+    // l'application. Le cache de cinq minutes en amortissait le coût sans le
+    // supprimer — il le décalait au premier qui arrive, et c'est toujours
+    // quelqu'un.
+    let auteurs_ids: Vec<String> = lignes.iter().map(|l| l.author_id.clone()).collect();
+    let plans_ids: Vec<String> = lignes.iter().map(|l| l.id.clone()).collect();
+
+    let auteurs: std::collections::HashMap<String, accounts::Model> =
+        accounts::Entity::find()
+            .filter(accounts::Column::Id.is_in(auteurs_ids.clone()))
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .map(|a| (a.id.clone(), a))
+            .collect();
+
+    // Les fiches ne servent qu'au filtre par genre : ne les charger que
+    // lorsqu'il est posé évite une requête à qui ne s'en sert pas.
+    let genres: std::collections::HashMap<String, String> = if contexte.recherche.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        profiles::Entity::find()
+            .filter(profiles::Column::AccountId.is_in(auteurs_ids))
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .map(|p| (p.account_id, p.gender))
+            .collect()
+    };
+
+    let mut demandes_par_plan: std::collections::HashMap<String, Vec<join_requests::Model>> =
+        std::collections::HashMap::new();
+    for demande in join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.is_in(plans_ids))
+        .filter(join_requests::Column::State.is_in(vec!["envoyee", "acceptee"]))
+        .all(&state.db)
+        .await?
+    {
+        demandes_par_plan.entry(demande.plan_id.clone()).or_default().push(demande);
+    }
+
     let mut retenus: Vec<(String, f64, PlanDuFil)> = Vec::new();
 
     for ligne in lignes {
-        let Some(auteur) = accounts::Entity::find_by_id(ligne.author_id.clone())
-            .one(&state.db)
-            .await?
-        else {
+        let Some(auteur) = auteurs.get(&ligne.author_id) else {
             continue;
         };
 
@@ -294,13 +340,10 @@ async fn composer(
         }
 
         if !contexte.recherche.is_empty() {
-            let genre = profiles::Entity::find()
-                .filter(profiles::Column::AccountId.eq(auteur.id.as_str()))
-                .one(&state.db)
-                .await?
-                .map(|p| p.gender);
-            match genre {
-                Some(g) if contexte.recherche.contains(&g) => {}
+            match genres.get(&auteur.id) {
+                Some(g) if contexte.recherche.contains(g) => {}
+                // Fiche absente ou genre hors des critères : même issue
+                // qu'avant, le plan sort du fil.
                 _ => continue,
             }
         }
@@ -324,11 +367,8 @@ async fn composer(
             continue;
         }
 
-        let demandes = join_requests::Entity::find()
-            .filter(join_requests::Column::PlanId.eq(ligne.id.as_str()))
-            .filter(join_requests::Column::State.is_in(vec!["envoyee", "acceptee"]))
-            .all(&state.db)
-            .await?;
+        let vides = Vec::new();
+        let demandes = demandes_par_plan.get(&ligne.id).unwrap_or(&vides);
 
         let acceptees = demandes.iter().filter(|d| d.state == "acceptee").count() as i32;
         let places = (ligne.capacity - acceptees).max(0);
@@ -354,7 +394,7 @@ async fn composer(
                 city: ligne.city,
                 distance_km: distance,
                 places_left: places,
-                author_name: auteur.display_name,
+                author_name: auteur.display_name.clone(),
                 author_age: age,
                 author_verified: auteur.verified,
                 already_requested: deja_demande,

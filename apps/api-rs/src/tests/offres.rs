@@ -1122,3 +1122,4 @@ async fn une_escale_sans_credit_n_ouvre_rien() {
         "une escale a été ouverte sans être payée : {criteres}"
     );
 }
+

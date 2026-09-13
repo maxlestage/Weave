@@ -19,7 +19,7 @@ use axum::{
 };
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
@@ -73,12 +73,82 @@ async fn les_miennes(
         .all(&state.db)
         .await?;
 
-    let mut rendues = Vec::with_capacity(lignes.len());
-    for ligne in lignes {
-        let Some(plan) = plans::Entity::find_by_id(ligne.plan_id.as_str())
-            .one(&state.db)
+    // Tout ce dont la boucle a besoin, en cinq requêtes plutôt qu'en cinq PAR
+    // conversation.
+    //
+    // Elle interrogeait la base pour chacune : le plan, l'autre personne, sa
+    // fiche pour la photo signée, le dernier message et le compte des non-lus.
+    // Cent conversations sont rendues au plus — soit jusqu'à CINQ CENTS
+    // allers-retours pour ouvrir l'écran des messages.
+    let plans_ids: Vec<String> = lignes.iter().map(|l| l.plan_id.clone()).collect();
+    let autres_ids: Vec<String> = lignes
+        .iter()
+        .map(|l| if l.host_id == compte.id { l.guest_id.clone() } else { l.host_id.clone() })
+        .collect();
+    let conversations_ids: Vec<String> = lignes.iter().map(|l| l.id.clone()).collect();
+
+    let plans: std::collections::HashMap<String, plans::Model> = plans::Entity::find()
+        .filter(plans::Column::Id.is_in(plans_ids))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|p| (p.id.clone(), p))
+        .collect();
+
+    let autres: std::collections::HashMap<String, accounts::Model> = accounts::Entity::find()
+        .filter(accounts::Column::Id.is_in(autres_ids.clone()))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|a| (a.id.clone(), a))
+        .collect();
+
+    let photos = photos_signees(&state, &autres_ids).await?;
+
+    // Le dernier message de chacune, en une requête.
+    //
+    // `lastMessageAt` est déjà porté par la conversation : il suffit de
+    // demander les messages qui tombent à cette date-là. Deux messages d'une
+    // MÊME conversation à la même milliseconde en rendraient un des deux —
+    // c'est l'aperçu d'une liste, et cela n'est pas arrivé.
+    let dates: Vec<chrono::NaiveDateTime> = lignes.iter().filter_map(|l| l.last_message_at).collect();
+    let mut derniers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if !dates.is_empty() {
+        for (conversation, corps) in messages::Entity::find()
+            .filter(messages::Column::ConversationId.is_in(conversations_ids.clone()))
+            .filter(messages::Column::SentAt.is_in(dates))
+            .select_only()
+            .column(messages::Column::ConversationId)
+            .column(messages::Column::Body)
+            .into_tuple::<(String, String)>()
+            .all(&state.db)
             .await?
-        else {
+        {
+            derniers.entry(conversation).or_insert(corps);
+        }
+    }
+
+    // Les non-lus, groupés en une seule requête.
+    let mut non_lus_par_conversation: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    for (conversation, nombre) in messages::Entity::find()
+        .filter(messages::Column::ConversationId.is_in(conversations_ids))
+        .filter(messages::Column::AuthorId.ne(compte.id.as_str()))
+        .filter(messages::Column::ReadAt.is_null())
+        .select_only()
+        .column(messages::Column::ConversationId)
+        .column_as(messages::Column::Id.count(), "nombre")
+        .group_by(messages::Column::ConversationId)
+        .into_tuple::<(String, i64)>()
+        .all(&state.db)
+        .await?
+    {
+        non_lus_par_conversation.insert(conversation, nombre);
+    }
+
+    let mut rendues = Vec::with_capacity(lignes.len());
+    for ligne in &lignes {
+        let Some(plan) = plans.get(&ligne.plan_id) else {
             continue;
         };
 
@@ -88,29 +158,12 @@ async fn les_miennes(
         } else {
             &ligne.host_id
         };
-        let Some(autre) = accounts::Entity::find_by_id(autre_id.as_str())
-            .one(&state.db)
-            .await?
-        else {
+        let Some(autre) = autres.get(autre_id.as_str()) else {
             continue;
         };
 
-        let dernier: Option<String> = messages::Entity::find()
-            .filter(messages::Column::ConversationId.eq(ligne.id.as_str()))
-            .order_by_desc(messages::Column::SentAt)
-            .select_only()
-            .column(messages::Column::Body)
-            .into_tuple()
-            .one(&state.db)
-            .await?;
-
-        // Non lus : ceux de l'autre, jamais les miens.
-        let non_lus = messages::Entity::find()
-            .filter(messages::Column::ConversationId.eq(ligne.id.as_str()))
-            .filter(messages::Column::AuthorId.ne(compte.id.as_str()))
-            .filter(messages::Column::ReadAt.is_null())
-            .count(&state.db)
-            .await?;
+        let dernier: Option<&String> = derniers.get(&ligne.id);
+        let non_lus = non_lus_par_conversation.get(&ligne.id).copied().unwrap_or(0);
 
         rendues.push(json!({
             "id": ligne.id,
@@ -121,7 +174,7 @@ async fn les_miennes(
                 "id": autre.id,
                 "displayName": autre.display_name,
                 "age": age_depuis(autre.birth_date.and_utc(), Utc::now()),
-                "photoUrl": photo_signee(&state, &autre.id).await?,
+                "photoUrl": photos.get(autre.id.as_str()).cloned().flatten(),
                 "verified": autre.verified,
             },
             "lastMessage": dernier,
@@ -134,22 +187,38 @@ async fn les_miennes(
     Ok(Json(Value::Array(rendues)))
 }
 
-async fn photo_signee(state: &AppState, compte_id: &str) -> Result<Option<String>, AppError> {
+/// Les photos signées de plusieurs comptes, en une requête.
+///
+/// Elle remplace une version unitaire, appelée dans la boucle de la liste des
+/// conversations : une requête de plus par ligne, pour une signature qui ne
+/// coûte rien à calculer une fois les clés en main.
+async fn photos_signees(
+    state: &AppState,
+    comptes: &[String],
+) -> Result<std::collections::HashMap<String, Option<String>>, AppError> {
+    if comptes.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
     Ok(profiles::Entity::find()
-        .filter(profiles::Column::AccountId.eq(compte_id))
-        .one(&state.db)
+        .filter(profiles::Column::AccountId.is_in(comptes.to_vec()))
+        .all(&state.db)
         .await?
-        .and_then(|p| p.photo_key)
-        .map(|cle| {
-            signer_url_media(
-                &state.config.media.base_url,
-                &state.config.media.signing_secret,
-                &cle,
-                state.config.media.ttl_url_signee_secondes,
-                0,
-            )
-        }))
+        .into_iter()
+        .map(|p| {
+            let url = p.photo_key.map(|cle| {
+                signer_url_media(
+                    &state.config.media.base_url,
+                    &state.config.media.signing_secret,
+                    &cle,
+                    state.config.media.ttl_url_signee_secondes,
+                    0,
+                )
+            });
+            (p.account_id, url)
+        })
+        .collect())
 }
+
 
 #[derive(Deserialize)]
 struct AvantQuand {
