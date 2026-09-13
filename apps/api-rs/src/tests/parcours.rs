@@ -553,7 +553,7 @@ async fn deposer_sa_fiche_ouvre_le_compte() {
 #[tokio::test]
 async fn un_genre_hors_vocabulaire_est_refuse() {
     let service = Service::monter().await;
-    service.compte("c_genre", "depart").await;
+    service.compte("c_genre", "escapade").await;
     let jeton = service.jeton("c_genre");
 
     let fiche = |genre: &str| {

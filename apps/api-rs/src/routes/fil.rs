@@ -8,10 +8,11 @@
 //! Ce que le palier change, c'est l'horizon de publication et la finesse des
 //! critères — jamais une place dans la file.
 
+use crate::routes::me::jours_json;
 use crate::{
     auth::{Authentifie, CompteAuthentifie},
     cache,
-    droits::{demandes_restantes, droits_pour, quota_journalier},
+    droits::{demandes_restantes, droits_pour, filtre_autorise, quota_journalier, Critere},
     entities::{accounts, blocks, join_requests, plans, preferences, profiles},
     error::AppError,
     limitation::{consommer, Regle},
@@ -19,7 +20,7 @@ use crate::{
     AppState,
 };
 use axum::{extract::State, routing::get, Json, Router};
-use chrono::{Duration, Utc};
+use chrono::{Datelike, Duration, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -87,7 +88,7 @@ async fn lire_fil(
         })));
     }
 
-    let Some(contexte) = contexte_de(&state, &compte.id).await? else {
+    let Some(contexte) = contexte_de(&state, &compte.id, &compte.tier).await? else {
         // Sans ville ni critères, il n'y a pas de fil à composer — mais le
         // service répond quand même : un compte en cours d'inscription n'est
         // pas une erreur.
@@ -128,6 +129,8 @@ struct Contexte {
     age_min: i32,
     age_max: i32,
     recherche: Vec<String>,
+    /// Jours retenus, au sens ISO : 1 lundi, 7 dimanche. Vide = tous.
+    jours: Vec<i32>,
     categories: Vec<String>,
     /// Ville d'« Escale » : le fil bascule sur une autre ville, sans distance.
     escale: Option<String>,
@@ -135,7 +138,11 @@ struct Contexte {
     exclus: Vec<String>,
 }
 
-async fn contexte_de(state: &AppState, compte_id: &str) -> Result<Option<Contexte>, AppError> {
+async fn contexte_de(
+    state: &AppState,
+    compte_id: &str,
+    palier: &str,
+) -> Result<Option<Contexte>, AppError> {
     let Some(profil) = profiles::Entity::find()
         .filter(profiles::Column::AccountId.eq(compte_id))
         .one(&state.db)
@@ -184,8 +191,15 @@ async fn contexte_de(state: &AppState, compte_id: &str) -> Result<Option<Context
         },
         age_min: pref.min_age,
         age_max: pref.max_age,
-        recherche: liste_json(&pref.seeking_json),
-        categories: liste_json(&pref.categories_json),
+        // Les critères vendus par palier sont relus à travers la règle, pas
+        // seulement contrôlés à l'écriture.
+        //
+        // Sans cela, un abonnement qui expire laisserait en place les critères
+        // posés du temps où il courait : on continuerait de bénéficier de ce
+        // qu'on ne paie plus, et il aurait suffi de s'abonner un mois.
+        recherche: si_autorise(palier, Critere::Genre, liste_json(&pref.seeking_json)),
+        jours: si_autorise(palier, Critere::Jour, jours_json(&pref.days_json)),
+        categories: si_autorise(palier, Critere::Categorie, liste_json(&pref.categories_json)),
         escale: escale_active.then_some(pref.escale_city).flatten(),
         exclus,
     }))
@@ -270,6 +284,16 @@ async fn composer(
             }
         }
 
+        // Le jour de la semaine se juge en mémoire : `strftime` de SQLite et
+        // `EXTRACT` de PostgreSQL ne comptent pas les jours pareil, et le
+        // schéma doit rester le même des deux côtés.
+        if !contexte.jours.is_empty() {
+            let jour = ligne.starts_at.and_utc().weekday().number_from_monday() as i32;
+            if !contexte.jours.contains(&jour) {
+                continue;
+            }
+        }
+
         let distance = if contexte.escale.is_some() {
             0.0
         } else {
@@ -335,4 +359,18 @@ async fn composer(
         .take(TAILLE_FIL)
         .map(|(_, _, plan)| plan)
         .collect())
+}
+
+/// Ne garde un critère que si le palier y donne droit.
+///
+/// Les critères sont contrôlés à l'écriture, mais un palier peut retomber
+/// entre-temps : un abonnement qui expire laisserait sinon en place ce qui
+/// avait été posé du temps où il courait. Il aurait suffi de s'abonner un
+/// mois pour garder le bénéfice indéfiniment.
+fn si_autorise<T>(palier: &str, critere: Critere, valeurs: Vec<T>) -> Vec<T> {
+    if filtre_autorise(palier, critere) {
+        valeurs
+    } else {
+        Vec::new()
+    }
 }
