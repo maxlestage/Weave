@@ -214,3 +214,38 @@ async fn un_renouvellement_recharge_la_dotation_sans_effacer_les_achats() {
         "l'achat à l'unité a été effacé par la dotation : {fiche}"
     );
 }
+
+/// Deux crédits simultanés s'additionnent, ils ne s'écrasent pas.
+///
+/// Huitième instance de la famille « lire, puis écrire, sans rien entre les
+/// deux » — et la seule qui porte sur de l'argent. Le solde était lu,
+/// additionné en Rust, puis réécrit. Deux crédits concurrents — un achat et le
+/// renvoi de la même notification par Apple, deux achats coup sur coup —
+/// lisaient le même solde et n'en écrivaient qu'un.
+///
+/// Quelqu'un payait et ne recevait rien. Rien nulle part ne l'aurait signalé :
+/// aucune erreur, aucun journal, juste un solde plus bas que la somme des
+/// achats.
+#[tokio::test]
+async fn deux_credits_concurrents_s_additionnent() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_credits", "depart").await;
+
+    // Deux dotations de cinq, lancées ensemble sur une ligne qui n'existe pas
+    // encore : c'est le cas le plus défavorable, où la création et l'incrément
+    // se disputent la même ligne.
+    let (a, b) = tokio::join!(
+        crate::routes::billing::crediter_pour_test(&service.etat, &compte, "horizon", 5),
+        crate::routes::billing::crediter_pour_test(&service.etat, &compte, "horizon", 5),
+    );
+    a.expect("premier crédit");
+    b.expect("second crédit");
+
+    let (statut, corps) = service.get("/v1/me", Some(&service.jeton("c_credits"))).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        corps["credits"]["horizon"], 10,
+        "deux dotations de cinq doivent faire dix — obtenu {}",
+        corps["credits"]["horizon"]
+    );
+}
