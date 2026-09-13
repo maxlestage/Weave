@@ -16,15 +16,21 @@ use sha2::{Digest, Sha256};
 /// `TIMESTAMP(3)` contre `DATETIME`, `TEXT[]` contre `JSONB`. Servir le SQL de
 /// PostgreSQL à SQLite ne dégrade pas la migration : elle échoue à la première
 /// parenthèse.
-const MIGRATIONS_POSTGRES: &[(&str, &str)] = &[(
-    "0_init",
-    include_str!("../migrations/0_init/migration.sql"),
-)];
+const MIGRATIONS_POSTGRES: &[(&str, &str)] = &[
+    ("0_init", include_str!("../migrations/0_init/migration.sql")),
+    (
+        "1_media_objects",
+        include_str!("../migrations/1_media_objects/migration.sql"),
+    ),
+];
 
-const MIGRATIONS_SQLITE: &[(&str, &str)] = &[(
-    "0_init",
-    include_str!("../migrations-sqlite/0_init/migration.sql"),
-)];
+const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
+    ("0_init", include_str!("../migrations-sqlite/0_init/migration.sql")),
+    (
+        "1_media_objects",
+        include_str!("../migrations-sqlite/1_media_objects/migration.sql"),
+    ),
+];
 
 /// Le jeu qui correspond au dialecte de la connexion.
 fn jeu(backend: DatabaseBackend) -> &'static [(&'static str, &'static str)] {
@@ -117,13 +123,22 @@ async fn inscrire(db: &DatabaseConnection, nom: &str, sql: &str) -> Result<(), D
 /// écarter une instruction parce qu'elle commence par un commentaire les
 /// écarterait toutes, en silence. Les commentaires se retirent ligne à ligne.
 fn decouper(sql: &str) -> Vec<String> {
-    sql.split(';')
-        .map(|bloc| {
-            bloc.lines()
-                .filter(|ligne| !ligne.trim_start().starts_with("--"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+    // Les commentaires partent AVANT le découpage, et l'ordre est tout.
+    //
+    // Découper d'abord coupait un commentaire en deux dès qu'il contenait un
+    // point-virgule — ce que la ponctuation française fait volontiers — et la
+    // seconde moitié de la phrase devenait une instruction SQL. L'erreur
+    // tombait au démarrage, sur « near "ici": syntax error », sans rien qui la
+    // relie au commentaire qui l'a causée. En production, c'est la phase de
+    // publication qui échoue, là où l'on ne peut plus rien corriger.
+    let sans_commentaires: String = sql
+        .lines()
+        .filter(|ligne| !ligne.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    sans_commentaires
+        .split(';')
         .map(|bloc| bloc.trim().to_string())
         .filter(|bloc| !bloc.is_empty())
         .collect()
@@ -132,6 +147,23 @@ fn decouper(sql: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un point-virgule dans un commentaire ne coupe rien.
+    ///
+    /// La ponctuation française en met volontiers, et le découpage se faisait
+    /// avant le retrait des commentaires : la moitié d'une phrase devenait une
+    /// instruction. L'erreur tombait au démarrage, sans rien qui la relie au
+    /// commentaire fautif.
+    #[test]
+    fn un_point_virgule_dans_un_commentaire_ne_coupe_rien() {
+        let sql = "-- Il faut un bucket ; ici, il n'y en a pas.\nCREATE TABLE t (a TEXT);";
+        let instructions = decouper(sql);
+        assert_eq!(
+            instructions,
+            vec!["CREATE TABLE t (a TEXT)"],
+            "le commentaire a été pris pour du SQL"
+        );
+    }
 
     #[test]
     fn le_decoupage_garde_toutes_les_instructions() {

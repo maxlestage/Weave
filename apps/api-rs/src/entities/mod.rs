@@ -11,6 +11,7 @@ pub mod credit_balances;
 pub mod devices;
 pub mod join_requests;
 pub mod live_activity_sessions;
+pub mod media_objects;
 pub mod messages;
 pub mod otp_challenges;
 pub mod plans;
