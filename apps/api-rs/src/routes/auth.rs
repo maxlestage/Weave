@@ -316,6 +316,21 @@ struct VerificationCode {
     device_id: Option<String>,
 }
 
+/// Les statuts pour lesquels aucune session ne doit s'ouvrir.
+///
+/// Rend le motif à dire, ou `None` si la connexion est légitime. Un compte en
+/// pause en fait partie : c'est un état réversible, et c'est en se reconnectant
+/// qu'on en sort.
+fn refus_de_session(statut: &str) -> Option<&'static str> {
+    match statut {
+        "suspended" => Some("Ce compte est suspendu."),
+        "deleting" => {
+            Some("Ce compte est en cours de suppression. Écrivez à l'assistance pour l'annuler.")
+        }
+        _ => None,
+    }
+}
+
 async fn verifier_code(
     State(state): State<AppState>,
     ConnectInfo(adresse): ConnectInfo<SocketAddr>,
@@ -413,6 +428,19 @@ async fn verifier_code(
         .await?;
     if consomme.rows_affected != 1 {
         return Err(non_autorise("Code expiré ou déjà utilisé."));
+    }
+
+    // Le statut se vérifie ici, et pas plus tôt : le code doit être consommé
+    // dans tous les cas. Refuser avant de le brûler laisserait un code à six
+    // chiffres valable jusqu'à son expiration, réessayable autant de fois que
+    // le plafond de tentatives le permet.
+    //
+    // Une session ouverte sur un compte suspendu ou en cours de suppression ne
+    // servait à rien — le portier refuse chacun de ses appels — mais elle
+    // laissait croire à une reconnexion réussie. Autant le dire ici, où la
+    // personne peut encore comprendre pourquoi.
+    if let Some(raison) = refus_de_session(&compte.status) {
+        return Err(non_autorise(raison));
     }
 
     let session = ouvrir_session(&state, &compte.id, corps.device_id.as_deref()).await?;

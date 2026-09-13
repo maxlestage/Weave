@@ -187,6 +187,22 @@ impl FromRequestParts<AppState> for Authentifie {
             return Err(non_autorise("Ce compte est suspendu."));
         }
 
+        // Un compte en cours de suppression ne doit plus rien pouvoir faire.
+        //
+        // La suppression révoque les jetons de renouvellement, mais le jeton
+        // d'accès déjà émis vit encore un quart d'heure : ce seul portier
+        // laissait donc publier, demander et écrire pendant ce temps, alors
+        // que la page publique promet un compte « invisible et inutilisable
+        // dans l'intervalle ». Il n'existe aucune route pour revenir en
+        // arrière : le délai de trente jours sert à traiter une suppression
+        // demandée par erreur, et cela passe par l'assistance, pas par le
+        // jeton qu'on avait encore en poche.
+        if compte.status == "deleting" {
+            return Err(non_autorise(
+                "Ce compte est en cours de suppression. Écrivez à l'assistance pour l'annuler.",
+            ));
+        }
+
         Ok(Authentifie(compte))
     }
 }

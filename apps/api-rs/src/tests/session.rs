@@ -307,3 +307,108 @@ async fn le_plafond_de_tentatives_tient_meme_en_rafale() {
         "après la rafale, le code doit être épuisé — obtenu : {corps}"
     );
 }
+
+/// Un compte en cours de suppression ne doit plus rien pouvoir faire.
+///
+/// La suppression révoque les jetons de renouvellement, mais le jeton d'accès
+/// déjà émis reste valide un quart d'heure — et le portier ne refusait que le
+/// statut « suspended ». Pendant ce quart d'heure, le compte continuait donc
+/// de publier, de demander, de discuter, alors que la page publique promet
+/// qu'il « demeure invisible et inutilisable dans l'intervalle ».
+#[tokio::test]
+async fn un_compte_en_suppression_ne_peut_plus_agir() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_efface", "depart").await;
+    let acces = emettre_jeton(SECRET, &compte, 900).expect("jeton émis");
+
+    let (statut, corps) = service.delete("/v1/auth/account", Some(&acces)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, corps) = service
+        .post("/v1/plans", Some(&acces), json!({
+            "title": "Un plan publie apres la suppression",
+            "category": "balade",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+        }))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "un compte supprimé a publié un plan : {corps}"
+    );
+}
+
+/// La mise en pause ne doit pas ressusciter un compte en cours de suppression.
+///
+/// « Reprendre » écrivait « active » sans regarder le statut de départ. Un
+/// compte à « deleting » redevenait donc « active » — visible dans le fil, et
+/// joignable — tout en restant marqué pour la purge. Il se serait évanoui au
+/// bout de trente jours au milieu de conversations en cours.
+#[tokio::test]
+async fn reprendre_ne_ressuscite_pas_un_compte_supprime() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_revenant", "depart").await;
+    let acces = emettre_jeton(SECRET, &compte, 900).expect("jeton émis");
+
+    let (statut, _) = service.delete("/v1/auth/account", Some(&acces)).await;
+    assert_eq!(statut, StatusCode::OK);
+
+    // Le portier devrait déjà refuser ; l'assertion porte sur l'état en base,
+    // pour que le test tienne même si l'un des deux verrous cédait.
+    let _ = service
+        .post("/v1/me/pause", Some(&acces), json!({ "paused": false }))
+        .await;
+
+    let statut_final: String = {
+        use sea_orm::{ConnectionTrait, Statement};
+        service
+            .db
+            .query_one_raw(Statement::from_string(
+                service.db.get_database_backend(),
+                format!("SELECT status AS s FROM accounts WHERE id='{compte}'"),
+            ))
+            .await
+            .unwrap()
+            .map(|l| l.try_get::<String>("", "s").unwrap())
+            .expect("compte présent")
+    };
+    assert_eq!(
+        statut_final, "deleting",
+        "le compte est revenu à « {statut_final} » alors qu'il était supprimé"
+    );
+}
+
+/// Se reconnecter ne doit pas rouvrir une session sur un compte supprimé.
+///
+/// La vérification du code ouvrait une session sans regarder le statut. Elle
+/// était inoffensive — le portier refuse chacun des appels qui suivent — mais
+/// elle annonçait une reconnexion réussie à quelqu'un dont le compte part à la
+/// purge, et ne disait nulle part pourquoi plus rien ne marchait ensuite.
+#[tokio::test]
+async fn se_reconnecter_sur_un_compte_supprime_est_refuse_et_explique() {
+    let service = Service::monter().await;
+    let (acces, _) = session(&service, "supprime_relog").await;
+
+    let (statut, _) = service.delete("/v1/auth/account", Some(&acces)).await;
+    assert_eq!(statut, StatusCode::OK);
+
+    let email = &service.email("supprime_relog");
+    let (statut, corps) = service
+        .post("/v1/auth/otp/request", None, json!({ "email": email }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let code = corps["devCode"].as_str().expect("le code hors production").to_string();
+
+    let (statut, corps) = service
+        .post("/v1/auth/otp/verify", None, json!({ "email": email, "code": code }))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "une session s'est ouverte sur un compte supprimé : {corps}"
+    );
+    assert!(
+        corps["message"].as_str().unwrap_or_default().contains("suppression"),
+        "le refus doit dire pourquoi : {corps}"
+    );
+}

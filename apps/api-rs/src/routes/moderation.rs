@@ -139,15 +139,32 @@ async fn mettre_en_pause(
     Authentifie(compte): Authentifie,
     Json(corps): Json<Pause>,
 ) -> Result<Json<Value>, AppError> {
-    let ligne = accounts::Entity::find_by_id(compte.id.clone())
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| invalide("Compte introuvable."))?;
+    // Une seule écriture, conditionnée sur les deux statuts entre lesquels la
+    // pause bascule.
+    //
+    // « Reprendre » écrivait « active » sans regarder le statut de départ : un
+    // compte à « deleting » redevenait donc actif — visible dans le fil, et
+    // joignable — tout en restant marqué pour la purge. Il se serait évanoui
+    // au bout de trente jours au milieu de conversations en cours. Le portier
+    // refuse désormais ces comptes, mais un basculement de statut ne doit pas
+    // dépendre d'un garde placé ailleurs.
+    let vise = if corps.paused { "paused" } else { "active" };
+    let resultat = accounts::Entity::update_many()
+        .col_expr(accounts::Column::Status, sea_orm::sea_query::Expr::value(vise))
+        .col_expr(
+            accounts::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(accounts::Column::Id.eq(compte.id.as_str()))
+        .filter(accounts::Column::Status.is_in(["active", "paused"]))
+        .exec(&state.db)
+        .await?;
 
-    let mut maj: accounts::ActiveModel = ligne.into();
-    maj.status = Set(if corps.paused { "paused" } else { "active" }.to_string());
-    maj.updated_at = Set(Utc::now().naive_utc());
-    maj.update(&state.db).await?;
+    if resultat.rows_affected == 0 {
+        return Err(invalide(
+            "Ce compte n'est pas dans un état où la pause s'applique.",
+        ));
+    }
 
     // En pause, ses plans ouverts sortent du fil des autres : rien ne sert de
     // laisser visible un rendez-vous auquel on ne répondra pas.
