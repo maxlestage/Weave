@@ -409,11 +409,15 @@ n'y a pas d'horaire, seulement un verrou à prendre dès qu'on est éveillé.
 Le journal dit ce qui a été fait :
 
 ```json
-{"message":"purge effectuée","messages":0,"activites":0,"comptes":0,"differes":0}
+{"message":"purge effectuée","messages":0,"activites":0,"traces":0,"comptes":0,"differes":0}
 ```
 
 `differes` compte les comptes échus mais retenus par un signalement encore
 ouvert — ils partiront au passage suivant, une fois le dossier clos.
+
+`traces` compte les entrées du journal d'audit passées les douze mois annoncés
+par la politique de confidentialité. Elles portent une adresse IP : les garder
+au-delà de la durée écrite serait une conservation sans base.
 
 ### Si vous préférez un planificateur externe
 

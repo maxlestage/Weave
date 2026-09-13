@@ -39,13 +39,27 @@
 
 use crate::{
     cache,
-    entities::{accounts, live_activity_sessions, messages, reports},
+    entities::{accounts, audit_events, live_activity_sessions, messages, reports},
     AppState,
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
 };
+
+/// Durée de conservation des traces techniques.
+///
+/// La politique de confidentialité l'annonce en toutes lettres dans son tableau
+/// des traitements : « 12 mois ; la suppression du compte détache la trace de
+/// vous, elle ne l'efface pas ». La seconde moitié était vraie — `audit_events`
+/// est en `SET NULL`, l'auteur devient anonyme. LA PREMIÈRE NE L'ÉTAIT PAS :
+/// rien n'effaçait jamais ces lignes, qui portent un identifiant de compte, une
+/// action et UNE ADRESSE IP.
+///
+/// Une durée annoncée que rien n'applique n'est pas une durée : c'est une
+/// conservation sans terme, que l'article 5 du règlement n'autorise pas, sur
+/// les données les plus traçantes que le service détienne.
+pub const TRACES_MOIS: i64 = 12;
 
 /// Délai entre la demande de suppression et l'effacement réel.
 /// `packages/contracts` fait foi : `ACCOUNT_PURGE_DAYS`.
@@ -59,6 +73,8 @@ pub struct Bilan {
     /// Comptes échus mais retenus par un signalement encore ouvert.
     pub comptes_differes: u64,
     pub activites_effacees: u64,
+    /// Traces techniques passées leur durée de conservation.
+    pub traces_effacees: u64,
 }
 
 /// Combien de temps le verrou quotidien reste tenu.
@@ -124,6 +140,7 @@ async fn passer_si_c_est_notre_tour(state: &AppState) {
         Ok(bilan) => tracing::info!(
             messages = bilan.messages_effaces,
             activites = bilan.activites_effacees,
+            traces = bilan.traces_effacees,
             comptes = bilan.comptes_effaces,
             differes = bilan.comptes_differes,
             "purge effectuée"
@@ -170,7 +187,26 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
         .all(db)
         .await?;
 
-    let mut bilan = Bilan { messages_effaces, activites_effacees, ..Default::default() };
+    // 3. Les traces techniques passées leur durée de conservation.
+    //
+    //    Elles survivent à la suppression du compte — c'est voulu, et la
+    //    politique le dit : la trace de l'action reste, son auteur devient
+    //    anonyme. Mais elle survivait aussi à la durée annoncée, ce qui n'était
+    //    pas voulu et que rien ne disait.
+    let traces_effacees = audit_events::Entity::delete_many()
+        .filter(
+            audit_events::Column::CreatedAt.lt(maintenant - Duration::days(TRACES_MOIS * 30)),
+        )
+        .exec(db)
+        .await?
+        .rows_affected;
+
+    let mut bilan = Bilan {
+        messages_effaces,
+        activites_effacees,
+        traces_effacees,
+        ..Default::default()
+    };
 
     for id in echus {
         if signalement_en_cours(db, &id).await? {
@@ -269,6 +305,53 @@ pub(super) mod tests {
         .insert(db)
         .await
         .expect("compte inséré");
+    }
+
+    /// La durée annoncée pour les traces techniques est appliquée.
+    ///
+    /// « 12 mois », dit le tableau des traitements de la politique de
+    /// confidentialité. Rien n'effaçait jamais `audit_events` : des
+    /// identifiants de compte, des actions et DES ADRESSES IP conservés sans
+    /// terme, sous une durée écrite qui n'était appliquée nulle part.
+    #[tokio::test]
+    async fn les_traces_techniques_ne_survivent_pas_a_leur_duree_annoncee() {
+        use crate::entities::audit_events;
+
+        let db = base_de_test().await;
+        compte(&db, "tracé", None).await;
+
+        let trace = |id: &str, jours: i64| audit_events::ActiveModel {
+            id: Set(id.to_string()),
+            account_id: Set(Some("tracé".to_string())),
+            action: Set("connexion".to_string()),
+            subject: Set(None),
+            meta_json: Set("{}".to_string()),
+            ip: Set(Some("203.0.113.7".to_string())),
+            created_at: Set(Utc::now().naive_utc() - Duration::days(jours)),
+        };
+
+        trace("vieille", TRACES_MOIS * 30 + 1).insert(&db).await.expect("vieille trace");
+        trace("recente", 30).insert(&db).await.expect("trace récente");
+
+        let bilan = executer(&db).await.expect("purge");
+        assert_eq!(bilan.traces_effacees, 1, "seule la trace échue part");
+
+        assert!(
+            audit_events::Entity::find_by_id("vieille")
+                .one(&db)
+                .await
+                .expect("lecture")
+                .is_none(),
+            "une adresse IP conservée au-delà de la durée annoncée l'est sans base"
+        );
+        assert!(
+            audit_events::Entity::find_by_id("recente")
+                .one(&db)
+                .await
+                .expect("lecture")
+                .is_some(),
+            "une trace dans sa durée reste : elle sert à prouver ce qui s'est passé"
+        );
     }
 
     #[tokio::test]
