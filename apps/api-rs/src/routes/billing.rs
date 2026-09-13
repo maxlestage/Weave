@@ -16,7 +16,6 @@ use crate::{
     AppState,
 };
 use axum::{extract::State, routing::{get, post}, Json, Router};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
@@ -431,7 +430,15 @@ struct Transaction {
 /// Il faudra, pour le passer à `true` : valider la chaîne de certificats `x5c`
 /// de l'en-tête contre la racine Apple, vérifier la signature ES256, puis
 /// contrôler le `bundleId` et la fraîcheur de la transaction.
-pub(crate) const VERIFICATION_JWS_IMPLEMENTEE: bool = false;
+pub(crate) const VERIFICATION_JWS_IMPLEMENTEE: bool = true;
+
+/// Âge maximal d'une transaction, en minutes.
+///
+/// Une transaction signée reste valable indéfiniment tant que rien ne borne
+/// son âge. La borne limite le rejeu à une fenêtre courte ; l'unicité de
+/// `transactionId` en base fait le reste. Large parce que l'horloge d'un
+/// appareil peut dériver, et qu'un achat fait hors ligne remonte plus tard.
+const FRAICHEUR_MINUTES: i64 = 60;
 
 /// La production accepte-t-elle cette transaction ?
 ///
@@ -461,18 +468,54 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
         ));
     }
 
-    let charge = signe
-        .split('.')
-        .nth(1)
-        .ok_or_else(|| invalide("Transaction StoreKit illisible."))?;
-    let octets = URL_SAFE_NO_PAD
-        .decode(charge)
-        .map_err(|_| invalide("Transaction StoreKit illisible."))?;
-    let claims: Value = serde_json::from_slice(&octets)
-        .map_err(|_| invalide("Transaction StoreKit illisible."))?;
+    let claims = crate::storekit::verifier(signe, &state.racine_storekit, Utc::now())
+        .map_err(|refus| {
+            // Le motif va au journal, pas à l'appelant : on ne renseigne pas
+            // qui essaie de forger sur ce qui l'a trahi.
+            tracing::warn!(motif = refus.motif(), "transaction StoreKit refusée");
+            invalide("Transaction StoreKit refusée.")
+        })?;
 
-    // C'est ici que la vérification prendra place, et `VERIFICATION_JWS_IMPLEMENTEE`
-    // passera à `true` le jour où elle sera écrite.
+    // La signature d'Apple ne dit pas POUR QUI elle a été émise.
+    //
+    // Sans ce contrôle, un achat à un euro fait dans une autre application —
+    // signé par Apple, chaîne parfaitement valide — se rejouerait ici pour
+    // s'offrir l'abonnement le plus cher. C'est le `bundleId` qui distingue,
+    // et lui seul.
+    let paquet = claims.get("bundleId").and_then(Value::as_str).unwrap_or_default();
+    if paquet != BUNDLE {
+        tracing::warn!(paquet, "transaction émise pour une autre application");
+        return Err(invalide("Transaction StoreKit refusée."));
+    }
+
+    // Sandbox et production ne se mélangent pas : une transaction d'essai ne
+    // doit pas créditer un compte réel.
+    let environnement = claims
+        .get("environment")
+        .and_then(Value::as_str)
+        .unwrap_or(&state.config.app_store.environnement);
+    if !environnement.eq_ignore_ascii_case(&state.config.app_store.environnement) {
+        tracing::warn!(
+            environnement,
+            attendu = %state.config.app_store.environnement,
+            "transaction d'un autre environnement"
+        );
+        return Err(invalide("Transaction StoreKit refusée."));
+    }
+
+    // Une transaction signée reste valable indéfiniment tant que rien ne borne
+    // son âge. La fraîcheur limite le rejeu à une fenêtre courte ; l'unicité
+    // de `transactionId` fait le reste.
+    if let Some(signee_le) = claims
+        .get("signedDate")
+        .and_then(Value::as_i64)
+        .and_then(DateTime::from_timestamp_millis)
+    {
+        if (Utc::now() - signee_le).num_minutes().abs() > FRAICHEUR_MINUTES {
+            tracing::warn!(%signee_le, "transaction trop ancienne");
+            return Err(invalide("Transaction StoreKit refusée."));
+        }
+    }
 
     let product_id = claims
         .get("productId")
@@ -624,14 +667,18 @@ mod tests {
         assert!(achat_acceptable(false, false));
     }
 
-    /// Le garde-fou est armé. S'il ne l'était pas sans que la vérification soit
-    /// écrite, la production accepterait n'importe quelle transaction forgée.
+    /// La vérification est écrite : le drapeau doit le dire.
+    ///
+    /// Ce test disait l'inverse jusqu'ici — il vérifiait que le drapeau était
+    /// à `false`, et demandait qu'on le retire le jour où la vérification
+    /// serait écrite. Elle l'est, dans `storekit`, et ce test garde désormais
+    /// l'autre bout : repasser le drapeau à `false` sans retirer le
+    /// vérificateur refuserait tous les achats en production, silencieusement.
     #[test]
-    fn la_verification_n_est_pas_annoncee_comme_ecrite_par_erreur() {
+    fn la_verification_est_annoncee_comme_ecrite() {
         assert!(
-            !VERIFICATION_JWS_IMPLEMENTEE,
-            "si la vérification JWS est écrite, retirez ce test — sinon, le \
-             passer à `true` ouvre la production aux transactions forgées"
+            VERIFICATION_JWS_IMPLEMENTEE,
+            "le vérificateur existe dans `storekit` : le drapeau doit suivre"
         );
     }
 }

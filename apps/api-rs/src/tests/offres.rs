@@ -10,13 +10,14 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use sea_orm::ConnectionTrait;
 use serde_json::json;
 
-/// Forge une transaction signée telle que StoreKit en émet : trois segments
-/// séparés par des points, la charge utile au milieu en base64url.
+/// Une transaction signée pour de vrai, par l'autorité de test.
+///
+/// Elle se contentait d'encoder la charge utile en base64 entre deux segments
+/// inventés — ce qui suffisait tant que la vérification n'existait pas. Elle
+/// existe : une transaction non signée est désormais refusée, comme elle doit
+/// l'être, et ces tests passeraient à côté de ce qu'ils éprouvent.
 fn transaction(charge: serde_json::Value) -> String {
-    format!(
-        "entete.{}.signature",
-        URL_SAFE_NO_PAD.encode(charge.to_string())
-    )
+    super::storekit::transaction_signee(charge)
 }
 
 #[tokio::test]
@@ -544,4 +545,94 @@ async fn un_bilan_sans_matiere_ne_coute_pas_le_credit() {
 
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
     assert_eq!(moi["credits"]["bilan"], 1, "le crédit a été consommé pour rien");
+}
+
+/// Une transaction forgée est refusée par la route.
+///
+/// C'est ce que l'API acceptait : elle décodait le base64 de la charge et
+/// lisait les champs qu'elle y trouvait. N'importe qui pouvait encoder un JSON
+/// annonçant le produit de son choix et s'offrir l'abonnement le plus cher.
+#[tokio::test]
+async fn une_transaction_forgee_est_refusee() {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    let service = Service::monter().await;
+    service.compte("c_forgeur", "depart").await;
+
+    let charge = json!({
+        "productId": "com.weave.app.sub.grandtour.monthly",
+        "transactionId": "forgee-1",
+        "originalTransactionId": "forgee-1",
+        "bundleId": "com.weave.app",
+    });
+    let forgee = format!("entete.{}.signature", URL_SAFE_NO_PAD.encode(charge.to_string()));
+
+    let (statut, corps) = service
+        .post("/v1/billing/subscriptions", Some(&service.jeton("c_forgeur")), json!({
+            "signedTransaction": forgee,
+        }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "une transaction forgée a été acceptée : {corps}");
+
+    let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_forgeur"))).await;
+    assert_eq!(moi["tier"], "depart", "le palier a été accordé sans paiement");
+}
+
+/// Un achat fait dans une AUTRE application ne compte pas ici.
+///
+/// La signature d'Apple ne dit pas pour qui elle a été émise. Sans contrôle du
+/// `bundleId`, un achat à un euro dans une autre application — signé par
+/// Apple, chaîne parfaitement valide — se rejouerait ici pour s'offrir
+/// l'abonnement le plus cher.
+#[tokio::test]
+async fn une_transaction_emise_pour_une_autre_application_est_refusee() {
+    let service = Service::monter().await;
+    service.compte("c_rejeu", "depart").await;
+
+    let signee = super::storekit::transaction_signee(json!({
+        "productId": "com.weave.app.sub.grandtour.monthly",
+        "transactionId": "autre-app-1",
+        "originalTransactionId": "autre-app-1",
+        // Vraie signature, vraie chaîne — mais émise pour un autre paquet.
+        "bundleId": "com.exemple.autre",
+    }));
+
+    let (statut, corps) = service
+        .post("/v1/billing/subscriptions", Some(&service.jeton("c_rejeu")), json!({
+            "signedTransaction": signee,
+        }))
+        .await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "un achat d'une autre application a été accepté : {corps}"
+    );
+
+    let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_rejeu"))).await;
+    assert_eq!(moi["tier"], "depart", "le palier a été accordé sur l'achat d'autrui");
+}
+
+/// Une transaction trop ancienne est refusée.
+///
+/// Une transaction signée reste valable indéfiniment tant que rien ne borne
+/// son âge : celle de quelqu'un d'autre, interceptée un jour, se rejouerait un
+/// an plus tard.
+#[tokio::test]
+async fn une_transaction_trop_ancienne_est_refusee() {
+    let service = Service::monter().await;
+    service.compte("c_vieille", "depart").await;
+
+    let signee = super::storekit::transaction_signee(json!({
+        "productId": "com.weave.app.sub.grandtour.monthly",
+        "transactionId": "vieille-1",
+        "originalTransactionId": "vieille-1",
+        "signedDate": (chrono::Utc::now() - chrono::Duration::days(2)).timestamp_millis(),
+    }));
+
+    let (statut, corps) = service
+        .post("/v1/billing/subscriptions", Some(&service.jeton("c_vieille")), json!({
+            "signedTransaction": signee,
+        }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "une transaction d'il y a deux jours : {corps}");
 }
