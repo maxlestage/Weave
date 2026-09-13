@@ -225,6 +225,29 @@ bas des pages juridiques viennent du même endroit, et un test tient leur
 accord : deux dates écrites séparément auraient fini par attester de deux
 textes différents.
 
+## Ce que les paliers limitent vraiment
+
+Chaque critère vendu par palier est relu **à la lecture du fil**, et pas
+seulement contrôlé à l'écriture. Sans cela, un abonnement qui expire laisserait
+en place les critères posés du temps où il courait : on continuerait de
+bénéficier de ce qu'on ne paie plus, et il aurait suffi de s'abonner un mois.
+
+| Critère | Ce que le palier change |
+| --- | --- |
+| genre recherché | proposé à partir de la Virée, et soumis au consentement de l'article 9 |
+| catégorie, jour | proposés à partir de l'Escapade (« critères précis ») |
+| distance | au kilomètre près à partir de l'Escapade ; ailleurs, rabattue sur 10, 25, 50 ou 100 km |
+
+La distance était l'exception : elle se réglait au kilomètre près **à tous les
+paliers**, y compris le gratuit, alors que « distance fine » figure trois fois
+au catalogue. On vendait un critère qui existait déjà partout.
+
+Le réglage choisi n'est jamais écrasé en base — seulement rabattu à la lecture.
+Un abonnement qui s'interrompt ne fait donc pas perdre ce qu'on avait réglé, et
+le rayon exact revient dès que l'offre le permet. `/v1/me/preferences` rend les
+deux valeurs, pour que l'application n'affiche pas un rayon que le fil
+n'applique pas.
+
 ## Sous-traitants
 
 Le cœur de Weave ne dépend d'aucun service tiers de traitement de données

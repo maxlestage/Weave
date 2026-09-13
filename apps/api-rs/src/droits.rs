@@ -215,6 +215,35 @@ pub fn filtre_autorise(palier: &str, critere: Critere) -> bool {
     }
 }
 
+/// Les rayons disponibles sans « critères précis ».
+/// `packages/contracts` fait foi : `RADIUS_STEPS_KM`.
+pub const CRANS_RAYON_KM: [i32; 4] = [10, 25, 50, 100];
+
+/// Le rayon effectivement appliqué au fil, selon le palier.
+///
+/// Le catalogue vend « Critères précis : catégorie, jour, DISTANCE FINE » à
+/// partir de l'Escapade. La catégorie et le jour se limitaient bien par
+/// palier ; la distance, elle, se réglait au kilomètre près partout — y
+/// compris au palier gratuit. « Distance fine » était vendue trois fois sans
+/// rien désigner qui n'existât déjà.
+///
+/// Le réglage choisi n'est jamais écrasé en base : il est seulement rabattu à
+/// la lecture, comme les autres critères vendus. Un abonnement qui s'interrompt
+/// ne fait donc pas perdre ce qu'on avait réglé, et le rayon exact revient dès
+/// que l'offre le permet.
+///
+/// Le cran le plus proche, et jamais moins que le plus petit : rabattre vers le
+/// bas viderait le fil de quelqu'un qui n'a rien demandé.
+pub fn rayon_effectif(palier: &str, km: i32) -> i32 {
+    if droits_pour(palier).filtres == "precis" {
+        return km;
+    }
+    CRANS_RAYON_KM
+        .into_iter()
+        .min_by_key(|cran| (cran - km).abs())
+        .unwrap_or(km)
+}
+
 /// Les critères du fil, pour la table ci-dessus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Critere {

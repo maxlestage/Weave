@@ -932,3 +932,133 @@ async fn le_credit_horizon_s_arrete_a_ce_qu_il_annonce() {
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
     assert_eq!(moi["credits"]["horizon"], 4, "un refus a coûté un crédit : {moi}");
 }
+
+/// « Distance fine » est vendue à partir de l'Escapade, et se réglait au
+/// kilomètre près à tous les paliers — y compris le gratuit.
+///
+/// Elle figure trois fois dans le catalogue — « Critères précis : catégorie,
+/// jour, distance fine ». La catégorie et le jour se limitaient bien par
+/// palier ; la distance, non. On vendait trois fois un critère qui n'existait
+/// pas, ou plutôt qui existait déjà partout, ce qui revient au même.
+#[tokio::test]
+async fn la_distance_fine_ne_vaut_qu_aux_paliers_qui_l_achetent() {
+    use crate::droits::rayon_effectif;
+
+    // Au palier gratuit et à la Virée, le rayon se rabat sur un cran.
+    for palier in ["depart", "viree"] {
+        assert_eq!(rayon_effectif(palier, 27), 25, "{palier} : 27 km devrait valoir 25");
+        assert_eq!(rayon_effectif(palier, 63), 50, "{palier} : 63 km devrait valoir 50");
+        // Jamais moins que le plus petit cran : rabattre vers le bas viderait
+        // le fil de quelqu'un qui n'a rien demandé.
+        assert_eq!(rayon_effectif(palier, 3), 10, "{palier} : un rayon minuscule remonte au cran");
+    }
+
+    // À partir de l'Escapade, le réglage vaut au kilomètre près.
+    for palier in ["escapade", "expedition", "grandtour"] {
+        assert_eq!(rayon_effectif(palier, 27), 27, "{palier} achète la distance fine");
+        assert_eq!(rayon_effectif(palier, 63), 63, "{palier} achète la distance fine");
+    }
+}
+
+/// Le réglage choisi n'est pas écrasé : il est rabattu à la lecture.
+///
+/// L'écraser en base ferait perdre à quelqu'un ce qu'il avait réglé le jour où
+/// son abonnement s'interrompt, et rien ne le lui rendrait à la reprise.
+#[tokio::test]
+async fn le_rayon_choisi_survit_a_la_perte_de_l_offre() {
+    let service = Service::monter().await;
+    service.compte("c_rayon", "depart").await;
+    let jeton = service.jeton("c_rayon");
+
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "maxDistanceKm": 27 }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
+    assert_eq!(criteres["maxDistanceKm"], 27, "le réglage a été écrasé : {criteres}");
+    assert_eq!(
+        criteres["effectiveDistanceKm"], 25,
+        "le fil doit dire ce qu'il applique vraiment : {criteres}"
+    );
+}
+
+/// Le fil applique bien le rayon rabattu, et pas celui qui est enregistré.
+///
+/// Sans cette lecture, « distance fine » resterait une ligne du catalogue : le
+/// réglage au kilomètre près continuerait de valoir pour tout le monde, et
+/// rabattre la valeur affichée n'aurait été qu'un affichage.
+#[tokio::test]
+async fn le_fil_retient_le_rayon_rabattu_et_non_celui_enregistre() {
+    let service = Service::monter().await;
+
+    // L'auteur publie à environ 26 km au nord du lecteur : dans un rayon de
+    // 27 km, hors d'un rayon de 25.
+    service.compte("c_loin_auteur", "depart").await;
+    fiche_a(&service, "c_loin_auteur", 46.0, 4.84).await;
+    let plan = plan_simple(&service, "c_loin_auteur").await;
+
+    service.compte("c_gratuit", "depart").await;
+    fiche_a(&service, "c_gratuit", 45.76, 4.84).await;
+    service.compte("c_precis", "escapade").await;
+    fiche_a(&service, "c_precis", 45.76, 4.84).await;
+
+    assert!(
+        !fil_voit(&service, "c_gratuit", &plan).await,
+        "au palier gratuit, 27 km se rabat sur 25 : le plan est hors du fil"
+    );
+    assert!(
+        fil_voit(&service, "c_precis", &plan).await,
+        "l'Escapade achète la distance fine : 27 km vaut 27 km"
+    );
+}
+
+/// Règle le rayon à 27 km pour ce compte, puis dit si le plan entre au fil.
+async fn fil_voit(service: &Service, nom: &str, plan: &str) -> bool {
+    let jeton = service.jeton(nom);
+    let (statut, corps) = service
+        .patch("/v1/me/preferences", Some(&jeton), json!({ "maxDistanceKm": 27 }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Le fil vit quelques minutes en cache : sans cet oubli, on relirait la
+    // composition d'avant le réglage.
+    crate::cache::oublier(&service.etat.cache, &crate::cache::cles::fil(&service.id(nom)))
+        .await
+        .ok();
+
+    let (statut, corps) = service.get("/v1/plans", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    corps["plans"]
+        .as_array()
+        .expect("une liste")
+        .iter()
+        .any(|p| p["id"] == plan)
+}
+
+async fn fiche_a(service: &Service, nom: &str, lat: f64, lon: f64) {
+    let (statut, corps) = service
+        .put(
+            "/v1/me/profile",
+            Some(&service.jeton(nom)),
+            json!({ "city": "Lyon", "latitude": lat, "longitude": lon, "gender": "femme" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+}
+
+async fn plan_simple(service: &Service, nom: &str) -> String {
+    let (statut, corps) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton(nom)),
+            json!({
+                "title": "Une balade sur les quais",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    corps["id"].as_str().expect("identifiant").to_string()
+}

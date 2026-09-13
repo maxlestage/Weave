@@ -84,6 +84,35 @@ export const DEFAULT_RADIUS_KM = 25;
 export const MAX_RADIUS_KM = 100;
 
 /**
+ * Les rayons disponibles sans « critères précis ».
+ *
+ * Le catalogue vend « Critères précis : catégorie, jour, DISTANCE FINE » à
+ * partir de l'Escapade. La catégorie et le jour se limitaient bien par palier ;
+ * la distance, elle, se réglait au kilomètre près à tous les paliers — y
+ * compris le gratuit. « Distance fine » était donc vendue trois fois sans rien
+ * désigner qui n'existât déjà partout.
+ *
+ * Aux paliers sans critères précis, le rayon se rabat sur l'un de ces quatre
+ * crans. Le réglage choisi n'est pas écrasé pour autant : il est conservé tel
+ * quel, et redevient exact dès que l'offre le permet — un abonnement qui
+ * s'interrompt ne doit pas faire perdre ce qu'on avait réglé.
+ */
+export const RADIUS_STEPS_KM = [10, 25, 50, 100] as const;
+
+/**
+ * Le rayon effectivement appliqué, selon que le palier donne la distance fine.
+ *
+ * Arrondit au cran le plus proche, et jamais en dessous du plus petit : un
+ * rayon rabattu vers le bas viderait le fil de quelqu'un qui n'a rien demandé.
+ */
+export function effectiveRadiusKm(km: number, fineDistance: boolean): number {
+  if (fineDistance) return km;
+  return RADIUS_STEPS_KM.reduce((retenu, cran) =>
+    Math.abs(cran - km) < Math.abs(retenu - km) ? cran : retenu,
+  );
+}
+
+/**
  * Genres, pour la fiche et pour les critères du fil.
  *
  * Un vocabulaire fixe, et c'est ce qui compte : le fil retient un plan quand
