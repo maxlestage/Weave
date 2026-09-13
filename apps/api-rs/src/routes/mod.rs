@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod bilan;
 pub mod billing;
+pub mod consentements;
 pub mod conversations;
 pub mod devices;
 pub mod export;

@@ -138,3 +138,41 @@ export const MESSAGE_RETENTION_DAYS = 90;
 
 /** Délai de purge d'un compte supprimé, en jours. */
 export const ACCOUNT_PURGE_DAYS = 30;
+
+/* ------------------------------------------------------------------ */
+/* Consentements                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les objets sur lesquels un consentement distinct est demandé.
+ *
+ * Un seul aujourd'hui, et c'est celui qui compte : les personnes que l'on
+ * cherche, rapprochées de son propre genre, peuvent révéler l'orientation
+ * sexuelle. Le règlement européen range cette information parmi les catégories
+ * particulières de l'article 9 — elle ne peut être traitée que sur un
+ * consentement **explicite et distinct**.
+ *
+ * La politique de confidentialité le promet depuis le début. La table
+ * `consent_records` existait pour le consigner, et **rien ne l'écrivait** :
+ * le critère de genre s'enregistrait sans qu'aucun consentement n'ait jamais
+ * été demandé ni conservé.
+ */
+export const CONSENT_KINDS = ["donnees_sensibles"] as const;
+export type ConsentKind = (typeof CONSENT_KINDS)[number];
+
+/**
+ * La version des textes en vigueur, au format ISO.
+ *
+ * Un consentement porte la version du texte accepté. La politique promet qu'en
+ * cas de changement substantiel « un nouveau consentement vous est demandé » :
+ * un consentement donné sur une version antérieure **cesse donc de valoir**,
+ * et le traitement s'arrête jusqu'à ce qu'il soit redonné.
+ *
+ * Écrite à la main, comme la date affichée qu'elle gouverne : une version
+ * calculée à la construction changerait à chaque déploiement et laisserait
+ * croire à une révision qui n'a pas eu lieu.
+ */
+export const POLICY_VERSION = "2026-09-12";
+
+/** Cette version, telle qu'elle s'affiche au bas des pages juridiques. */
+export const POLICY_UPDATED_LABEL = "12 septembre 2026";

@@ -220,6 +220,7 @@ fn construire_routeur(state: AppState) -> Router {
         .merge(routes::plans::routes())
         .merge(routes::requests::routes())
         .merge(routes::conversations::routes())
+        .merge(routes::consentements::routes())
         .merge(routes::moderation::routes())
         .merge(routes::devices::routes())
         .merge(routes::export::routes())
