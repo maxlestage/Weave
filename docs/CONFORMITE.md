@@ -268,6 +268,23 @@ le rayon exact revient dès que l'offre le permet. `/v1/me/preferences` rend les
 deux valeurs, pour que l'application n'affiche pas un rayon que le fil
 n'applique pas.
 
+## Le droit d'accès, et sa borne
+
+`/v1/me/export` est la lecture la plus lourde du service — tout le compte,
+plans, demandes, conversations, messages, achats, et les octets de la photo —
+et elle est accessible à tout compte connecté. Rien ne la bornait.
+
+La borne est de cinq par jour, et elle est volontairement large : **le droit
+d'accès ne se refuse pas**. L'article 12 ne permet de s'opposer qu'aux demandes
+« manifestement infondées ou excessives, notamment en raison de leur caractère
+répétitif ». Cinq par jour ne gêne personne qui exerce son droit, et arrête une
+boucle.
+
+L'envoi de photo est borné à dix par heure pour la même raison : chaque envoi
+est une transaction qui écrit jusqu'à deux mégaoctets et en efface autant —
+l'ancienne part avec la nouvelle, si bien que rien ne s'accumule, mais rien ne
+bornait le rythme.
+
 ## Sous-traitants
 
 Le cœur de Weave ne dépend d'aucun service tiers de traitement de données
