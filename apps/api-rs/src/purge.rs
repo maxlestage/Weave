@@ -5,11 +5,20 @@
 //! conversation posait `purge_after` — puis les lignes restaient en base,
 //! indéfiniment. Les deux colonnes décrivaient une intention, pas un effet.
 //!
+//! ## Deux façons de la déclencher
+//!
 //! `weave-api purge` est un processus séparé, comme `migrate` : il ne démarre
 //! ni serveur ni cache, se termine, et se planifie (Heroku Scheduler, cron).
-//! Le faire tourner dans le dyno web aurait eu deux défauts — deux dynos
-//! auraient purgé en même temps, et un dyno en veille n'aurait rien purgé du
-//! tout.
+//! C'est la forme préférable — une tâche d'entretien n'a rien à faire dans le
+//! processus qui sert les requêtes.
+//!
+//! Mais elle demande une intervention d'exploitation, et sans elle la purge
+//! n'avait tout simplement pas lieu. `planifier` la fait donc tourner depuis le
+//! service lui-même, et répond aux deux objections qu'on lui oppose : un verrou
+//! pris dans le cache empêche deux dynos de purger en même temps, et une
+//! tentative par heure plutôt qu'un horaire fixe fait qu'un dyno endormi ne
+//! manque rien — il n'a pas de rendez-vous à tenir, seulement un verrou à
+//! prendre dès qu'il se réveille. Le détail est sur `planifier`.
 //!
 //! ## Ce que la cascade fait à notre place
 //!

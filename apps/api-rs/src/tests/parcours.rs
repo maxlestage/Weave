@@ -311,3 +311,118 @@ async fn une_url_de_media_ne_se_deflouted_pas_en_la_modifiant() {
     let (statut, _) = service.get(&deflouté, None).await;
     assert_eq!(statut, StatusCode::FORBIDDEN, "changer le flou doit invalider");
 }
+
+/// Une pause est un aller-retour : les plans reviennent à la reprise.
+///
+/// La mise en pause faisait passer les plans ouverts à « suspendu » — et rien,
+/// nulle part, ne les en sortait. Mettre son compte en pause revenait donc à
+/// perdre ses plans pour de bon, alors que la page publique promet de
+/// reprendre quand on veut, « sans rien supprimer ».
+#[tokio::test]
+async fn reprendre_apres_une_pause_rend_ses_plans() {
+    let service = Service::monter().await;
+    service.compte("c_pause_plans", "depart").await;
+    let jeton = service.jeton("c_pause_plans");
+
+    let (statut, corps) = service
+        .post("/v1/plans", Some(&jeton), json!({
+            "title": "Un plan qui doit survivre a la pause",
+            "category": "balade",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(3)).to_rfc3339(),
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    async fn etats(service: &Service, jeton: &str) -> Vec<String> {
+        let (_, mine) = service.get("/v1/plans/mine", Some(jeton)).await;
+        mine.as_array()
+            .expect("une liste")
+            .iter()
+            .map(|p| p["state"].as_str().unwrap_or("?").to_string())
+            .collect()
+    }
+
+    let (statut, corps) = service
+        .post("/v1/me/pause", Some(&jeton), json!({ "paused": true }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        etats(&service, &jeton).await,
+        vec!["suspendu"],
+        "la pause devait retirer le plan du fil"
+    );
+
+    let (statut, corps) = service
+        .post("/v1/me/pause", Some(&jeton), json!({ "paused": false }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        etats(&service, &jeton).await,
+        vec!["ouvert"],
+        "le plan n'est pas revenu : la pause aura coûté un plan"
+    );
+}
+
+/// Un signalement de minorité suspend le compte tout de suite.
+///
+/// La politique de confidentialité s'y engage publiquement — « entraîne la
+/// suspension immédiate du compte ». Elle le disait sans que rien ne le fasse :
+/// le signalement n'écrivait qu'une ligne, et le compte continuait de publier
+/// et d'écrire en attendant qu'une personne ouvre le dossier.
+#[tokio::test]
+async fn un_signalement_de_minorite_suspend_le_compte_signale() {
+    let service = Service::monter().await;
+    let vigilant = service.compte("c_vigilant", "depart").await;
+    let signale = service.compte("c_signale_mineur", "depart").await;
+
+    let (statut, corps) = service
+        .post("/v1/reports", Some(&service.jeton("c_vigilant")), json!({
+            "accountId": signale,
+            "reason": "mineur",
+            "details": "Le profil indique etre au lycee en seconde.",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let _ = vigilant;
+
+    // Le compte n'ouvre plus rien : c'est ce que « suspendu » doit vouloir dire.
+    let (statut, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_signale_mineur")))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "le compte signalé comme mineur répond encore : {corps}"
+    );
+}
+
+/// Les autres motifs, eux, ne suspendent personne.
+///
+/// Un signalement n'est pas une preuve. Suspendre sur n'importe quel motif
+/// ferait de la fonction une arme : il suffirait de signaler pour faire taire.
+/// La minorité est la seule exception, parce que le délai y coûte plus cher
+/// que l'erreur.
+#[tokio::test]
+async fn un_signalement_ordinaire_ne_suspend_pas() {
+    let service = Service::monter().await;
+    service.compte("c_plaignant", "depart").await;
+    let vise = service.compte("c_vise_ordinaire", "depart").await;
+
+    let (statut, corps) = service
+        .post("/v1/reports", Some(&service.jeton("c_plaignant")), json!({
+            "accountId": vise,
+            "reason": "arnaque",
+            "details": "Demande de l argent des le premier message.",
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_vise_ordinaire")))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "un signalement ordinaire a suffi à couper un compte : {corps}"
+    );
+}

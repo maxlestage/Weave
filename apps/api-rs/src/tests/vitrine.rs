@@ -16,6 +16,14 @@ fn dist_de_test() -> std::path::PathBuf {
     std::fs::create_dir_all(&racine).expect("répertoire de test");
     std::fs::write(racine.join("index.html"), "<!doctype html><title>Weave</title>").unwrap();
     std::fs::write(racine.join("chunk-abc123.js"), "console.log('weave')").unwrap();
+    // Une page juridique, construite comme en produit : un répertoire portant
+    // le nom de l'adresse, et l'index dedans.
+    std::fs::create_dir_all(racine.join("cgv")).unwrap();
+    std::fs::write(
+        racine.join("cgv/index.html"),
+        "<!doctype html><title>Conditions de vente</title>",
+    )
+    .unwrap();
     racine
 }
 
@@ -94,5 +102,56 @@ async fn un_post_sur_une_adresse_inconnue_rend_404() {
     let (statut, _) = service
         .post("/v1/auth/adresse-qui-n-existe-pas", None, serde_json::json!({}))
         .await;
+    assert_eq!(statut, StatusCode::NOT_FOUND);
+}
+
+/// Une page juridique répond à son adresse, sans redirection.
+///
+/// Chaque page est construite en `cgv/index.html`. Le service de fichiers y
+/// voyait un répertoire et renvoyait une 307 vers « /cgv/ » — or « /cgv » est
+/// l'adresse que met en lien le pied de page, que déclare le plan du site, et
+/// que désigne l'URL canonique. L'adresse annoncée aux moteurs n'était donc
+/// pas celle qui répondait.
+#[tokio::test]
+async fn une_page_juridique_repond_a_son_adresse_sans_redirection() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    let (statut, _, corps) = service.get_brut("/cgv").await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "« /cgv » devait rendre la page, pas une redirection"
+    );
+    assert!(corps.contains("Conditions de vente"), "corps rendu : {corps}");
+}
+
+/// Une page rendue sans barre oblique ni extension reste du HTML.
+///
+/// Le cache se décidait sur la forme de l'adresse : « /cgv » n'ayant ni barre
+/// oblique finale ni extension, la page aurait été déclarée immuable pour un
+/// an. Un texte juridique corrigé serait resté invisible tout ce temps —
+/// et c'est le genre de correction qui a une date d'effet.
+#[tokio::test]
+async fn une_page_juridique_ne_se_garde_pas_un_an() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    let (statut, entetes, _) = service.get_brut("/cgv").await;
+    assert_eq!(statut, StatusCode::OK);
+    assert_eq!(
+        entetes.get(CACHE_CONTROL).map(|v| v.to_str().unwrap()),
+        Some("no-cache"),
+        "une page juridique gardée un an ne se corrige plus"
+    );
+}
+
+/// La barre oblique ajoutée ne doit pas inventer de pages.
+#[tokio::test]
+async fn une_adresse_sans_extension_et_sans_page_reste_une_404() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    let (statut, _, _) = service.get_brut("/cgv-qui-n-existe-pas").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }

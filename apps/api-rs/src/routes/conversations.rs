@@ -43,7 +43,7 @@ const CONVERSATIONS_RENDUES_MAX: u64 = 100;
 
 /// Les messages d'une conversation close sont purgés au bout de ce délai.
 /// `packages/contracts` fait foi.
-const RETENTION_MESSAGES_JOURS: i64 = 90;
+pub(crate) const RETENTION_MESSAGES_JOURS: i64 = 90;
 
 pub fn routes() -> Router<AppState> {
     Router::new()

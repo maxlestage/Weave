@@ -382,7 +382,7 @@ const ARTICLES: readonly Article[] = [
             ],
             [
               "Opposition et limitation",
-              "Mettre le compte en pause : vos plans sont annulés, vous disparaissez du fil, rien n'est supprimé",
+              "Mettre le compte en pause : vos plans sortent du fil, personne ne peut vous écrire, rien n'est supprimé — tout revient à la reprise",
               "Réglages › Mettre en pause",
             ],
             [

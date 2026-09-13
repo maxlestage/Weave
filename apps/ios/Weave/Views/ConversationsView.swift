@@ -151,6 +151,7 @@ struct ConversationView: View {
     let conversation: Conversation
 
     @Environment(ModeleApplication.self) private var modele
+    @Environment(\.dismiss) private var dismiss
     @State private var messages: [Message] = []
     @State private var brouillon = ""
     @State private var envoi = false
@@ -192,6 +193,21 @@ struct ConversationView: View {
         .background(Color.weaveLin.ignoresSafeArea())
         .navigationTitle(conversation.other.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Signaler et bloquer se trouvent là où l'on parle : c'est ici que
+            // se passe ce qui se signale, et c'est ici qu'il faut pouvoir y
+            // couper court sans chercher.
+            ToolbarItem(placement: .topBarTrailing) {
+                MenuDeProtection(
+                    compteID: conversation.other.id,
+                    prenom: conversation.other.displayName
+                ) {
+                    // Le lien est coupé : la conversation n'existe plus pour
+                    // nous, et rester dessus n'aurait pas de sens.
+                    dismiss()
+                }
+            }
+        }
         .task { await charger() }
     }
 

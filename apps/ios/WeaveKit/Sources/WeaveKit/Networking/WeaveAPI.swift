@@ -268,6 +268,72 @@ public actor WeaveAPI {
         await store.clear()
     }
 
+    // MARK: - Se protéger
+
+    /// Bloque quelqu'un.
+    ///
+    /// Le serveur coupe tout dans les deux sens : les demandes en attente
+    /// expirent, les conversations se closent, et aucun des deux ne reverra
+    /// les plans de l'autre. L'autre partie n'est pas prévenue — prévenir
+    /// qu'on vient d'être bloqué n'apaise rien et expose la personne qui
+    /// s'est protégée.
+    public func block(accountID: String) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/blocks", body: ["accountId": accountID]
+        )
+    }
+
+    /// Lève un blocage posé plus tôt.
+    ///
+    /// Ne rouvre rien de ce que le blocage a coupé : les conversations closes
+    /// le restent, les demandes expirées aussi. Seule la visibilité revient.
+    public func unblock(accountID: String) async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/blocks/\(accountID)")
+    }
+
+    /// Signale quelqu'un.
+    ///
+    /// Le signalement bloque d'office : personne n'a à revoir les plans de qui
+    /// il vient de signaler pendant que le dossier est examiné. Inutile donc
+    /// d'appeler `block` dans la foulée.
+    public func report(
+        accountID: String,
+        reason: ReportReason,
+        details: String? = nil
+    ) async throws {
+        struct Body: Encodable {
+            let accountId: String
+            let reason: String
+            let details: String?
+        }
+        // Des précisions vides et des précisions absentes sont la même chose :
+        // le serveur accepte les deux, autant n'en envoyer qu'une.
+        let precisions = details?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let _: EmptyResponse = try await request(
+            .post,
+            "/v1/reports",
+            encodable: Body(
+                accountId: accountID,
+                reason: reason.rawValue,
+                details: (precisions?.isEmpty ?? true) ? nil : precisions
+            )
+        )
+    }
+
+    // MARK: - Souffler
+
+    /// Met le compte en pause, ou le reprend.
+    ///
+    /// En pause : les plans ouverts sortent du fil des autres et personne ne
+    /// peut plus demander à venir. Rien n'est supprimé — les conversations
+    /// attendent, et les plans reviennent tels quels à la reprise.
+    public func setPaused(_ paused: Bool) async throws {
+        struct Body: Encodable { let paused: Bool }
+        let _: EmptyResponse = try await request(
+            .post, "/v1/me/pause", encodable: Body(paused: paused)
+        )
+    }
+
     // MARK: - Ses données
 
     /// Récupère l'export de ses données — article 20 du RGPD.

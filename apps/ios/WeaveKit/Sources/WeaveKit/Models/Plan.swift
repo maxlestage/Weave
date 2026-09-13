@@ -48,6 +48,14 @@ public enum PlanState: String, Codable, Sendable {
     /// L'heure du rendez-vous est dépassée.
     case passe
     case annule
+    /// Son auteur est en pause : le plan est retiré du fil des autres, et
+    /// revient tel quel à la reprise.
+    ///
+    /// Ce cas manquait, et l'énumération n'est pas facultative : l'API rendant
+    /// « suspendu » pour tout plan d'un compte en pause, le décodage de
+    /// « Mes plans » échouait d'un bloc. L'écran entier tombait, pour un état
+    /// que le contrat ne déclarait pas non plus.
+    case suspendu
 }
 
 /// Auteur d'un plan, tel qu'affiché dans le fil. Volontairement maigre : c'est

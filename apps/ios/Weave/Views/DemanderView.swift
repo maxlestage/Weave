@@ -46,6 +46,18 @@ struct DemanderView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
+                // Le second endroit où l'on croise quelqu'un : sa fiche, vue
+                // depuis le fil. Un profil qu'on ne veut pas signaler une fois
+                // la conversation ouverte se signale d'ici — et c'est souvent
+                // ici qu'on s'en aperçoit, avant d'avoir écrit.
+                ToolbarItem(placement: .topBarTrailing) {
+                    MenuDeProtection(
+                        compteID: plan.author.id,
+                        prenom: plan.author.displayName
+                    ) {
+                        dismiss()
+                    }
+                }
             }
         }
     }

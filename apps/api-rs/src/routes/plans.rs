@@ -39,15 +39,15 @@ pub const MAX_PLANS_OUVERTS: u64 = 3;
 
 /// Un plan se publie au moins une heure à l'avance : le temps que quelqu'un le
 /// voie et demande à venir.
-const DELAI_MINIMUM_MINUTES: i64 = 60;
+pub(crate) const DELAI_MINIMUM_MINUTES: i64 = 60;
 
-const CAPACITE_SOLO: i32 = 1;
-const CAPACITE_GROUPE_MAX: i32 = 4;
-const TITRE_MIN: usize = 8;
-const TITRE_MAX: usize = 80;
-const NOTE_MAX: usize = 280;
+pub(crate) const CAPACITE_SOLO: i32 = 1;
+pub(crate) const CAPACITE_GROUPE_MAX: i32 = 4;
+pub(crate) const TITRE_MIN: usize = 8;
+pub(crate) const TITRE_MAX: usize = 80;
+pub(crate) const NOTE_MAX: usize = 280;
 
-const CATEGORIES: [&str; 8] = [
+pub(crate) const CATEGORIES: [&str; 8] = [
     "sortie", "sport", "culture", "repas", "musique", "jeux", "balade", "benevolat",
 ];
 
