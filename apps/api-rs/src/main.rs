@@ -202,6 +202,7 @@ fn construire_routeur(state: AppState) -> Router {
         .merge(routes::media::routes())
         .merge(routes::fil::routes())
         .merge(routes::billing::routes())
+        .merge(routes::bilan::routes())
         .with_state(state);
 
     monter_vitrine(api, vitrine.as_deref())

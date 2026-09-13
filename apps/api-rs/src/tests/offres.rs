@@ -319,3 +319,229 @@ async fn une_dotation_mensuelle_n_efface_pas_ce_qui_a_ete_achete() {
         corps["credits"]["escale"]
     );
 }
+
+/// Une « Escale » achetée peut enfin servir.
+///
+/// « Escale » se vend 3,99 € : « Publier depuis une autre ville pendant sept
+/// jours. » Le crédit était accordé à l'achat, et le fil honorait déjà
+/// l'escale — il remplace le filtre géographique par une ville dès que
+/// `escaleCity` est posé.
+///
+/// Mais **aucune ligne n'a jamais écrit `escaleCity`.** Personne ne pouvait
+/// déclencher ce qu'il venait d'acheter : le crédit s'accumulait sans usage.
+#[tokio::test]
+async fn une_escale_achetee_ouvre_le_fil_sur_une_autre_ville() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_escale", "depart").await;
+    let jeton = service.jeton("c_escale");
+
+    service
+        .put("/v1/me/profile", Some(&jeton), json!({
+            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+        }))
+        .await;
+
+    // Sans crédit, l'escale est refusée : c'est ce qui la fait valoir 3,99 €.
+    let (statut, corps) = service
+        .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lyon" }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "une escale sans crédit : {corps}");
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &compte, "escale", 1)
+        .await
+        .expect("achat");
+
+    let (statut, corps) = service
+        .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lyon" }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(corps["escaleCity"], "Lyon");
+
+    // Le crédit est dépensé, et les critères portent bien l'escale.
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["escale"], 0, "le crédit n'a pas été dépensé");
+
+    let (_, criteres) = service.get("/v1/me/preferences", Some(&jeton)).await;
+    assert_eq!(criteres["escaleCity"], "Lyon");
+    assert!(criteres["escaleUntil"].as_str().is_some(), "{criteres}");
+
+    // Une seconde escale pendant la première ferait payer pour raccourcir ce
+    // qu'on a déjà : elle est refusée.
+    crate::routes::billing::crediter_pour_test(&service.etat, &compte, "escale", 1)
+        .await
+        .expect("second achat");
+    let (statut, corps) = service
+        .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lille" }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "deux escales à la fois : {corps}");
+
+    // Le crédit du second achat n'a pas été consommé par ce refus.
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["escale"], 1, "un refus a mangé le crédit");
+}
+
+/// Le fil d'une escale montre la ville visée, pas la sienne.
+#[tokio::test]
+async fn le_fil_dune_escale_montre_lautre_ville() {
+    let service = Service::monter().await;
+    let voyageur = service.compte("c_voyageur", "depart").await;
+    let jeton = service.jeton("c_voyageur");
+    service.compte("c_lyonnais", "depart").await;
+
+    for (nom, ville, lat, lon) in [
+        ("c_voyageur", "Nantes", 47.21, -1.55),
+        ("c_lyonnais", "Lyon", 45.76, 4.84),
+    ] {
+        service
+            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
+                "city": ville, "latitude": lat, "longitude": lon, "gender": "autre",
+            }))
+            .await;
+    }
+
+    let (statut, corps) = service
+        .post("/v1/plans", Some(&service.jeton("c_lyonnais")), json!({
+            "title": "Un verre sur les quais de Saone",
+            "category": "sortie",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+        }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Depuis Nantes, le plan lyonnais est hors de portée.
+    let (_, fil) = service.get("/v1/plans", Some(&jeton)).await;
+    assert_eq!(fil["plans"].as_array().unwrap().len(), 0, "{fil}");
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &voyageur, "escale", 1)
+        .await
+        .expect("achat");
+    let (statut, corps) = service
+        .post("/v1/me/escale", Some(&jeton), json!({ "city": "Lyon" }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (_, fil) = service.get("/v1/plans", Some(&jeton)).await;
+    let plans = fil["plans"].as_array().expect("une liste");
+    assert_eq!(plans.len(), 1, "l'escale n'a pas ouvert le fil sur Lyon : {fil}");
+    assert_eq!(plans[0]["city"], "Lyon");
+}
+
+/// Le « Bilan » : vendu 2,99 €, et jusqu'ici sans aucun mécanisme.
+///
+/// Le crédit était accordé à l'achat et rien ne le consommait. Aucune route ne
+/// le mentionnait, aucune ligne ne le lisait : on vendait un produit qui
+/// n'existait pas.
+#[tokio::test]
+async fn un_bilan_rend_ce_qui_attire_et_ce_qui_tombe_a_plat() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let auteur = service.compte("c_bilan", "depart").await;
+    let jeton = service.jeton("c_bilan");
+    service.compte("c_demandeur", "depart").await;
+
+    for (nom, ville, lat, lon) in [
+        ("c_bilan", "Nantes", 47.21, -1.55),
+        ("c_demandeur", "Nantes", 47.21, -1.55),
+    ] {
+        service
+            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
+                "city": ville, "latitude": lat, "longitude": lon, "gender": "autre",
+            }))
+            .await;
+    }
+
+    // Trois plans : deux qui attirent, un qui tombe à plat.
+    let mut publies = Vec::new();
+    for (titre, categorie) in [
+        ("Un cafe pour parler de livres", "repas"),
+        ("Une balade le long de lErdre", "balade"),
+        ("Un tournoi de flechettes obscur", "jeux"),
+    ] {
+        let (statut, corps) = service
+            .post("/v1/plans", Some(&jeton), json!({
+                "title": titre,
+                "category": categorie,
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+        publies.push(corps["id"].as_str().unwrap().to_string());
+    }
+
+    // Une demande sur les deux premiers seulement.
+    for plan in publies.iter().take(2) {
+        let (statut, corps) = service
+            .post("/v1/requests", Some(&service.jeton("c_demandeur")), json!({
+                "planId": plan,
+                "message": "Ce plan me tente beaucoup, je serais ravi de venir.",
+            }))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+    }
+
+    // Sans crédit, pas de bilan.
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(statut, StatusCode::OK, "un bilan sans crédit : {corps}");
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &auteur, "bilan", 1)
+        .await
+        .expect("achat");
+
+    // Les plans sont encore à venir : le bilan doit refuser, et ne pas
+    // consommer le crédit — un plan à venir n'a pas fini de recevoir.
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(statut, StatusCode::OK, "un bilan sur des plans à venir : {corps}");
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["bilan"], 1, "un refus a mangé le crédit");
+
+    // On fait passer les rendez-vous.
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt='2020-01-01 12:00:00' WHERE authorId='{auteur}'"
+        ))
+        .await
+        .unwrap();
+
+    let (statut, bilan) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_eq!(statut, StatusCode::OK, "{bilan}");
+
+    assert_eq!(bilan["plansPasses"], 3);
+    assert_eq!(bilan["demandesRecues"], 2);
+    assert_eq!(bilan["plansSansAucuneDemande"], 1);
+
+    // Ce qui attire vient en tête, ce qui tombe à plat en tête de l'autre.
+    assert_eq!(bilan["cequiAttire"][0]["demandes"], 1);
+    assert_eq!(bilan["ceQuiTombeAPlat"][0]["demandes"], 0);
+    assert_eq!(bilan["ceQuiTombeAPlat"][0]["titre"], "Un tournoi de flechettes obscur");
+
+    // Et le crédit est dépensé, cette fois.
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["bilan"], 0, "le crédit n'a pas été dépensé");
+}
+
+/// Un bilan sans matière est refusé, et ne coûte rien.
+///
+/// En dessous de quelques plans, il rendrait des moyennes sur deux points.
+/// Faire payer 2,99 € pour un rapport vide serait pire que de ne rien vendre.
+#[tokio::test]
+async fn un_bilan_sans_matiere_ne_coute_pas_le_credit() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_bilan_vide", "depart").await;
+    let jeton = service.jeton("c_bilan_vide");
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &compte, "bilan", 1)
+        .await
+        .expect("achat");
+
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(statut, StatusCode::OK, "{corps}");
+    assert!(
+        corps["message"].as_str().unwrap_or_default().contains("n'a pas été utilisé"),
+        "le refus doit dire que le crédit est intact : {corps}"
+    );
+
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["bilan"], 1, "le crédit a été consommé pour rien");
+}
