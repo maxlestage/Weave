@@ -427,6 +427,47 @@ heroku addons:create scheduler:standard -a weave
 
 Les deux cohabitent sans risque : le verrou vaut aussi pour l'appel externe.
 
+## L'adresse publique, et le lien partagé
+
+`canonical`, `og:url` et `og:image` exigent des adresses **absolues** : le
+protocole Open Graph n'en résout aucune de relative. Sans elles, un lien collé
+dans un message sort nu — pas de vignette, pas de titre, pas de description.
+
+Deux sources, dans cet ordre :
+
+1. **`SITE.origine`**, dans `apps/web/src/pages/identite.ts`. C'est la source :
+   versionnée, avec les mentions légales, et elle vaut pour un vrai domaine.
+   Quand elle est là, la construction écrit tout et rien ne repasse derrière.
+2. **`PUBLIC_WEB_ORIGIN`**, la variable de configuration de l'application. Le
+   service pose l'adresse sur les pages au démarrage si la construction ne
+   l'avait pas.
+
+La seconde existe parce que **Heroku ne transmet pas les variables de
+configuration de l'application aux constructions de conteneur**. L'adresse est
+connue du déploiement — l'installation pose `PUBLIC_WEB_ORIGIN` à
+`https://<application>.herokuapp.com` — mais la construction du site, elle, ne
+peut pas la lire. Le site sortait donc sans balises, et tout lien partagé sans
+vignette, alors que l'adresse était là depuis le premier jour.
+
+L'origine est un fait de déploiement, pas un fait de construction. Le processus
+qui sert les pages la connaît ; c'est donc lui qui la pose.
+
+Ce que le service refuse de poser : une adresse contenant `localhost`, ou qui
+n'est pas en `https`. Elle désignerait une machine que personne d'autre ne peut
+atteindre, ce qui est pire qu'une absence d'adresse.
+
+Pour un vrai domaine, renseignez `SITE.origine` : `PUBLIC_WEB_ORIGIN` pointe
+sur `herokuapp.com`, et c'est cette adresse-là qui se retrouverait dans les
+liens partagés et dans l'URL canonique.
+
+## Les quatre adresses fixes
+
+`partage.png` (les réseaux sociaux), `apple-touch-icon.png` et
+`site.webmanifest` (l'écran d'accueil), `favicon.svg` (les navigateurs et la
+moitié des robots). Chacune est demandée à une adresse écrite ailleurs que dans
+nos pages : aucune ne peut porter d'empreinte, et aucune ne se garde un an —
+changer l'image de partage n'aurait rien changé pour personne, et sans recours.
+
 ## Modérer, depuis un téléphone
 
 `weave-api console` pose les décisions de modération. Elle ne s'installe pas et
