@@ -249,3 +249,73 @@ async fn deux_credits_concurrents_s_additionnent() {
         corps["credits"]["horizon"]
     );
 }
+
+/// Une notification Apple renvoyée ne dote pas deux fois.
+///
+/// Apple renvoie ses notifications tant qu'il n'obtient pas de 200, et en
+/// délivre parfois plusieurs pour le même événement. Chaque renvoi rappelait
+/// le crédit, qui ajoute : un renouvellement retenté deux fois donnait deux
+/// fois la dotation du mois. C'est gratuit, c'est répétable, et rien ne le
+/// signalait.
+#[tokio::test]
+async fn une_dotation_de_periode_ne_sert_qu_une_fois() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_dotation", "escapade").await;
+    let echeance = (chrono::Utc::now() + chrono::Duration::days(30)).naive_utc();
+
+    for essai in 1..=3 {
+        crate::routes::billing::doter_la_periode_pour_test(
+            &service.etat, &compte, "escale", 1, echeance,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("dotation {essai} : {e:?}"));
+    }
+
+    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_dotation"))).await;
+    assert_eq!(
+        corps["credits"]["escale"], 1,
+        "trois notifications pour le même mois ont donné {} escales",
+        corps["credits"]["escale"]
+    );
+
+    // Le mois suivant, en revanche, dote de nouveau.
+    let mois_suivant = (chrono::Utc::now() + chrono::Duration::days(60)).naive_utc();
+    crate::routes::billing::doter_la_periode_pour_test(
+        &service.etat, &compte, "escale", 1, mois_suivant,
+    )
+    .await
+    .expect("dotation du mois suivant");
+
+    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_dotation"))).await;
+    assert_eq!(corps["credits"]["escale"], 2, "le mois suivant doit doter");
+}
+
+/// Ce qui a été acheté survit à la dotation mensuelle.
+///
+/// « Escale » se vend aussi à l'unité. Remplacer le solde à chaque
+/// renouvellement effacerait ce qui a été payé — d'où l'addition plutôt que le
+/// remplacement, et cette règle mérite d'être tenue par un test.
+#[tokio::test]
+async fn une_dotation_mensuelle_n_efface_pas_ce_qui_a_ete_achete() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_achat_escale", "escapade").await;
+
+    // Deux escales achetées : pas de date de remise à zéro.
+    crate::routes::billing::crediter_pour_test(&service.etat, &compte, "escale", 2)
+        .await
+        .expect("achat");
+
+    let echeance = (chrono::Utc::now() + chrono::Duration::days(30)).naive_utc();
+    crate::routes::billing::doter_la_periode_pour_test(
+        &service.etat, &compte, "escale", 1, echeance,
+    )
+    .await
+    .expect("dotation");
+
+    let (_, corps) = service.get("/v1/me", Some(&service.jeton("c_achat_escale"))).await;
+    assert_eq!(
+        corps["credits"]["escale"], 3,
+        "les escales achetées ont été perdues : {}",
+        corps["credits"]["escale"]
+    );
+}

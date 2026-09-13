@@ -122,6 +122,55 @@ async fn enregistrer_unite(
     })))
 }
 
+/// Accorde la dotation d'une période, une fois et une seule.
+///
+/// Apple **renvoie** ses notifications tant qu'il n'obtient pas de 200, et en
+/// délivre parfois plusieurs pour le même événement. Chaque renvoi rappelait
+/// `crediter`, qui ajoute : un renouvellement retenté deux fois donnait deux
+/// fois la dotation du mois. C'est gratuit, c'est répétable, et rien ne le
+/// signalait.
+///
+/// La date d'échéance sert de marque : tant que la ligne porte déjà celle de
+/// la période en cours, la dotation a été accordée et un nouvel appel ne fait
+/// rien. Le mois suivant apporte une autre échéance, et la dotation repart.
+///
+/// La dotation s'ajoute au solde plutôt que de le remplacer, et c'est
+/// délibéré : « escale » se vend aussi à l'unité, et remplacer effacerait ce
+/// qui a été payé. Les deux origines se mêlent donc dans un même solde, qui
+/// n'est jamais remis à zéro — c'est le choix du produit, pas un oubli.
+async fn doter_la_periode(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    montant: i32,
+    echeance: chrono::NaiveDateTime,
+) -> Result<(), AppError> {
+    let deja = credit_balances::Entity::find()
+        .filter(credit_balances::Column::AccountId.eq(compte_id))
+        .filter(credit_balances::Column::Sku.eq(sku))
+        .filter(credit_balances::Column::ResetsAt.eq(echeance))
+        .one(&state.db)
+        .await?;
+
+    if deja.is_some() {
+        tracing::debug!(compte = compte_id, sku, "dotation déjà accordée pour cette période");
+        return Ok(());
+    }
+
+    crediter(state, compte_id, sku, montant, Some(echeance)).await
+}
+
+#[cfg(test)]
+pub(crate) async fn doter_la_periode_pour_test(
+    state: &AppState,
+    compte_id: &str,
+    sku: &str,
+    montant: i32,
+    echeance: chrono::NaiveDateTime,
+) -> Result<(), AppError> {
+    doter_la_periode(state, compte_id, sku, montant, echeance).await
+}
+
 /// Le crédit, exposé aux tests.
 ///
 /// `crediter` est privée parce que rien hors de ce module n'a de raison de
@@ -278,17 +327,12 @@ async fn notification_app_store(
 
     if let (false, Some(echeance)) = (expire, echeance) {
         // Dotation mensuelle du palier. Les crédits achetés à l'unité ne sont
-        // jamais remis à zéro : on ajoute, on ne remplace pas.
+        // jamais remis à zéro : on ajoute, on ne remplace pas — « escale » se
+        // vend aussi, et remplacer le solde effacerait ce qui a été payé.
         let escales = droits_pour(palier).escales_par_mois;
         if escales > 0 {
-            crediter(
-                &state,
-                &compte_id,
-                "escale",
-                escales as i32,
-                Some(echeance.naive_utc()),
-            )
-            .await?;
+            doter_la_periode(&state, &compte_id, "escale", escales as i32, echeance.naive_utc())
+                .await?;
         }
     }
 
