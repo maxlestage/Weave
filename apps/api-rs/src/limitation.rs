@@ -31,12 +31,6 @@ pub mod regles {
     pub const DEMANDE: Regle = Regle { seau: "join", limite: 40, fenetre_secondes: 60 * 60 };
 }
 
-pub struct Etat {
-    pub restant: i64,
-    #[allow(dead_code)]
-    pub remise_a_zero_dans: i64,
-}
-
 /// Incrémente le compteur et refuse la requête si le seuil est franchi.
 ///
 /// Un cache indisponible ne doit pas fermer le service : la limitation est une
@@ -47,7 +41,7 @@ pub async fn consommer(
     state: &AppState,
     regle: Regle,
     sujet: &str,
-) -> Result<Etat, AppError> {
+) -> Result<(), AppError> {
     let cle = cache::cles::limitation(regle.seau, sujet);
     let mut conn = state.cache.clone();
 
@@ -55,7 +49,7 @@ pub async fn consommer(
         Ok(v) => v,
         Err(erreur) => {
             tracing::warn!(erreur = %erreur, seau = regle.seau, "limitation de débit indisponible");
-            return Ok(Etat { restant: regle.limite, remise_a_zero_dans: regle.fenetre_secondes });
+            return Ok(());
         }
     };
 
@@ -78,11 +72,46 @@ pub async fn consommer(
         return Err(crate::error::trop_de_requetes(&format!(
             "Limite atteinte pour « {} ». Réessayez dans {remise_a_zero_dans} s.",
             regle.seau
-        )));
+        ))
+        .dans(remise_a_zero_dans));
     }
 
-    Ok(Etat {
-        restant: (regle.limite - compte).max(0),
-        remise_a_zero_dans,
-    })
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::Service;
+
+    /// Un refus de débit doit dire QUAND réessayer, et pas seulement en
+    /// français : le message est pour la personne, `Retry-After` est pour le
+    /// programme qui doit temporiser au lieu de réessayer aussitôt — et de se
+    /// faire refuser encore.
+    #[tokio::test]
+    async fn un_refus_porte_le_delai_avant_de_reessayer() {
+        const SERRE: Regle = Regle { seau: "test-serre", limite: 1, fenetre_secondes: 30 };
+
+        let service = Service::monter().await;
+        let sujet = service.id("limite");
+
+        consommer(&service.etat, SERRE, &sujet)
+            .await
+            .expect("le premier passage est accepté");
+
+        let refus = consommer(&service.etat, SERRE, &sujet)
+            .await
+            .expect_err("le second doit être refusé");
+
+        assert_eq!(refus.code, crate::error::Code::RateLimited);
+        let delai = refus.retry_after.expect("le délai doit accompagner le refus");
+        assert!(
+            (1..=SERRE.fenetre_secondes).contains(&delai),
+            "délai hors de la fenêtre : {delai} s"
+        );
+        assert!(
+            refus.message.contains("Réessayez"),
+            "le message reste lisible par une personne"
+        );
+    }
 }

@@ -102,7 +102,9 @@ ouverture du projet dans Xcode.
   application comme celle-ci peut faire de plus dangereux.
 - Aucun **contenu de conversation** ne transite par APNs ni ne s'affiche sur
   l'écran verrouillé — un titre de plan et deux compteurs, rien de plus. Pas
-  même un prénom.
+  même un prénom. L'alerte qui signale un message arrivé ne dit que cela :
+  « Nouveau message », sans auteur ni extrait. Une notification se lit
+  par-dessus une épaule.
 - **Les messages échangés ne sont pas supprimés au blocage** : ils restent
   lisibles par la personne qui a bloqué jusqu'à la purge. Une suppression
   immédiate effacerait aussi les preuves d'un comportement qu'on vient de

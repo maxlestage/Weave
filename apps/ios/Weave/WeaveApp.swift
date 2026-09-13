@@ -4,8 +4,32 @@ import WeaveKit
 import UIKit
 #endif
 
+/// Le délégué n'existe que pour une chose : APNs ne remet le jeton d'appareil
+/// nulle part ailleurs. SwiftUI seul ne donne pas accès à ce rappel.
+final class DelegueApplication: NSObject, UIApplicationDelegate {
+    /// Posé par `ModeleApplication` à sa création.
+    @MainActor static var surJetonRecu: ((Data) async -> Void)?
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        Task { @MainActor in await Self.surJetonRecu?(deviceToken) }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        // Sans jeton, pas d'alerte — mais tout le reste continue de marcher.
+        // Échouer bruyamment ici empêcherait d'utiliser l'application pour un
+        // confort dont elle peut se passer.
+    }
+}
+
 @main
 struct WeaveApp: App {
+    @UIApplicationDelegateAdaptor(DelegueApplication.self) private var delegue
     @State private var modele = ModeleApplication()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,6 +59,7 @@ final class ModeleApplication {
     let api: WeaveAPI
     let plans: PlansStore
     let activites: ActivityController
+    let notifications: NotificationsController
 
     private(set) var moi: Me?
     private(set) var connecte = false
@@ -47,6 +72,13 @@ final class ModeleApplication {
         self.api = api
         self.plans = PlansStore(api: api)
         self.activites = ActivityController(api: api, vendorID: Self.vendorID)
+        let notifications = NotificationsController(api: api, vendorID: Self.vendorID)
+        self.notifications = notifications
+
+        // APNs remet le jeton au délégué, pas ici : on lui dit où l'apporter.
+        DelegueApplication.surJetonRecu = { [notifications] jeton in
+            await notifications.deposer(jeton: jeton)
+        }
     }
 
     func demarrer() async {
@@ -55,6 +87,7 @@ final class ModeleApplication {
         guard connecte else { return }
 
         activites.start()
+        await notifications.demanderAutorisation()
         await chargerCompte()
         await plans.refresh()
         await synchroniserActivite()
@@ -71,6 +104,10 @@ final class ModeleApplication {
     func seConnecter() async {
         connecte = true
         activites.start()
+        // L'autorisation se demande ici, pas au premier lancement : avant
+        // d'avoir un compte, il n'y a rien à notifier, et une demande posée
+        // trop tôt se refuse par réflexe. iOS ne la repose jamais.
+        await notifications.demanderAutorisation()
         await chargerCompte()
         await plans.refresh()
         await synchroniserActivite()
@@ -78,6 +115,7 @@ final class ModeleApplication {
 
     func seDeconnecter() async {
         await activites.end()
+        await notifications.oublier()
         try? await api.logout()
         moi = nil
         connecte = false

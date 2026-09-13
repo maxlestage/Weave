@@ -66,8 +66,9 @@ struct ReglagesView: View {
                         "Live Activity",
                         value: modele.activites.isEnabled ? "Autorisée" : "Désactivée"
                     )
+                    LabeledContent("Notifications", value: etatNotifications)
                 } footer: {
-                    Text("La bannière affiche votre prochain plan et ce qui attend une réponse. Jamais de nom, jamais de photo, jamais de message.")
+                    Text("La bannière affiche votre prochain plan et ce qui attend une réponse. Une notification vous prévient qu'un message est arrivé. Ni l'une ni l'autre ne dit qui écrit, ni ce qui est écrit — elles s'affichent sur un écran verrouillé.")
                 }
 
                 // Les deux droits que la politique de confidentialité annonce :
@@ -160,6 +161,16 @@ struct ReglagesView: View {
             dismiss()
         } catch {
             erreur = "La suppression n'a pas abouti. Réessayez dans un moment."
+        }
+    }
+
+    /// Ce que le système a répondu. Tant qu'on n'a rien demandé, il n'y a rien
+    /// à annoncer : afficher « désactivées » laisserait croire à un refus.
+    private var etatNotifications: String {
+        switch modele.notifications.autorise {
+        case .some(true): "Autorisées"
+        case .some(false): "Refusées"
+        case nil: "Pas encore demandées"
         }
     }
 
