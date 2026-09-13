@@ -92,6 +92,59 @@ async fn trois_plans_ouverts_et_pas_un_de_plus() {
     assert_eq!(corps["error"], "too_many_plans");
 }
 
+/// Le plafond de trois ne doit pas céder à deux publications simultanées.
+///
+/// Les plans ouverts étaient comptés hors transaction, puis le plan inséré
+/// séparément. À deux plans ouverts, deux publications concurrentes lisaient
+/// toutes deux « 2 », passaient toutes deux, et le compte finissait à quatre —
+/// l'invariant central du module, contourné sans rien payer.
+///
+/// Le test part de deux plans plutôt que de trois : il reste alors exactement
+/// une place, donc une seule des deux publications a le droit d'aboutir.
+#[tokio::test]
+async fn deux_publications_concurrentes_ne_depassent_pas_le_plafond() {
+    let service = Service::monter().await;
+    service.compte("c_plafond", "depart").await;
+    let jeton = service.jeton("c_plafond");
+
+    let plan = |titre: &str| {
+        json!({
+            "title": titre,
+            "category": "sortie",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+        })
+    };
+
+    for n in 1..=2 {
+        let (statut, corps) = service
+            .post("/v1/plans", Some(&jeton), plan(&format!("Un plan deja la numero {n}")))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+    }
+
+    let (a, b) = tokio::join!(
+        service.post("/v1/plans", Some(&jeton), plan("La troisieme place a prendre")),
+        service.post("/v1/plans", Some(&jeton), plan("La quatrieme qui doit tomber")),
+    );
+
+    let passees = [a.0, b.0].iter().filter(|s| s.is_success()).count();
+    assert_eq!(
+        passees, 1,
+        "une seule place restait — obtenu {passees} (réponses : {a:?} / {b:?})"
+    );
+
+    // Et le plafond doit se vérifier dans la base, pas seulement dans les
+    // codes de réponse : c'est le nombre de lignes qui compte.
+    let (_, mine) = service.get("/v1/plans/mine", Some(&jeton)).await;
+    let ouverts = mine
+        .as_array()
+        .expect("une liste de plans")
+        .iter()
+        .filter(|p| p["state"] == "ouvert")
+        .count();
+    assert_eq!(ouverts, 3, "trois plans ouverts, pas un de plus — {mine}");
+}
+
 #[tokio::test]
 async fn un_plan_se_publie_a_l_avance_et_avec_un_vrai_titre() {
     let service = Service::monter().await;
