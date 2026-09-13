@@ -39,7 +39,7 @@ par une case unique valant acceptation de tout.
 
 | Droit | Où c'est traité |
 | --- | --- |
-| Accès et portabilité | Export à construire à partir de `Account`, `Profile`, `Preference`, `Plan`, `JoinRequest`, `Conversation`, `Message` — le cache n'a rien à exporter, il est vide de données durables |
+| Accès et portabilité | `GET /v1/me/export` — un document JSON complet ; le cache n'a rien à exporter, il est vide de données durables |
 | Rectification | `PATCH /v1/me`, `PUT /v1/me/profile`, `PATCH /v1/me/preferences` |
 | Effacement | `DELETE /v1/auth/account` : les plans ouverts sont retirés du fil immédiatement, purge sous 30 jours |
 | Opposition | `POST /v1/me/pause` : les plans ouverts sont annulés, le compte n'apparaît plus dans le fil |
@@ -81,8 +81,12 @@ weave-api purge
 Sans cette planification, la purge n'a toujours pas lieu : le code existe, son
 déclenchement est une question d'exploitation.
 
-**Reste à construire** : l'écran « Mes données » dans l'application iOS, qui
-appellera la route d'export. La route, elle, est en place et testée.
+Côté iOS, les réglages portent désormais « Obtenir mes données » — qui appelle
+la route et propose le fichier au partage — et « Supprimer mon compte », qu'Apple
+exige de toute application permettant d'en créer un. Ce code Swift **n'a jamais
+été compilé** : ni macOS ni compte Apple Developer n'étaient disponibles. Il
+suit les idiomes du client existant, et devra être repris à la première
+ouverture du projet dans Xcode.
 
 ## Sécurité des personnes
 

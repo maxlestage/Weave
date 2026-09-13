@@ -112,8 +112,9 @@ async fn main() -> anyhow::Result<()> {
     // qui ne démarre ni serveur ni cache, et qu'un planificateur appelle.
     if std::env::args().nth(1).as_deref() == Some("purge") {
         let bilan = purge::executer(&db).await?;
-        println!("  • messages effacés : {}", bilan.messages_effaces);
-        println!("  • comptes effacés  : {}", bilan.comptes_effaces);
+        println!("  • messages effacés  : {}", bilan.messages_effaces);
+        println!("  • activités effacées : {}", bilan.activites_effacees);
+        println!("  • comptes effacés   : {}", bilan.comptes_effaces);
         if bilan.comptes_differes > 0 {
             println!(
                 "  • comptes différés : {} (signalement encore ouvert)",

@@ -142,22 +142,28 @@ const ARTICLES: readonly Article[] = [
               "Tant que l'appareil reste lié au compte",
             ],
             [
+              "Activités en direct : jeton de mise à jour, dernier état affiché",
+              "Tenir à jour l'écran verrouillé et le cadran de la montre pendant un plan",
+              "Consentement (autorisation système)",
+              "Effacées dès la fin de l'activité",
+            ],
+            [
               "Blocages et signalements",
               "Votre sécurité et celle des autres, traitement des signalements",
               "Intérêt légitime, obligation légale",
-              "Conservés après la suppression du compte signalant, pour instruire le dossier",
+              "Effacés avec votre compte ; mais tant qu'un signalement vous vise et reste ouvert, la purge de votre compte est reportée",
             ],
             [
               "Abonnements et achats : identifiant de transaction, référence du produit, montant",
-              "Ouvrir les droits payés, gérer les remboursements et la comptabilité",
-              "Contrat, obligation légale",
-              "10 ans (obligation comptable)",
+              "Ouvrir les droits que vous avez payés et traiter les remboursements",
+              "Contrat",
+              `Durée du compte, puis ${ACCOUNT_PURGE_DAYS} jours. Les justificatifs comptables sont établis et conservés par Apple, qui encaisse`,
             ],
             [
               "Traces techniques : identifiant de compte, action, adresse IP",
               "Détecter les abus, prouver ce qui s'est passé en cas de litige",
               "Intérêt légitime",
-              "12 mois",
+              "12 mois ; la suppression du compte détache la trace de vous, elle ne l'efface pas",
             ],
             [
               "Consentements : objet, version du texte, date d'octroi et de retrait",

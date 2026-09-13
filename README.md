@@ -141,9 +141,12 @@ comptes tiers, pas du code d'architecture :
 - [ ] Stockage objet des médias, avec modération des photos avant publication
 - [ ] Vérification cryptographique complète des transactions StoreKit
       (clé App Store Connect)
-- [ ] Tâche planifiée : clôture des plans passés, purges RGPD, expiration des
-      Live Activities
-- [ ] Export des données personnelles au format lisible par machine
+- [x] Purges RGPD et expiration des Live Activities — `weave-api purge`,
+      à planifier sur l'hébergeur (voir [DEPLOIEMENT.md](docs/DEPLOIEMENT.md))
+- [x] Export des données personnelles au format lisible par machine —
+      `GET /v1/me/export`
+- [x] Réglages iOS : « Obtenir mes données » et « Supprimer mon compte » —
+      écrits, mais **jamais compilés** (voir le dernier point de cette liste)
 - [ ] Revue de marque et de brevets (voir [ORIGINALITE.md](docs/ORIGINALITE.md))
 - [ ] Première exécution de la chaîne iOS, qui n'a pas pu être testée ici
       (ni macOS, ni compte Apple Developer disponibles)

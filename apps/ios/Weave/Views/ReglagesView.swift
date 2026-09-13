@@ -9,6 +9,11 @@ struct ReglagesView: View {
     @State private var ageMin = 18
     @State private var ageMax = 32
 
+    @State private var exportEnCours = false
+    @State private var fichierExporte: URL?
+    @State private var demandeSuppression = false
+    @State private var erreur: String?
+
     var body: some View {
         NavigationStack {
             Form {
@@ -65,6 +70,34 @@ struct ReglagesView: View {
                     Text("La bannière affiche votre prochain plan et ce qui attend une réponse. Jamais de nom, jamais de photo, jamais de message.")
                 }
 
+                // Les deux droits que la politique de confidentialité annonce :
+                // obtenir ses données, et partir. Apple exige par ailleurs que
+                // la suppression du compte soit possible depuis l'application.
+                Section {
+                    Button {
+                        Task { await exporter() }
+                    } label: {
+                        HStack {
+                            Text("Obtenir mes données")
+                            if exportEnCours {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(exportEnCours)
+
+                    if let fichierExporte {
+                        ShareLink(item: fichierExporte) {
+                            Label("Enregistrer le fichier", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } header: {
+                    Text("Vos données")
+                } footer: {
+                    Text("Un fichier JSON contenant ce que vous avez écrit et ce que le service sait de vous. Il ne contient pas les messages écrits par d'autres, ni l'identité de qui vous aurait signalé : ce sont leurs données.")
+                }
+
                 Section {
                     Button("Se déconnecter", role: .destructive) {
                         Task {
@@ -72,7 +105,25 @@ struct ReglagesView: View {
                             dismiss()
                         }
                     }
+                    Button("Supprimer mon compte", role: .destructive) {
+                        demandeSuppression = true
+                    }
+                } footer: {
+                    Text("Vos plans ouverts disparaissent du fil immédiatement. Tout le reste est effacé sous \(accountPurgeDays) jours.")
                 }
+            }
+            .alert("Supprimer votre compte ?", isPresented: $demandeSuppression) {
+                Button("Annuler", role: .cancel) {}
+                Button("Supprimer", role: .destructive) {
+                    Task { await supprimer() }
+                }
+            } message: {
+                Text("Vos plans, vos demandes et vos conversations seront effacés. Cette action ne s'annule pas.\n\nUn abonnement souscrit via l'App Store se résilie séparément, dans les réglages de votre compte Apple.")
+            }
+            .alert("Échec", isPresented: .constant(erreur != nil)) {
+                Button("D'accord") { erreur = nil }
+            } message: {
+                Text(erreur ?? "")
             }
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
@@ -81,6 +132,34 @@ struct ReglagesView: View {
                     Button("Terminé") { dismiss() }
                 }
             }
+        }
+    }
+
+    /// Récupère l'export et le pose dans un fichier temporaire.
+    ///
+    /// Le passer par un fichier plutôt que par la mémoire donne au partage un
+    /// nom lisible — « weave-mes-donnees.json » — au lieu d'un contenu anonyme
+    /// que les applications de destination ne savent pas nommer.
+    private func exporter() async {
+        exportEnCours = true
+        defer { exportEnCours = false }
+        do {
+            let donnees = try await modele.api.exportData()
+            let cible = URL.temporaryDirectory.appending(path: "weave-mes-donnees.json")
+            try donnees.write(to: cible, options: .atomic)
+            fichierExporte = cible
+        } catch {
+            erreur = "L'export n'a pas abouti. Réessayez dans un moment."
+        }
+    }
+
+    private func supprimer() async {
+        do {
+            try await modele.api.deleteAccount()
+            await modele.seDeconnecter()
+            dismiss()
+        } catch {
+            erreur = "La suppression n'a pas abouti. Réessayez dans un moment."
         }
     }
 
