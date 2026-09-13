@@ -69,7 +69,11 @@ compris sous SQLite, où les clés étrangères ne sont pas actives par défaut.
 **L'exception à retenir** : un compte visé par un signalement non traité n'est
 pas purgé. Sinon, supprimer son compte suffirait à effacer les preuves d'un
 comportement qu'on vient de signaler. Le compte reste hors circulation dans
-l'intervalle, et part au passage suivant une fois le dossier clos.
+l'intervalle, et part au passage suivant une fois le dossier clos — par
+`weave-api console clore`, voir plus bas — ou au bout de quatre-vingt-dix
+jours si le dossier n'a jamais été instruit. Sans cette borne, une exception à
+l'article 17 serait devenue une exemption permanente, et un seul signalement
+aurait suffi à empêcher définitivement la suppression du compte d'autrui.
 
 **Elle tourne d'elle-même**, depuis le service : une tentative par heure, un
 verrou dans le cache tenu vingt-trois heures. Au plus un passage par jour, quel
@@ -114,10 +118,43 @@ ouverture du projet dans Xcode.
 prévoient explicitement `mineur`, qui doit déclencher un traitement prioritaire
 et, le cas échéant, un signalement aux autorités compétentes.
 
-Le règlement européen sur les services numériques (DSA) impose par ailleurs un
-point de contact, des délais de traitement des signalements et une voie de
-recours pour les décisions de modération. `reports.state` et `reports.handledAt`
-en posent la base technique ; le processus humain reste à définir.
+**`weave-api console`** est l'outil qui pose ces décisions. Trois colonnes
+existaient sans que rien ne les écrive : `reports.handledAt` — la clôture d'un
+dossier, lue par la purge et écrite nulle part ; `accounts.status = 'suspended'`
+— posé d'office sur un signalement de minorité, avec en commentaire « la
+suspension se lève à la main », qu'aucune main ne pouvait lever ;
+`profiles.photoReviewedAt` — remis à `NULL` à chaque envoi de photo et jamais
+relu.
+
+```sh
+heroku run -a weave ./bin-release/weave-api console signalements
+heroku run -a weave ./bin-release/weave-api console clore <dossier> "motif"
+heroku run -a weave ./bin-release/weave-api console suspendre <compte> "motif"
+heroku run -a weave ./bin-release/weave-api console retablir <compte>
+heroku run -a weave ./bin-release/weave-api console photos
+heroku run -a weave ./bin-release/weave-api console photo-ok <compte>
+heroku run -a weave ./bin-release/weave-api console photo-retirer <compte>
+```
+
+**Pourquoi une commande et pas une route.** Une surface d'administration en
+HTTP demanderait une authentification d'administrateur — un rôle, un second
+chemin de connexion, et une porte de plus sur l'internet public : celle-là même
+qui donne le pouvoir de suspendre un compte et de lire les détails d'un
+signalement. La commande ne pose aucune porte ; l'autorisation, c'est l'accès
+au dyno, donc le compte Heroku et son second facteur.
+
+**Clore et sanctionner sont deux gestes.** Clore un dossier ne suspend
+personne, et suspendre ne clôt aucun dossier. Les confondre ferait d'un
+classement sans suite une sanction silencieuse, ou l'inverse. Chaque décision
+s'inscrit à `audit_events` avec son motif : le règlement européen sur les
+services numériques (DSA) impose une voie de recours pour les décisions de
+modération, et une décision sans trace ne se conteste pas. `retablir` est cette
+voie.
+
+**Ce qui reste à définir** est le processus humain, pas l'outil : qui relève la
+file, sous quel délai, et selon quelle grille. Les photos sont publiées avant
+examen — la file est donc a posteriori, et `photos` la donne de la plus
+ancienne à la plus récente.
 
 ## Sous-traitants
 
