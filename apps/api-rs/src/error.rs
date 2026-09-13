@@ -11,6 +11,8 @@ use axum::{
 };
 use serde_json::json;
 
+use crate::messages::Msg;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Code {
     Unauthorized,
@@ -139,29 +141,42 @@ impl IntoResponse for AppError {
 impl From<sea_orm::DbErr> for AppError {
     fn from(erreur: sea_orm::DbErr) -> Self {
         tracing::error!(erreur = %erreur, "erreur de base de données");
-        AppError::new(Code::Internal, "Une erreur interne est survenue.")
+        AppError::new(Code::Internal, Msg::ErreurInterne.t())
     }
 }
 
 impl From<redis::RedisError> for AppError {
     fn from(erreur: redis::RedisError) -> Self {
         tracing::error!(erreur = %erreur, "erreur du magasin clé-valeur");
-        AppError::new(Code::Internal, "Une erreur interne est survenue.")
+        AppError::new(Code::Internal, Msg::ErreurInterne.t())
     }
 }
 
-pub fn non_autorise(message: &str) -> AppError {
-    AppError::new(Code::Unauthorized, message)
+/*
+ * Ces fonctions prennent un `Msg` et non une phrase.
+ *
+ * Elles prenaient un `&str`, et chaque route écrivait sa phrase en français
+ * sur place. L'application iOS les rend telles quelles : une application en
+ * anglais affichait « Ce plan est complet. » au milieu de son propre texte.
+ *
+ * Prendre un `Msg` déplace la phrase dans `messages.rs`, où ses trois langues
+ * sont écrites côte à côte et où le compilateur refuse qu'il en manque une.
+ * Les quelques endroits qui ont une raison de composer un texte hors
+ * catalogue passent par les variantes `_brut`, qui le disent.
+ */
+
+pub fn non_autorise(message: Msg) -> AppError {
+    AppError::new(Code::Unauthorized, message.t())
 }
 
-pub fn introuvable(message: &str) -> AppError {
-    AppError::new(Code::NotFound, message)
+pub fn introuvable(message: Msg) -> AppError {
+    AppError::new(Code::NotFound, message.t())
 }
 
-pub fn invalide(message: &str) -> AppError {
-    AppError::new(Code::Validation, message)
+pub fn invalide(message: Msg) -> AppError {
+    AppError::new(Code::Validation, message.t())
 }
 
-pub fn trop_de_requetes(message: &str) -> AppError {
-    AppError::new(Code::RateLimited, message)
+pub fn trop_de_requetes(message: Msg) -> AppError {
+    AppError::new(Code::RateLimited, message.t())
 }

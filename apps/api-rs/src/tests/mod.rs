@@ -268,6 +268,49 @@ impl Service {
         self.appeler("PUT", chemin, jeton, Some(corps)).await
     }
 
+    /// Un POST dans une langue donnée, en-têtes de la réponse compris.
+    ///
+    /// La langue d'une erreur ne se lit ni dans le corps seul ni dans les
+    /// en-têtes seuls : le message est dans l'un, `Content-Language` dans
+    /// l'autre, et c'est leur accord qu'il faut pouvoir vérifier.
+    pub async fn post_dans_la_langue(
+        &self,
+        chemin: &str,
+        jeton: Option<&str>,
+        corps: Value,
+        accept_language: &str,
+    ) -> (StatusCode, axum::http::HeaderMap, Value) {
+        let mut requete = Request::builder()
+            .method("POST")
+            .uri(chemin)
+            .extension(adresse_appelante())
+            .header("content-type", "application/json")
+            .header(axum::http::header::ACCEPT_LANGUAGE, accept_language);
+        if let Some(j) = jeton {
+            requete = requete.header(AUTHORIZATION, format!("Bearer {j}"));
+        }
+        let requete = requete
+            .body(Body::from(corps.to_string()))
+            .expect("requête bien formée");
+
+        let reponse = self
+            .routeur
+            .clone()
+            .oneshot(requete)
+            .await
+            .expect("le service répond");
+        let statut = reponse.status();
+        let entetes = reponse.headers().clone();
+        let octets = reponse
+            .into_body()
+            .collect()
+            .await
+            .expect("corps lisible")
+            .to_bytes();
+        let json = serde_json::from_slice(&octets).unwrap_or(Value::Null);
+        (statut, entetes, json)
+    }
+
     /// La réponse entière, en-têtes compris : ce que `get` jette est
     /// précisément ce que le cache du navigateur lit.
     pub async fn get_brut(&self, chemin: &str) -> (StatusCode, axum::http::HeaderMap, String) {
@@ -429,6 +472,7 @@ pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
 }
 
 mod contrat;
+mod langues;
 mod parcours;
 pub mod storekit;
 

@@ -5,6 +5,7 @@
 //! l'identifiant stable que fournit iOS, et deux déclarations successives
 //! doivent mettre à jour la même ligne, pas en créer une seconde.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -53,10 +54,10 @@ async fn declarer_activite(
     Json(corps): Json<DeclarationActivite>,
 ) -> Result<Json<Value>, AppError> {
     if corps.vendor_id.len() < 4 || corps.vendor_id.len() > 128 {
-        return Err(invalide("Identifiant d'appareil invalide."));
+        return Err(invalide(Msg::IdentifiantDAppareilInvalide));
     }
     if corps.update_token.len() < 10 || corps.update_token.len() > 400 {
-        return Err(invalide("Jeton de mise à jour invalide."));
+        return Err(invalide(Msg::JetonDeMiseAJourInvalide));
     }
 
     let appareil = devices::Entity::find()
@@ -64,7 +65,7 @@ async fn declarer_activite(
         .filter(devices::Column::VendorId.eq(corps.vendor_id.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Appareil inconnu. Enregistrez-le d'abord."))?;
+        .ok_or_else(|| introuvable(Msg::AppareilInconnu))?;
 
     let peremption = live_activity::peremption_session();
 
@@ -205,7 +206,7 @@ async fn declarer(
     Json(corps): Json<DeclarationAppareil>,
 ) -> Result<Json<Value>, AppError> {
     if corps.vendor_id.len() < 4 || corps.vendor_id.len() > 128 {
-        return Err(invalide("Identifiant d'appareil invalide."));
+        return Err(invalide(Msg::IdentifiantDAppareilInvalide));
     }
 
     // Cet appareil n'appartient plus à personne d'autre.

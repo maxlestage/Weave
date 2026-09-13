@@ -2,6 +2,7 @@
 //!
 //! Sans accusé de lecture : savoir si l'autre a lu n'aide personne à décider.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -252,8 +253,8 @@ async fn lire(
         .filter(messages::Column::ConversationId.eq(conversation.id.as_str()));
 
     if let Some(avant) = &page.before {
-        let borne = DateTime::parse_from_rfc3339(avant)
-            .map_err(|_| invalide("Le curseur « before » attend une date ISO 8601."))?;
+        let borne =
+            DateTime::parse_from_rfc3339(avant).map_err(|_| invalide(Msg::CurseurAvantIso8601))?;
         requete = requete.filter(messages::Column::SentAt.lt(borne.naive_utc()));
     }
 
@@ -341,7 +342,7 @@ async fn clore(
         .await
         .map_err(|erreur| {
             tracing::error!(erreur = %erreur, "clôture de conversation impossible");
-            AppError::new(Code::Internal, "Une erreur interne est survenue.")
+            AppError::new(Code::Internal, Msg::ErreurInterne.t())
         })?;
 
     live_activity::publier_au_mieux(&state, &compte.id).await;
@@ -364,17 +365,17 @@ async fn ecrire(
 
     let conversation = conversation_de(&state, &id, &compte.id).await?;
     if conversation.closed_at.is_some() {
-        return Err(invalide("Cette conversation est close."));
+        return Err(invalide(Msg::ConversationClose));
     }
 
     let texte = corps.body.trim().to_string();
     if texte.is_empty() {
-        return Err(invalide("Un message vide ne dit rien."));
+        return Err(invalide(Msg::MessageVide));
     }
     if texte.chars().count() > MESSAGE_MAX {
-        return Err(invalide(&format!(
-            "Un message ne peut pas dépasser {MESSAGE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::MessageDeDemandeTropLong {
+            maximum: MESSAGE_MAX as i64,
+        }));
     }
 
     // Les deux écritures vont ensemble : une conversation dont `lastMessageAt`
@@ -434,12 +435,12 @@ async fn conversation_de(
     let conversation = conversations::Entity::find_by_id(id.to_string())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Conversation introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::ConversationIntrouvable))?;
 
     if conversation.host_id != compte_id && conversation.guest_id != compte_id {
         return Err(AppError::new(
             Code::Forbidden,
-            "Cette conversation n'est pas la vôtre.",
+            Msg::ConversationPasLaVotre.t(),
         ));
     }
     Ok(conversation)

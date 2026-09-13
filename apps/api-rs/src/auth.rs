@@ -4,6 +4,7 @@
 //! unique envoyé par e-mail, puis par un couple accès/rafraîchissement.
 //! L'accès est court ; le rafraîchissement est rotatif et stocké haché.
 
+use crate::messages::Msg;
 use crate::{
     AppState, cache,
     entities::{accounts, subscriptions},
@@ -171,23 +172,23 @@ impl FromRequestParts<AppState> for Authentifie {
             .headers
             .get(AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| non_autorise("Authentification requise."))?;
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?;
 
         let jeton = entete
             .strip_prefix("Bearer ")
             .or_else(|| entete.strip_prefix("bearer "))
-            .ok_or_else(|| non_autorise("Authentification requise."))?
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?
             .trim();
 
         let claims = lire_jeton(&state.config.auth.jwt_secret, jeton)
-            .ok_or_else(|| non_autorise("Authentification requise."))?;
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?;
 
         let compte = charger_compte(state, &claims.sub)
             .await
-            .ok_or_else(|| non_autorise("Authentification requise."))?;
+            .ok_or_else(|| non_autorise(Msg::AuthentificationRequise))?;
 
         if compte.status == "suspended" {
-            return Err(non_autorise("Ce compte est suspendu."));
+            return Err(non_autorise(Msg::CompteSuspendu));
         }
 
         // Un compte en cours de suppression ne doit plus rien pouvoir faire.
@@ -201,9 +202,7 @@ impl FromRequestParts<AppState> for Authentifie {
         // demandée par erreur, et cela passe par l'assistance, pas par le
         // jeton qu'on avait encore en poche.
         if compte.status == "deleting" {
-            return Err(non_autorise(
-                "Ce compte est en cours de suppression. Écrivez à l'assistance pour l'annuler.",
-            ));
+            return Err(non_autorise(Msg::CompteEnSuppression));
         }
 
         Ok(Authentifie(compte))

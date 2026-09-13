@@ -12,8 +12,10 @@ mod crypto;
 mod db;
 mod droits;
 mod error;
+mod langue;
 mod limitation;
 mod live_activity;
+mod messages;
 mod migrations;
 mod partage;
 mod purge;
@@ -241,7 +243,11 @@ fn construire_routeur(state: AppState) -> Router {
         .merge(routes::verification::routes())
         .with_state(state);
 
+    // La langue se pose AUTOUR de tout, site vitrine compris : la couche
+    // s'applique à la réponse comme à la requête, et `Content-Language` a sa
+    // place sur une page comme sur une erreur d'API.
     monter_vitrine(api, vitrine.as_deref())
+        .layer(axum::middleware::from_fn(langue::poser_la_langue))
 }
 
 /// Monte le site vitrine sous les routes de l'API.
