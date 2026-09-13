@@ -71,15 +71,13 @@ pas purgé. Sinon, supprimer son compte suffirait à effacer les preuves d'un
 comportement qu'on vient de signaler. Le compte reste hors circulation dans
 l'intervalle, et part au passage suivant une fois le dossier clos.
 
-À planifier sur l'hébergeur — Heroku Scheduler, ou l'équivalent — une fois par
-jour :
+**Elle tourne d'elle-même**, depuis le service : une tentative par heure, un
+verrou dans le cache tenu vingt-trois heures. Au plus un passage par jour, quel
+que soit le nombre de dynos. Rien à planifier, rien à installer — c'est ce qui
+séparait encore le code écrit du droit exercé.
 
-```sh
-weave-api purge
-```
-
-Sans cette planification, la purge n'a toujours pas lieu : le code existe, son
-déclenchement est une question d'exploitation.
+La commande `weave-api purge` reste disponible pour un appel externe ; le
+verrou vaut pour elle aussi.
 
 Côté iOS, les réglages portent désormais « Obtenir mes données » — qui appelle
 la route et propose le fichier au partage — et « Supprimer mon compte », qu'Apple

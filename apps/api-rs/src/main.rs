@@ -143,6 +143,11 @@ async fn main() -> anyhow::Result<()> {
         apns: Arc::new(apns::ClientApns::new()),
     };
 
+    // La purge tourne depuis le service, faute de planificateur externe. Un
+    // verrou dans le cache garantit un seul passage par jour, quel que soit le
+    // nombre de dynos.
+    purge::planifier(state.clone());
+
     let app = construire_routeur(state).layer(CorsLayer::new().allow_origin(origine));
 
     let ecoute = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
