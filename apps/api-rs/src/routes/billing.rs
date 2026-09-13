@@ -7,6 +7,7 @@
 //! Règle de conception du catalogue : **aucune offre n'achète de visibilité**.
 //! Payer ne fait jamais remonter un plan devant celui de quelqu'un d'autre.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -98,16 +99,15 @@ async fn enregistrer_unite(
     Json(corps): Json<TransactionSignee>,
 ) -> Result<Json<Value>, AppError> {
     if corps.signed_transaction.len() < 10 {
-        return Err(invalide("Transaction StoreKit illisible."));
+        return Err(invalide(Msg::TransactionStoreKitIllisible));
     }
     let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
 
     let (sku, _nom, prix_centimes, dotation) = unite_depuis_produit(&transaction.product_id)
         .ok_or_else(|| {
-            invalide(&format!(
-                "Produit à l'unité inconnu : {}",
-                transaction.product_id
-            ))
+            invalide(Msg::ProduitALUniteInconnu {
+                identifiant: transaction.product_id.clone(),
+            })
         })?;
 
     // `transactionId` est unique côté Apple : la contrainte d'unicité empêche
@@ -504,10 +504,7 @@ fn achat_acceptable(production: bool, verification_ecrite: bool) -> bool {
 /// permet d'éprouver le parcours d'achat sans compte Apple Developer.
 fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, AppError> {
     if !achat_acceptable(state.config.is_production(), VERIFICATION_JWS_IMPLEMENTEE) {
-        return Err(invalide(
-            "Vérification des achats indisponible : la validation cryptographique \
-             des transactions App Store n'est pas encore en service.",
-        ));
+        return Err(invalide(Msg::VerificationDesAchatsIndisponible));
     }
 
     let claims =
@@ -515,7 +512,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
             // Le motif va au journal, pas à l'appelant : on ne renseigne pas
             // qui essaie de forger sur ce qui l'a trahi.
             tracing::warn!(motif = refus.motif(), "transaction StoreKit refusée");
-            invalide("Transaction StoreKit refusée.")
+            invalide(Msg::TransactionStoreKitRefusee)
         })?;
 
     // La signature d'Apple ne dit pas POUR QUI elle a été émise.
@@ -530,7 +527,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
         .unwrap_or_default();
     if paquet != BUNDLE {
         tracing::warn!(paquet, "transaction émise pour une autre application");
-        return Err(invalide("Transaction StoreKit refusée."));
+        return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
 
     // Sandbox et production ne se mélangent pas : une transaction d'essai ne
@@ -545,7 +542,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
             attendu = %state.config.app_store.environnement,
             "transaction d'un autre environnement"
         );
-        return Err(invalide("Transaction StoreKit refusée."));
+        return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
 
     // Une transaction signée reste valable indéfiniment tant que rien ne borne
@@ -558,7 +555,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
     {
         if (Utc::now() - signee_le).num_minutes().abs() > FRAICHEUR_MINUTES {
             tracing::warn!(%signee_le, "transaction trop ancienne");
-            return Err(invalide("Transaction StoreKit refusée."));
+            return Err(invalide(Msg::TransactionStoreKitRefusee));
         }
     }
 
@@ -573,7 +570,7 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
         .unwrap_or_default()
         .to_string();
     if product_id.is_empty() || transaction_id.is_empty() {
-        return Err(invalide("Transaction incomplète."));
+        return Err(invalide(Msg::TransactionIncomplete));
     }
 
     Ok(Transaction {
@@ -615,15 +612,14 @@ async fn enregistrer_abonnement(
     Json(corps): Json<TransactionSignee>,
 ) -> Result<Json<Value>, AppError> {
     if corps.signed_transaction.len() < 10 {
-        return Err(invalide("Transaction StoreKit illisible."));
+        return Err(invalide(Msg::TransactionStoreKitIllisible));
     }
     let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
 
     let palier = palier_depuis_produit(&transaction.product_id).ok_or_else(|| {
-        invalide(&format!(
-            "Produit d'abonnement inconnu : {}",
-            transaction.product_id
-        ))
+        invalide(Msg::ProduitDAbonnementInconnu {
+            identifiant: transaction.product_id.clone(),
+        })
     })?;
 
     // Un mois, faute d'échéance annoncée par Apple. C'est la seule durée

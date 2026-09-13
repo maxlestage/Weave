@@ -39,6 +39,7 @@ const REGLE_SIGNALEMENT: Regle = Regle {
 /// clôture promettre des délais différents pour les mêmes messages.
 use super::conversations::RETENTION_MESSAGES_JOURS;
 use super::me::oublier_fil;
+use crate::messages::Msg;
 
 /// Le motif qui ne peut pas attendre l'examen d'un dossier.
 ///
@@ -76,7 +77,7 @@ async fn bloquer(
     Json(corps): Json<CibleCompte>,
 ) -> Result<Json<Value>, AppError> {
     if corps.account_id == compte.id {
-        return Err(invalide("Vous ne pouvez pas vous bloquer vous-même."));
+        return Err(invalide(Msg::PasDeAutoBlocage));
     }
 
     poser_blocage(&state, &compte.id, &corps.account_id).await?;
@@ -116,13 +117,11 @@ async fn signaler(
     consommer(&state, REGLE_SIGNALEMENT, &compte.id).await?;
 
     if !MOTIFS.contains(&corps.reason.as_str()) {
-        return Err(invalide("Motif de signalement inconnu."));
+        return Err(invalide(Msg::MotifDeSignalementInconnu));
     }
     let details = corps.details.unwrap_or_default();
     if details.chars().count() > 1000 {
-        return Err(invalide(
-            "Les précisions ne peuvent pas dépasser 1000 caractères.",
-        ));
+        return Err(invalide(Msg::PrecisionsTropLongues { maximum: 1000 }));
     }
 
     let motif = corps.reason.clone();
@@ -184,9 +183,7 @@ async fn mettre_en_pause(
         .await?;
 
     if resultat.rows_affected == 0 {
-        return Err(invalide(
-            "Ce compte n'est pas dans un état où la pause s'applique.",
-        ));
+        return Err(invalide(Msg::PauseHorsEtat));
     }
 
     // En pause, ses plans ouverts sortent du fil des autres : rien ne sert de

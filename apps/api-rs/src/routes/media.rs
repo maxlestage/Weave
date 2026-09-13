@@ -4,6 +4,7 @@
 //! avant que la révélation progressive l'autorise : le niveau de flou est
 //! inscrit dans la signature, donc impossible à modifier côté client.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -78,12 +79,10 @@ async fn deposer_photo(
     corps: axum::body::Bytes,
 ) -> Result<Json<Value>, AppError> {
     let Some(type_mime) = type_reconnu(&corps) else {
-        return Err(invalide(
-            "Format d'image non reconnu. JPEG, PNG ou HEIC sont acceptés.",
-        ));
+        return Err(invalide(Msg::FormatDImageNonReconnu));
     };
     if corps.len() > PHOTO_MAX_OCTETS {
-        return Err(invalide("Cette image dépasse 2 Mo."));
+        return Err(invalide(Msg::ImageTropLourde));
     }
 
     consommer(&state, regles::PHOTO, &compte.id).await?;
@@ -92,7 +91,7 @@ async fn deposer_photo(
         .filter(profiles::Column::AccountId.eq(compte.id.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| invalide("Renseignez d'abord votre ville."))?;
+        .ok_or_else(|| invalide(Msg::RenseignezDAbordVotreVille))?;
 
     let ancienne = fiche.photo_key.clone();
     let cle = cuid2::create_id();
@@ -158,12 +157,12 @@ async fn servir(
     let expire_le: i64 = params
         .exp
         .parse()
-        .map_err(|_| AppError::new(Code::Forbidden, "Lien média expiré ou invalide."))?;
+        .map_err(|_| AppError::new(Code::Forbidden, Msg::LienMediaExpire.t()))?;
     let flou: u32 = match params.blur.as_deref() {
         None => 0,
         Some(v) => v
             .parse()
-            .map_err(|_| AppError::new(Code::Forbidden, "Lien média expiré ou invalide."))?,
+            .map_err(|_| AppError::new(Code::Forbidden, Msg::LienMediaExpire.t()))?,
     };
 
     if !verifier_signature_media(
@@ -173,10 +172,7 @@ async fn servir(
         flou,
         &params.sig,
     ) {
-        return Err(AppError::new(
-            Code::Forbidden,
-            "Lien média expiré ou invalide.",
-        ));
+        return Err(AppError::new(Code::Forbidden, Msg::LienMediaExpire.t()));
     }
 
     // Le flou n'est pas encore appliqué — et c'est un refus, pas un oubli.
@@ -190,14 +186,14 @@ async fn servir(
     if flou > 0 {
         return Err(AppError::new(
             Code::Forbidden,
-            "Le flou progressif n'est pas encore appliqué par ce service.",
+            Msg::FlouProgressifNonApplique.t(),
         ));
     }
 
     let objet = media_objects::Entity::find_by_id(cle)
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Ce média n'existe plus."))?;
+        .ok_or_else(|| introuvable(Msg::MediaDisparu))?;
 
     Ok((
         [

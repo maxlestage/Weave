@@ -5,6 +5,7 @@
 //! pas un formulaire pour se rendre désirable ; on écrit ce qu'on compte faire.
 
 use super::consentements;
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::{Authentifie, oublier_compte},
@@ -87,7 +88,7 @@ async fn modifier(
     if let Some(nom) = &corps.display_name {
         let taille = nom.chars().count();
         if taille == 0 || taille > 40 {
-            return Err(invalide("Le nom affiché tient en 40 caractères."));
+            return Err(invalide(Msg::NomAfficheTropLong { maximum: 40 }));
         }
     }
     if corps
@@ -95,20 +96,20 @@ async fn modifier(
         .as_ref()
         .is_some_and(|f| f.chars().count() > 64)
     {
-        return Err(invalide("Fuseau horaire invalide."));
+        return Err(invalide(Msg::FuseauHoraireInvalide));
     }
     if corps
         .locale
         .as_ref()
         .is_some_and(|l| l.chars().count() > 10)
     {
-        return Err(invalide("Langue invalide."));
+        return Err(invalide(Msg::LangueInvalide));
     }
 
     let ligne = accounts::Entity::find_by_id(compte.id.as_str())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Compte introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::CompteIntrouvable))?;
 
     let mut modifie: accounts::ActiveModel = ligne.into();
     if let Some(nom) = corps.display_name {
@@ -167,7 +168,7 @@ async fn ouvrir_escale(
 ) -> Result<Json<Value>, AppError> {
     let ville = corps.city.trim().to_string();
     if ville.is_empty() || ville.chars().count() > 80 {
-        return Err(invalide("Indiquez une ville."));
+        return Err(invalide(Msg::IndiquezUneVille));
     }
 
     let fin = Utc::now() + Duration::days(ESCALE_JOURS);
@@ -216,9 +217,9 @@ async fn ouvrir_escale(
             .await?
             .is_some();
         return Err(if existe {
-            invalide("Une escale est déjà en cours. Attendez sa fin, ou fermez-la.")
+            invalide(Msg::EscaleDejaEnCours)
         } else {
-            introuvable("Critères introuvables.")
+            introuvable(Msg::CriteresIntrouvables)
         });
     }
 
@@ -250,7 +251,7 @@ async fn fermer_escale(
         .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Critères introuvables."))?;
+        .ok_or_else(|| introuvable(Msg::CriteresIntrouvables))?;
 
     let mut maj: preferences::ActiveModel = ligne.into();
     maj.escale_city = Set(None);
@@ -273,23 +274,22 @@ async fn deposer_fiche(
 ) -> Result<Json<Value>, AppError> {
     let ville = corps.city.trim().to_string();
     if ville.is_empty() || ville.chars().count() > 80 {
-        return Err(invalide("Indiquez une ville."));
+        return Err(invalide(Msg::IndiquezUneVille));
     }
     if !GENRES.contains(&corps.gender.as_str()) {
-        return Err(invalide(&format!(
-            "Genre inconnu : {}. Valeurs acceptées : {}.",
-            corps.gender,
-            GENRES.join(", ")
-        )));
+        return Err(invalide(Msg::GenreInconnu {
+            valeur: corps.gender.clone(),
+            acceptees: GENRES.join(", "),
+        }));
     }
     if !(-90.0..=90.0).contains(&corps.latitude) || !(-180.0..=180.0).contains(&corps.longitude) {
-        return Err(invalide("Coordonnées invalides."));
+        return Err(invalide(Msg::CoordonneesInvalides));
     }
     if let Some(bio) = &corps.bio {
         if bio.chars().count() > BIO_MAX_CARACTERES {
-            return Err(invalide(&format!(
-                "La phrase tient en {BIO_MAX_CARACTERES} caractères."
-            )));
+            return Err(invalide(Msg::PhraseTropLongue {
+                maximum: BIO_MAX_CARACTERES as i64,
+            }));
         }
     }
 
@@ -342,7 +342,7 @@ async fn deposer_fiche(
         let ligne = accounts::Entity::find_by_id(compte.id.as_str())
             .one(&state.db)
             .await?
-            .ok_or_else(|| introuvable("Compte introuvable."))?;
+            .ok_or_else(|| introuvable(Msg::CompteIntrouvable))?;
         if ligne.status == "onboarding" {
             let mut actif: accounts::ActiveModel = ligne.into();
             actif.status = Set("active".to_string());
@@ -365,7 +365,7 @@ async fn lire_criteres(
         .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Critères introuvables."))?;
+        .ok_or_else(|| introuvable(Msg::CriteresIntrouvables))?;
 
     Ok(Json(json!({
         "minAge": pref.min_age,
@@ -412,58 +412,64 @@ async fn ajuster_criteres(
     for (valeur, nom) in [(corps.min_age, "minimum"), (corps.max_age, "maximum")] {
         if let Some(age) = valeur {
             if !(AGE_MINIMUM..=AGE_MAXIMUM).contains(&age) {
-                return Err(invalide(&format!(
-                    "L'âge {nom} doit être compris entre {AGE_MINIMUM} et {AGE_MAXIMUM} ans."
-                )));
+                return Err(invalide(Msg::AgeHorsBornes {
+                    nom: nom.to_string(),
+                    minimum: AGE_MINIMUM.into(),
+                    maximum: AGE_MAXIMUM.into(),
+                }));
             }
         }
     }
     if let (Some(min), Some(max)) = (corps.min_age, corps.max_age) {
         if min > max {
-            return Err(invalide(
-                "L'âge minimum ne peut pas dépasser l'âge maximum.",
-            ));
+            return Err(invalide(Msg::AgeMinSuperieurAuMax));
         }
     }
     if let Some(rayon) = corps.max_distance_km {
         if !(1..=RAYON_MAXIMUM_KM).contains(&rayon) {
-            return Err(invalide(&format!(
-                "Le rayon va de 1 à {RAYON_MAXIMUM_KM} kilomètres."
-            )));
+            return Err(invalide(Msg::RayonHorsBornes {
+                maximum: RAYON_MAXIMUM_KM.into(),
+            }));
         }
     }
     if let Some(recherche) = &corps.seeking {
         if recherche.len() > GENRES.len() {
-            return Err(invalide(&format!("{} choix au plus.", GENRES.len())));
+            return Err(invalide(Msg::ChoixTropNombreux {
+                maximum: GENRES.len() as i64,
+            }));
         }
         // Un genre hors vocabulaire ne correspondrait à personne : la
         // comparaison du fil est exacte. Mieux vaut le refuser que de laisser
         // quelqu'un chercher dans le vide sans jamais comprendre pourquoi son
         // fil est resté vide.
         if let Some(inconnu) = recherche.iter().find(|g| !GENRES.contains(&g.as_str())) {
-            return Err(invalide(&format!("Genre inconnu : {inconnu}.")));
+            return Err(invalide(Msg::GenreInconnuSimple {
+                valeur: inconnu.clone(),
+            }));
         }
     }
     if let Some(categories) = &corps.categories {
         if categories.len() > 8 {
-            return Err(invalide("Huit catégories au plus."));
+            return Err(invalide(Msg::HuitCategoriesAuPlus));
         }
         if let Some(inconnue) = categories
             .iter()
             .find(|c| !CATEGORIES.contains(&c.as_str()))
         {
-            return Err(invalide(&format!("Catégorie inconnue : {inconnue}.")));
+            return Err(invalide(Msg::CategorieInconnueNommee {
+                valeur: inconnue.clone(),
+            }));
         }
     }
 
     if let Some(jours) = &corps.days {
         if jours.len() > 7 {
-            return Err(invalide("Sept jours au plus."));
+            return Err(invalide(Msg::SeptJoursAuPlus));
         }
         if let Some(hors) = jours.iter().find(|j| !(1..=7).contains(*j)) {
-            return Err(invalide(&format!(
-                "Jour inconnu : {hors}. De 1 (lundi) à 7 (dimanche)."
-            )));
+            return Err(invalide(Msg::JourInconnu {
+                valeur: hors.to_string(),
+            }));
         }
     }
 
@@ -526,7 +532,7 @@ async fn ajuster_criteres(
         .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Critères introuvables."))?;
+        .ok_or_else(|| introuvable(Msg::CriteresIntrouvables))?;
 
     let mut ajuste: preferences::ActiveModel = pref.into();
     if let Some(age) = corps.min_age {
@@ -592,7 +598,7 @@ async fn lire(
     let ligne = accounts::Entity::find_by_id(compte.id.clone())
         .one(&state.db)
         .await?
-        .ok_or_else(|| introuvable("Compte introuvable."))?;
+        .ok_or_else(|| introuvable(Msg::CompteIntrouvable))?;
 
     let profil = profiles::Entity::find()
         .filter(profiles::Column::AccountId.eq(compte.id.as_str()))

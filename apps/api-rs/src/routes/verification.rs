@@ -19,6 +19,7 @@
 //! d'identité est un actif pour qui la vole, et une responsabilité pour tout le
 //! monde d'autre.
 
+use crate::messages::Msg;
 use crate::{
     AppState,
     auth::Authentifie,
@@ -79,14 +80,14 @@ async fn demander(
     Json(corps): Json<Demande>,
 ) -> Result<Json<Value>, AppError> {
     if compte.verified {
-        return Err(invalide("Votre profil est déjà vérifié."));
+        return Err(invalide(Msg::ProfilDejaVerifie));
     }
 
     let note = corps.note.unwrap_or_default();
     if note.chars().count() > NOTE_MAX {
-        return Err(invalide(&format!(
-            "Ce mot ne peut pas dépasser {NOTE_MAX} caractères."
-        )));
+        return Err(invalide(Msg::MotTropLong {
+            maximum: NOTE_MAX as i64,
+        }));
     }
 
     // Redemander pendant qu'une demande court ne crée pas de doublon : la file

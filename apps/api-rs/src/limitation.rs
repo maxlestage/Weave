@@ -110,11 +110,13 @@ pub async fn consommer(state: &AppState, regle: Regle, sujet: &str) -> Result<()
     let remise_a_zero_dans = if ttl > 0 { ttl } else { regle.fenetre_secondes };
 
     if compte > regle.limite {
-        return Err(crate::error::trop_de_requetes(&format!(
-            "Limite atteinte pour « {} ». Réessayez dans {remise_a_zero_dans} s.",
-            regle.seau
-        ))
-        .dans(remise_a_zero_dans));
+        return Err(
+            crate::error::trop_de_requetes(crate::messages::Msg::LimiteAtteinte {
+                quoi: regle.seau.to_string(),
+                secondes: remise_a_zero_dans,
+            })
+            .dans(remise_a_zero_dans),
+        );
     }
 
     Ok(())
