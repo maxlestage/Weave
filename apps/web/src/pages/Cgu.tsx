@@ -14,8 +14,9 @@ import {
   PLAN_CAPACITY_GROUP_MAX,
   REQUESTS_PER_DAY_FLOOR,
 } from "@weave/contracts";
+import { dateDuDocument } from "./documents.ts";
 import { AC, Page, type Article } from "./Page.tsx";
-import { CONTACT, EDITEUR, MISE_A_JOUR } from "./identite.ts";
+import { CONTACT, EDITEUR } from "./identite.ts";
 
 const ARTICLES: readonly Article[] = [
   {
@@ -253,7 +254,7 @@ export function Cgu() {
     <Page
       titre="Conditions générales d'utilisation"
       chapeau="Ce que Weave vous propose, ce que nous attendons de vous, et ce qui arrive quand les règles ne sont pas tenues."
-      miseAJour={MISE_A_JOUR}
+      miseAJour={dateDuDocument("cgu")}
       articles={ARTICLES}
     />
   );

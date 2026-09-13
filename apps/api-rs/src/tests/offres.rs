@@ -883,3 +883,52 @@ async fn un_jour_hors_semaine_est_refuse() {
         assert_ne!(statut, StatusCode::OK, "« {faux} » accepté comme jour : {corps}");
     }
 }
+
+/// Un crédit « Horizon » ouvre la publication jusqu'à sa borne, et pas au-delà.
+///
+/// Il n'en avait aucune. La règle était « au-delà de l'horizon du palier,
+/// dépense un crédit », sans maximum : un compte gratuit — sept jours — muni
+/// d'un crédit à 2,99 € publiait un plan pour 2050. Plus loin que le Grand
+/// Tour à 24,99 € par mois, qui s'arrête à quatre-vingt-dix jours, et plus
+/// loin que les soixante jours que le catalogue annonce en vendant ce crédit.
+#[tokio::test]
+async fn le_credit_horizon_s_arrete_a_ce_qu_il_annonce() {
+    use crate::droits::HORIZON_CREDIT_JOURS;
+
+    let service = Service::monter().await;
+    let compte = service.compte("c_horizon_borne", "depart").await;
+    let jeton = service.jeton("c_horizon_borne");
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &compte, "horizon", 5)
+        .await
+        .expect("crédits posés");
+
+    let plan = |jours: i64| {
+        json!({
+            "title": "Une balade sur les quais",
+            "category": "balade",
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(jours)).to_rfc3339(),
+        })
+    };
+
+    // Au-delà du palier mais dans la borne du crédit : accepté, un crédit part.
+    let (statut, corps) = service.post("/v1/plans", Some(&jeton), plan(30)).await;
+    assert_eq!(statut, StatusCode::OK, "le crédit n'a pas ouvert l'horizon : {corps}");
+
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["horizon"], 4, "le crédit n'a pas été dépensé : {moi}");
+
+    // Au-delà de la borne : refusé, et SANS prélever de crédit — on ne fait pas
+    // payer un refus.
+    let (statut, corps) = service
+        .post("/v1/plans", Some(&jeton), plan(HORIZON_CREDIT_JOURS + 300))
+        .await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "un compte gratuit a publié un plan pour dans un an : {corps}"
+    );
+
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["horizon"], 4, "un refus a coûté un crédit : {moi}");
+}

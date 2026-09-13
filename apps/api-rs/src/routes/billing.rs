@@ -26,11 +26,11 @@ const BUNDLE: &str = "com.weave.app";
 /// Les unités achetables, telles que `packages/contracts` les décrit.
 /// (sku, nom, identifiant StoreKit sans le préfixe, prix en centimes, dotation)
 const UNITES: [(&str, &str, i64, i32); 5] = [
-    ("renfort", "Renfort", 149, 1),
-    ("horizon", "Horizon", 99, 1),
-    ("tablee", "Tablée", 149, 1),
-    ("escale", "Escale", 399, 1),
-    ("bilan", "Bilan", 299, 1),
+    ("renfort", "Renfort", 299, 1),
+    ("horizon", "Horizon", 299, 1),
+    ("tablee", "Tablée", 299, 1),
+    ("escale", "Escale", 599, 1),
+    ("bilan", "Bilan", 499, 1),
 ];
 
 /// Retrouve l'unité derrière un identifiant StoreKit.
@@ -54,6 +54,20 @@ const OFFRES: [(&str, &str, i64); 5] = [
     ("expedition", "Expédition", 1499),
     ("grandtour", "Grand Tour", 2499),
 ];
+
+/// Les tables de prix, pour le test qui les confronte au contrat partagé.
+///
+/// Exposées plutôt que recopiées dans le test : une copie de plus serait une
+/// divergence de plus, et c'est précisément ce que le test cherche à empêcher.
+#[cfg(test)]
+pub fn unites_pour_test() -> Vec<(&'static str, i64)> {
+    UNITES.iter().map(|(sku, _, prix, _)| (*sku, *prix)).collect()
+}
+
+#[cfg(test)]
+pub fn offres_pour_test() -> Vec<(&'static str, i64)> {
+    OFFRES.iter().map(|(palier, _, prix)| (*palier, *prix)).collect()
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new()

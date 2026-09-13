@@ -12,8 +12,9 @@
  */
 
 import { ACCOUNT_PURGE_DAYS } from "@weave/contracts";
+import { dateDuDocument } from "./documents.ts";
 import { AC, Page, type Article } from "./Page.tsx";
-import { CONTACT, MISE_A_JOUR } from "./identite.ts";
+import { CONTACT } from "./identite.ts";
 
 const ARTICLES: readonly Article[] = [
   {
@@ -146,7 +147,7 @@ export function SuppressionCompte() {
     <Page
       titre="Supprimer votre compte"
       chapeau="Partir doit être aussi simple qu'arriver. Voici comment faire, ce qui est effacé, et les trois choses que nous sommes tenus de conserver."
-      miseAJour={MISE_A_JOUR}
+      miseAJour={dateDuDocument("suppression-compte")}
       articles={ARTICLES}
     />
   );

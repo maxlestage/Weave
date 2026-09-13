@@ -17,8 +17,6 @@
  * articles 13 et 14 du RGPD (identité du responsable du traitement).
  */
 
-import { POLICY_UPDATED_LABEL } from "@weave/contracts";
-
 /** Marque une valeur que l'éditeur doit renseigner avant toute publication. */
 const A_COMPLETER = (quoi: string) => `[à compléter : ${quoi}]`;
 
@@ -54,20 +52,6 @@ export const CONTACT = {
   /** Point de contact unique exigé par le règlement sur les services numériques. */
   signalements: A_COMPLETER("adresse de contact signalements"),
 } as const;
-
-/**
- * Date de la version en vigueur des textes.
- *
- * Elle est écrite à la main, et c'est voulu : une date calculée à la
- * construction changerait à chaque déploiement et laisserait croire à une
- * révision qui n'a pas eu lieu. Or c'est cette date qui atteste quelle version
- * l'utilisateur a acceptée.
- *
- * Elle vient des contrats plutôt que d'ici : la même version gouverne les
- * consentements enregistrés en base, et deux dates écrites séparément auraient
- * fini par diverger — la page aurait attesté d'un texte, la base d'un autre.
- */
-export const MISE_A_JOUR = POLICY_UPDATED_LABEL;
 
 /**
  * Adresse publique du site, pour les URL canoniques et le plan du site.
