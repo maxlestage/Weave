@@ -572,6 +572,7 @@ async fn un_genre_hors_vocabulaire_est_refuse() {
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
     // Et les critères de recherche suivent le même vocabulaire.
+    service.consentir(&jeton).await;
     let (statut, corps) = service
         .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["Homme"] }))
         .await;

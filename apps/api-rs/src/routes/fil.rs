@@ -181,6 +181,17 @@ async fn contexte_de(
         exclus.push(subi.author_id);
     }
 
+    // Le genre recherché relève de l'article 9 : le fil ne filtre dessus que
+    // tant que le consentement vaut.
+    //
+    // Le retrait efface déjà le critère, mais il n'est pas le seul chemin :
+    // un changement substantiel de la politique périme les consentements
+    // donnés sur la version précédente, et aucune écriture ne repasse alors
+    // sur les lignes existantes. Relire ici est ce qui fait que le traitement
+    // s'arrête vraiment, plutôt qu'à la prochaine fois que quelqu'un touche à
+    // ses critères.
+    let sensibles = super::consentements::sensibles_autorisees(&state.db, compte_id).await?;
+
     Ok(Some(Contexte {
         lat: profil.lat_rounded,
         lon: profil.lon_rounded,
@@ -197,7 +208,11 @@ async fn contexte_de(
         // Sans cela, un abonnement qui expire laisserait en place les critères
         // posés du temps où il courait : on continuerait de bénéficier de ce
         // qu'on ne paie plus, et il aurait suffi de s'abonner un mois.
-        recherche: si_autorise(palier, Critere::Genre, liste_json(&pref.seeking_json)),
+        recherche: if sensibles {
+            si_autorise(palier, Critere::Genre, liste_json(&pref.seeking_json))
+        } else {
+            Vec::new()
+        },
         jours: si_autorise(palier, Critere::Jour, jours_json(&pref.days_json)),
         categories: si_autorise(palier, Critere::Categorie, liste_json(&pref.categories_json)),
         escale: escale_active.then_some(pref.escale_city).flatten(),

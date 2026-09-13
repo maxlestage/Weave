@@ -16,6 +16,12 @@ struct ReglagesView: View {
     /// aurait écrasé l'autre avec une valeur par défaut.
     @State private var criteresLus = false
     @State private var jours: Set<Int> = []
+    @State private var recherche: Set<Gender> = []
+    /// Le consentement aux données sensibles vaut-il en ce moment ?
+    ///
+    /// Relu à l'ouverture : il peut avoir été retiré ailleurs, ou périmé par
+    /// un changement de la politique, sans que rien n'ait touché aux critères.
+    @State private var sensiblesAccordees = false
     @State private var escaleVille: String?
     @State private var escaleFin: Date?
     @State private var nouvelleEscale = false
@@ -30,6 +36,7 @@ struct ReglagesView: View {
     @State private var pauseEnCours = false
     @State private var fiche = false
     @State private var offres = false
+    @State private var confidentialite = false
     @State private var erreur: String?
 
     var body: some View {
@@ -74,6 +81,40 @@ struct ReglagesView: View {
                 } footer: {
                     Text("Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.")
                 }
+                // Qui l'on cherche relève de l'article 9 : la section existe
+                // toujours, mais sans accord elle ne propose pas de cocher —
+                // elle propose d'aller donner l'accord. Cacher la section
+                // laisserait croire que la recherche par genre n'existe pas.
+                Section {
+                    if sensiblesAccordees {
+                        ForEach(Gender.allCases, id: \.self) { genre in
+                            Button {
+                                basculerRecherche(genre)
+                            } label: {
+                                HStack {
+                                    Text(genre.libelle).foregroundStyle(.primary)
+                                    Spacer()
+                                    if recherche.contains(genre) {
+                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Button("Donner mon accord") { confidentialite = true }
+                    }
+                } header: {
+                    Text("Qui vous cherchez")
+                } footer: {
+                    if !sensiblesAccordees {
+                        Text("Ce critère peut révéler votre orientation sexuelle. La loi le range à part : il demande votre accord explicite, que vous pouvez retirer quand vous voulez.")
+                    } else {
+                        Text(recherche.isEmpty
+                            ? "Personne en particulier : le fil montre les plans de tout le monde."
+                            : "Le fil ne montre que les plans de ces personnes.")
+                    }
+                }
+
                 if let moi = modele.moi, moi.tier.filtreParJour {
                     Section {
                         ForEach(1...7, id: \.self) { jour in
@@ -158,6 +199,16 @@ struct ReglagesView: View {
                     Text("Un fichier JSON contenant ce que vous avez écrit et ce que le service sait de vous. Il ne contient pas les messages écrits par d'autres, ni l'identité de qui vous aurait signalé : ce sont leurs données.")
                 }
 
+                // La politique de confidentialité nomme cet écran : « vous
+                // pouvez le retirer à tout moment depuis l'application »,
+                // « Réglages › Confidentialité ». Il désignait un écran qui
+                // n'existait pas, et il n'y avait aucun chemin vers un retrait.
+                Section {
+                    Button("Confidentialité") { confidentialite = true }
+                } footer: {
+                    Text("Donner ou retirer votre accord pour les données sensibles — les personnes que vous cherchez.")
+                }
+
                 // Souffler sans partir. La page publique « Supprimer votre
                 // compte » renvoie ici : elle propose la pause à qui voulait
                 // seulement s'absenter, et il faut donc qu'elle existe.
@@ -200,6 +251,14 @@ struct ReglagesView: View {
             }
             .sheet(isPresented: $offres) {
                 OffresView().environment(modele)
+            }
+            .sheet(isPresented: $confidentialite) {
+                ConfidentialiteView().environment(modele)
+            }
+            // L'accord a pu être donné ou retiré : les critères affichés ne
+            // valent plus, et le serveur vient peut-être d'effacer la recherche.
+            .onChange(of: confidentialite) { _, ouvert in
+                if !ouvert { Task { await chargerCriteresDeForce() } }
             }
             .sheet(isPresented: $fiche) {
                 FicheView(
@@ -314,6 +373,8 @@ struct ReglagesView: View {
         escaleFin = criteres.escaleUntil
         escaleEnCours = criteres.escaleEnCours
         jours = Set(criteres.days)
+        recherche = Set(criteres.seeking)
+        sensiblesAccordees = (try? await modele.api.consents().estActif(.donneesSensibles)) ?? false
         criteresLus = true
     }
 
@@ -337,6 +398,31 @@ struct ReglagesView: View {
                 erreur = souci.userMessage
                 // Remettre l'affichage en accord avec ce que le serveur a
                 // retenu : laisser la case cochée après un refus mentirait.
+                await chargerCriteresDeForce()
+            } catch {
+                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+            }
+        }
+    }
+
+    /// Retient ou retire un genre recherché, puis applique.
+    ///
+    /// Le serveur refuse ce critère sans consentement en cours de validité, et
+    /// ce refus reste le dernier mot : la section ne s'ouvre qu'avec l'accord,
+    /// mais l'accord a pu être retiré ailleurs entre-temps.
+    private func basculerRecherche(_ genre: Gender) {
+        if recherche.contains(genre) {
+            recherche.remove(genre)
+        } else {
+            recherche.insert(genre)
+        }
+        let choisis = Array(recherche).sorted { $0.rawValue < $1.rawValue }
+        Task {
+            do {
+                try await modele.api.updatePreferences(PreferencesPatch(seeking: choisis))
+                await modele.plans.refresh()
+            } catch let souci as WeaveAPIError {
+                erreur = souci.userMessage
                 await chargerCriteresDeForce()
             } catch {
                 erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."

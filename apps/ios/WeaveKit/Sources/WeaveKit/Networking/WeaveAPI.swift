@@ -4,7 +4,14 @@ import Foundation
 /// (`packages/contracts/src/errors.ts`).
 public enum WeaveAPIError: Error, Sendable, Equatable {
     case unauthorized
-    case forbidden
+    /// Refus qui ne vient ni du palier ni des crédits : une condition que le
+    /// serveur seul connaît, et qu'il explique.
+    ///
+    /// Le message était jeté au profit d'un « Cette action ne vous est pas
+    /// permise » générique. Le refus de chercher par genre sans consentement
+    /// dit où le donner — Réglages › Confidentialité — et cette phrase
+    /// n'atteignait personne.
+    case forbidden(String)
     case notFound
     case validation(String)
     case rateLimited(String)
@@ -33,7 +40,7 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
     public var userMessage: String {
         switch self {
         case .unauthorized: "Votre session a expiré. Reconnectez-vous."
-        case .forbidden: "Cette action ne vous est pas permise."
+        case .forbidden(let message): message
         case .notFound: "Introuvable."
         case .validation(let message): message
         case .rateLimited(let message): message
@@ -66,6 +73,16 @@ private struct APIErrorBody: Decodable {
 /// côté serveur invalide les deux perdantes.
 public actor WeaveAPI {
     private let baseURL: URL
+
+    /// L'adresse d'une page publique servie par le même hôte que l'API.
+    ///
+    /// Le service sert le site vitrine sous la même origine : les pages
+    /// juridiques s'atteignent donc depuis l'application sans coder de domaine
+    /// en dur — un domaine écrit en dur serait faux en développement, et faux
+    /// le jour où il change.
+    public func pagePublique(_ chemin: String) -> URL {
+        baseURL.appending(path: chemin)
+    }
     private let session: URLSession
     private let store: SessionStore
 
@@ -221,6 +238,34 @@ public actor WeaveAPI {
 
     public func updatePreferences(_ preferences: PreferencesPatch) async throws {
         let _: EmptyResponse = try await request(.patch, "/v1/me/preferences", encodable: preferences)
+    }
+
+    // MARK: - Consentements
+
+    /// L'état de chaque consentement, y compris ceux jamais donnés.
+    public func consents() async throws -> Consentements {
+        try await request(.get, "/v1/me/consents")
+    }
+
+    /// Donne un consentement, sur la version du texte que le serveur annonce.
+    ///
+    /// La version vient de `consents()` plutôt que d'une constante compilée
+    /// ici : une application pas encore mise à jour consentirait sinon à un
+    /// texte qu'elle n'affiche pas.
+    public func grantConsent(_ kind: ConsentKind, version: String) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/me/consents",
+            body: ["kind": kind.rawValue, "version": version]
+        )
+    }
+
+    /// Retire un consentement. Le critère qu'il couvrait est effacé côté
+    /// serveur : le fil cesse de filtrer dessus, et le service continue.
+    public func revokeConsent(_ kind: ConsentKind) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/me/consents/revoke",
+            body: ["kind": kind.rawValue]
+        )
     }
 
     public func entitlement() async throws -> Entitlement {
@@ -608,7 +653,7 @@ public actor WeaveAPI {
         }
         return switch body.error {
         case "unauthorized": .unauthorized
-        case "forbidden": .forbidden
+        case "forbidden": .forbidden(body.message)
         case "not_found": .notFound
         case "validation": .validation(body.message)
         case "rate_limited": .rateLimited(body.message)

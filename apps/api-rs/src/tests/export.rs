@@ -104,6 +104,7 @@ async fn l_export_joint_la_photo_et_rend_de_vraies_listes() {
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
+    service.consentir(&jeton).await;
     let (statut, corps) = service
         .patch("/v1/me/preferences", Some(&jeton), json!({ "seeking": ["homme", "autre"] }))
         .await;
