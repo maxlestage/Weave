@@ -17,6 +17,9 @@ struct PublierView: View {
     @State private var places = 1
     @State private var enCours = false
     @State private var erreur: String?
+    @State private var offres = false
+    /// Vrai quand le dernier refus portait sur une offre ou un crédit.
+    @State private var manqueUneOffre = false
 
     /// Préavis minimal, identique côté serveur (`PLAN_MIN_LEAD_MINUTES`).
     private static let preavisMinutes = 60
@@ -66,8 +69,19 @@ struct PublierView: View {
                 }
 
                 if let erreur {
-                    Section { Text(erreur).font(.footnote).foregroundStyle(.red) }
+                    Section {
+                        Text(erreur).font(.footnote).foregroundStyle(.red)
+                        // Un refus d'offre sans moyen d'y accéder est une
+                        // impasse : le message dit ce qui manque, et rien ne
+                        // permet de l'obtenir.
+                        if manqueUneOffre {
+                            Button("Voir les offres") { offres = true }
+                        }
+                    }
                 }
+            }
+            .sheet(isPresented: $offres) {
+                OffresView().environment(modele)
             }
             .navigationTitle("Publier un plan")
             .navigationBarTitleDisplayMode(.inline)
@@ -99,6 +113,10 @@ struct PublierView: View {
             dismiss()
         } else {
             erreur = modele.plans.alert?.userMessage
+            manqueUneOffre = {
+                if case .entitlementRequired = modele.plans.alert { return true }
+                return false
+            }()
         }
     }
 }

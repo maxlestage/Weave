@@ -19,6 +19,8 @@ public struct Preferences: Decodable, Sendable {
     public let maxDistanceKm: Int
     public let seeking: [Gender]
     public let categories: [PlanCategory]
+    /// Jours retenus, au sens ISO : 1 lundi, 7 dimanche. Vide = tous.
+    public let days: [Int]
     /// Ville de l'escale en cours, s'il y en a une.
     public let escaleCity: String?
     /// Fin de l'escale en cours.

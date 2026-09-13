@@ -15,6 +15,7 @@ struct ReglagesView: View {
     /// deux âges s'appliquent ensemble : toucher un curseur avant d'avoir lu
     /// aurait écrasé l'autre avec une valeur par défaut.
     @State private var criteresLus = false
+    @State private var jours: Set<Int> = []
     @State private var escaleVille: String?
     @State private var escaleFin: Date?
     @State private var nouvelleEscale = false
@@ -73,6 +74,30 @@ struct ReglagesView: View {
                 } footer: {
                     Text("Ils filtrent ce que vous voyez ; ils ne changent jamais l'ordre. Le fil est trié par ce qui arrive le plus tôt, puis par ce qui est le plus près.")
                 }
+                if let moi = modele.moi, moi.tier.filtreParJour {
+                    Section {
+                        ForEach(1...7, id: \.self) { jour in
+                            Button {
+                                basculerJour(jour)
+                            } label: {
+                                HStack {
+                                    Text(Self.nomDuJour(jour)).foregroundStyle(.primary)
+                                    Spacer()
+                                    if jours.contains(jour) {
+                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Jours")
+                    } footer: {
+                        Text(jours.isEmpty
+                            ? "Aucun jour retenu : le fil montre tous les jours."
+                            : "Le fil ne montre que les plans tombant ces jours-là.")
+                    }
+                }
+
                 .onChange(of: ageMin) { _, _ in
                     guard criteresLus else { return }
                     Task { await appliquerAges() }
@@ -288,7 +313,41 @@ struct ReglagesView: View {
         escaleVille = criteres.escaleCity
         escaleFin = criteres.escaleUntil
         escaleEnCours = criteres.escaleEnCours
+        jours = Set(criteres.days)
         criteresLus = true
+    }
+
+    /// Retient ou retire un jour, puis applique.
+    ///
+    /// Le serveur refuse ce critère aux paliers qui ne l'ont pas ; la section
+    /// n'apparaît donc qu'à ceux qui y ont droit, et le refus reste le dernier
+    /// mot plutôt que le premier.
+    private func basculerJour(_ jour: Int) {
+        if jours.contains(jour) {
+            jours.remove(jour)
+        } else {
+            jours.insert(jour)
+        }
+        let choisis = jours.sorted()
+        Task {
+            do {
+                try await modele.api.updatePreferences(PreferencesPatch(days: choisis))
+                await modele.plans.refresh()
+            } catch let souci as WeaveAPIError {
+                erreur = souci.userMessage
+                // Remettre l'affichage en accord avec ce que le serveur a
+                // retenu : laisser la case cochée après un refus mentirait.
+                await chargerCriteresDeForce()
+            } catch {
+                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+            }
+        }
+    }
+
+    /// Relit les critères même s'ils l'ont déjà été.
+    private func chargerCriteresDeForce() async {
+        criteresLus = false
+        await chargerCriteres()
     }
 
     private func ouvrirEscale() async {
@@ -382,6 +441,21 @@ struct ReglagesView: View {
         } catch {
             erreur = "La suppression n'a pas abouti. Réessayez dans un moment."
         }
+    }
+
+    /// Le nom d'un jour, au sens ISO : 1 lundi, 7 dimanche.
+    ///
+    /// Rendu par le calendrier plutôt qu'écrit en dur : la langue de
+    /// l'appareil décide, et une liste écrite ici resterait française partout.
+    private static func nomDuJour(_ jour: Int) -> String {
+        var calendrier = Calendar(identifier: .gregorian)
+        calendrier.locale = .current
+        // `weekdaySymbols` commence au dimanche : 1 (lundi) y est l'indice 1,
+        // 7 (dimanche) l'indice 0.
+        let symboles = calendrier.weekdaySymbols
+        let indice = jour % 7
+        let nom = symboles.indices.contains(indice) ? symboles[indice] : "\(jour)"
+        return nom.prefix(1).uppercased() + nom.dropFirst()
     }
 
     /// Ce que le système a répondu. Tant qu'on n'a rien demandé, il n'y a rien

@@ -412,3 +412,42 @@ fn cas_de_l_enumeration(source: &str, nom: &str) -> Vec<String> {
     valeurs.sort();
     valeurs
 }
+
+/// Le palier à partir duquel l'application propose le filtre par jour est
+/// celui que le serveur accepte.
+///
+/// `PlanTier.filtreParJour` existe côté iOS pour ne pas MONTRER un réglage qui
+/// sera refusé — proposer puis refuser est une façon de vendre, pas de régler.
+/// C'est donc une copie de la règle du serveur, et une copie dérive : ici,
+/// elle dériverait en silence, l'application montrant un réglage refusé ou
+/// cachant un réglage permis.
+#[test]
+fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Models/Account.swift");
+    let Ok(source) = std::fs::read_to_string(&chemin) else {
+        eprintln!("modèle iOS absent en {} — accord non vérifié", chemin.display());
+        return;
+    };
+
+    let debut = source
+        .find("public var filtreParJour: Bool {")
+        .expect("« filtreParJour » a disparu du modèle iOS");
+    let fin = source[debut..].find("\n    }").expect("corps fermé") + debut;
+    let corps = &source[debut..fin];
+
+    for palier in ["depart", "viree", "escapade", "expedition", "grandtour"] {
+        // Le cas Swift s'écrit « .depart, .viree: false ».
+        let cote_ios = corps
+            .lines()
+            .find(|ligne| ligne.contains(&format!(".{palier}")))
+            .map(|ligne| ligne.contains("true"))
+            .unwrap_or_else(|| panic!("« {palier} » absent de `filtreParJour`"));
+
+        let cote_serveur = crate::droits::filtre_autorise(palier, crate::droits::Critere::Jour);
+        assert_eq!(
+            cote_ios, cote_serveur,
+            "« {palier} » : l'application propose {cote_ios}, le serveur accepte {cote_serveur}"
+        );
+    }
+}

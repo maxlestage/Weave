@@ -15,6 +15,9 @@ struct DemanderView: View {
     @State private var message = ""
     @State private var enCours = false
     @State private var erreur: String?
+    @State private var offres = false
+    /// Vrai quand le dernier refus portait sur une offre ou un crédit.
+    @State private var manqueUneOffre = false
 
     private var caracteres: Int { message.trimmingCharacters(in: .whitespacesAndNewlines).count }
     private var assezEcrit: Bool { caracteres >= JoinRequest.minimumMessageLength }
@@ -40,6 +43,9 @@ struct DemanderView: View {
                 .padding(16)
             }
             .background(Color.weaveLin.ignoresSafeArea())
+            .sheet(isPresented: $offres) {
+                OffresView().environment(modele)
+            }
             .navigationTitle("Demander à venir")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -93,9 +99,18 @@ struct DemanderView: View {
             }
 
             if let erreur {
-                Text(erreur)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(erreur)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                    // Un refus d'offre sans moyen d'y accéder est une impasse :
+                    // le message dit ce qui manque, et rien ne permet de
+                    // l'obtenir.
+                    if manqueUneOffre {
+                        Button("Voir les offres") { offres = true }
+                            .font(.footnote)
+                    }
+                }
             }
 
             Button {
@@ -140,6 +155,10 @@ struct DemanderView: View {
             dismiss()
         } else {
             erreur = modele.plans.alert?.userMessage
+            manqueUneOffre = {
+                if case .entitlementRequired = modele.plans.alert { return true }
+                return false
+            }()
         }
     }
 }
