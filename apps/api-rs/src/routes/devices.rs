@@ -194,6 +194,23 @@ async fn declarer(
         return Err(invalide("Identifiant d'appareil invalide."));
     }
 
+    // Cet appareil n'appartient plus à personne d'autre.
+    //
+    // L'index unique porte sur (compte, appareil) : le même téléphone peut
+    // donc figurer sous plusieurs comptes, et la déconnexion ne touche pas la
+    // ligne d'appareil — elle ne révoque que les jetons de session.
+    //
+    // Quelqu'un se déconnecte, quelqu'un d'autre se connecte sur le même
+    // téléphone : la ligne du premier survit, avec le même jeton de poussée,
+    // puisque ce jeton appartient à l'appareil et non au compte. Les alertes
+    // du premier continuaient donc d'arriver sur un téléphone qui n'est plus
+    // le sien — « Nouveau message », sur l'écran verrouillé d'un inconnu.
+    //
+    // Un jeton de poussée désigne un appareil physique : un seul compte peut
+    // le détenir à la fois. Les lignes des autres sont donc muettes — elles
+    // sont conservées, mais elles ne visent plus rien.
+    oublier_ailleurs(&state, &compte.id, &corps.vendor_id).await?;
+
     let existant = devices::Entity::find()
         .filter(devices::Column::AccountId.eq(compte.id.as_str()))
         .filter(devices::Column::VendorId.eq(corps.vendor_id.as_str()))
@@ -255,4 +272,42 @@ async fn declarer(
     };
 
     Ok(Json(json!({ "ok": true, "deviceId": id })))
+}
+
+/// Retire les jetons de poussée de cet appareil sur tous les autres comptes.
+///
+/// Une seule écriture conditionnelle. Les lignes ne sont pas supprimées : elles
+/// gardent la trace qu'un compte a utilisé cet appareil, ce qui sert à la
+/// purge comme à l'export. Seul ce qui permet de pousser s'en va.
+async fn oublier_ailleurs(
+    state: &AppState,
+    compte_id: &str,
+    vendor_id: &str,
+) -> Result<(), AppError> {
+    let oubliees = devices::Entity::update_many()
+        .col_expr(
+            devices::Column::ApnsToken,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .col_expr(
+            devices::Column::PushToStartToken,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .filter(devices::Column::VendorId.eq(vendor_id))
+        .filter(devices::Column::AccountId.ne(compte_id))
+        .filter(
+            sea_orm::Condition::any()
+                .add(devices::Column::ApnsToken.is_not_null())
+                .add(devices::Column::PushToStartToken.is_not_null()),
+        )
+        .exec(&state.db)
+        .await?;
+
+    if oubliees.rows_affected > 0 {
+        tracing::info!(
+            comptes = oubliees.rows_affected,
+            "appareil repris : jetons de poussée retirés des comptes précédents"
+        );
+    }
+    Ok(())
 }

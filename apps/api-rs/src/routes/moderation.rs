@@ -47,7 +47,7 @@ use super::conversations::RETENTION_MESSAGES_JOURS;
 /// suspension immédiate du compte ». Elle le disait sans que rien ne le fasse.
 pub(crate) const MOTIF_MINEUR: &str = "mineur";
 
-const MOTIFS: [&str; 6] = [
+pub(crate) const MOTIFS: [&str; 6] = [
     "contenu_sexuel",
     "faux_profil",
     "mineur",
