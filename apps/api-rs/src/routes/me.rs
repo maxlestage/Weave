@@ -4,32 +4,30 @@
 //! Weave, ce n'est pas la fiche qui donne envie, c'est le plan. On ne remplit
 //! pas un formulaire pour se rendre désirable ; on écrit ce qu'on compte faire.
 
+use super::consentements;
 use crate::{
-    auth::{oublier_compte, Authentifie},
+    AppState,
+    auth::{Authentifie, oublier_compte},
     cache,
     crypto::signer_url_media,
     droits::{
-        credits_pour, demandes_restantes, exiger_credit_dans, filtre_autorise, quota_journalier,
-        Critere,
+        Critere, credits_pour, demandes_restantes, exiger_credit_dans, filtre_autorise,
+        quota_journalier,
     },
     entities::{accounts, preferences, profiles},
-    error::{introuvable, invalide, AppError},
+    error::{AppError, introuvable, invalide},
     temps::{age_depuis, iso8601},
-    AppState,
 };
 use axum::{
+    Json, Router,
     extract::State,
     routing::{get, post, put},
-    Json, Router,
 };
-use super::consentements;
 use chrono::{Duration, Utc};
 use sea_orm::sea_query::Expr;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Une phrase, pas une biographie.
 pub(crate) const BIO_MAX_CARACTERES: usize = 160;
@@ -51,14 +49,24 @@ const AGE_MAXIMUM: i32 = 99;
 pub const RAYON_MAXIMUM_KM: i32 = 100;
 /// Les catégories de plans, telles que `packages/contracts` les fixe.
 const CATEGORIES: [&str; 8] = [
-    "sortie", "sport", "culture", "repas", "musique", "jeux", "balade", "benevolat",
+    "sortie",
+    "sport",
+    "culture",
+    "repas",
+    "musique",
+    "jeux",
+    "balade",
+    "benevolat",
 ];
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/v1/me", get(lire).patch(modifier))
         .route("/v1/me/profile", put(deposer_fiche))
-        .route("/v1/me/preferences", get(lire_criteres).patch(ajuster_criteres))
+        .route(
+            "/v1/me/preferences",
+            get(lire_criteres).patch(ajuster_criteres),
+        )
         .route("/v1/me/escale", post(ouvrir_escale).delete(fermer_escale))
 }
 
@@ -82,10 +90,18 @@ async fn modifier(
             return Err(invalide("Le nom affiché tient en 40 caractères."));
         }
     }
-    if corps.timezone.as_ref().is_some_and(|f| f.chars().count() > 64) {
+    if corps
+        .timezone
+        .as_ref()
+        .is_some_and(|f| f.chars().count() > 64)
+    {
         return Err(invalide("Fuseau horaire invalide."));
     }
-    if corps.locale.as_ref().is_some_and(|l| l.chars().count() > 10) {
+    if corps
+        .locale
+        .as_ref()
+        .is_some_and(|l| l.chars().count() > 10)
+    {
         return Err(invalide("Langue invalide."));
     }
 
@@ -173,8 +189,14 @@ async fn ouvrir_escale(
 
     let ouverte = preferences::Entity::update_many()
         .col_expr(preferences::Column::EscaleCity, Expr::value(ville.clone()))
-        .col_expr(preferences::Column::EscaleUntil, Expr::value(fin.naive_utc()))
-        .col_expr(preferences::Column::UpdatedAt, Expr::value(Utc::now().naive_utc()))
+        .col_expr(
+            preferences::Column::EscaleUntil,
+            Expr::value(fin.naive_utc()),
+        )
+        .col_expr(
+            preferences::Column::UpdatedAt,
+            Expr::value(Utc::now().naive_utc()),
+        )
         .filter(preferences::Column::AccountId.eq(compte.id.as_str()))
         .filter(
             sea_orm::Condition::any()
@@ -398,7 +420,9 @@ async fn ajuster_criteres(
     }
     if let (Some(min), Some(max)) = (corps.min_age, corps.max_age) {
         if min > max {
-            return Err(invalide("L'âge minimum ne peut pas dépasser l'âge maximum."));
+            return Err(invalide(
+                "L'âge minimum ne peut pas dépasser l'âge maximum.",
+            ));
         }
     }
     if let Some(rayon) = corps.max_distance_km {
@@ -424,7 +448,10 @@ async fn ajuster_criteres(
         if categories.len() > 8 {
             return Err(invalide("Huit catégories au plus."));
         }
-        if let Some(inconnue) = categories.iter().find(|c| !CATEGORIES.contains(&c.as_str())) {
+        if let Some(inconnue) = categories
+            .iter()
+            .find(|c| !CATEGORIES.contains(&c.as_str()))
+        {
             return Err(invalide(&format!("Catégorie inconnue : {inconnue}.")));
         }
     }
@@ -449,16 +476,31 @@ async fn ajuster_criteres(
     // les paliers autorisent : ainsi, restreindre l'un d'eux un jour tiendra
     // dans `filtre_autorise` seul, sans qu'il faille penser à le brancher ici.
     for (critere, renseigne) in [
-        (Critere::Age, corps.min_age.is_some() || corps.max_age.is_some()),
+        (
+            Critere::Age,
+            corps.min_age.is_some() || corps.max_age.is_some(),
+        ),
         (Critere::Distance, corps.max_distance_km.is_some()),
-        (Critere::Genre, corps.seeking.as_ref().is_some_and(|l| !l.is_empty())),
-        (Critere::Categorie, corps.categories.as_ref().is_some_and(|l| !l.is_empty())),
-        (Critere::Jour, corps.days.as_ref().is_some_and(|l| !l.is_empty())),
+        (
+            Critere::Genre,
+            corps.seeking.as_ref().is_some_and(|l| !l.is_empty()),
+        ),
+        (
+            Critere::Categorie,
+            corps.categories.as_ref().is_some_and(|l| !l.is_empty()),
+        ),
+        (
+            Critere::Jour,
+            corps.days.as_ref().is_some_and(|l| !l.is_empty()),
+        ),
     ] {
         if renseigne && !filtre_autorise(&compte.tier, critere) {
             return Err(AppError::new(
                 crate::error::Code::EntitlementRequired,
-                format!("Filtrer par {} demande une offre supérieure.", critere.nom()),
+                format!(
+                    "Filtrer par {} demande une offre supérieure.",
+                    critere.nom()
+                ),
             ));
         }
     }
@@ -570,15 +612,18 @@ async fn lire(
         bio: profil.as_ref().map(|p| p.bio.clone()).unwrap_or_default(),
         // La photo n'est jamais servie par une URL devinable : chaque lecture
         // passe par une signature à durée limitée.
-        photo_url: profil.as_ref().and_then(|p| p.photo_key.as_ref()).map(|cle| {
-            signer_url_media(
-                &state.config.media.base_url,
-                &state.config.media.signing_secret,
-                cle,
-                state.config.media.ttl_url_signee_secondes,
-                0,
-            )
-        }),
+        photo_url: profil
+            .as_ref()
+            .and_then(|p| p.photo_key.as_ref())
+            .map(|cle| {
+                signer_url_media(
+                    &state.config.media.base_url,
+                    &state.config.media.signing_secret,
+                    cle,
+                    state.config.media.ttl_url_signee_secondes,
+                    0,
+                )
+            }),
         verified: ligne.verified,
         requests_left_today: demandes_restantes(&state, &compte, quota).await,
         credits: serde_json::to_value(credits_pour(&state, &compte.id).await?)

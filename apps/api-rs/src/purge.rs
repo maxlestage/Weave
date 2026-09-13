@@ -38,11 +38,10 @@
 //! passage ultérieur, une fois le signalement clos.
 
 use crate::{
-    cache,
+    AppState, cache,
     entities::{
         accounts, audit_events, consent_records, live_activity_sessions, messages, reports,
     },
-    AppState,
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
@@ -234,9 +233,7 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
     //    anonyme. Mais elle survivait aussi à la durée annoncée, ce qui n'était
     //    pas voulu et que rien ne disait.
     let traces_effacees = audit_events::Entity::delete_many()
-        .filter(
-            audit_events::Column::CreatedAt.lt(maintenant - Duration::days(TRACES_MOIS * 30)),
-        )
+        .filter(audit_events::Column::CreatedAt.lt(maintenant - Duration::days(TRACES_MOIS * 30)))
         .exec(db)
         .await?
         .rows_affected;
@@ -259,7 +256,10 @@ pub async fn executer(db: &DatabaseConnection) -> Result<Bilan, DbErr> {
             continue;
         }
 
-        let efface = accounts::Entity::delete_by_id(&id).exec(db).await?.rows_affected;
+        let efface = accounts::Entity::delete_by_id(&id)
+            .exec(db)
+            .await?
+            .rows_affected;
         bilan.comptes_effaces += efface;
     }
 
@@ -325,13 +325,16 @@ pub(super) mod tests {
             email_hash: Set(format!("h-{id}")),
             handle: Set(id.to_string()),
             display_name: Set(id.to_string()),
-            birth_date: Set(
-                chrono::NaiveDate::from_ymd_opt(1995, 1, 1)
-                    .expect("date valide")
-                    .and_hms_opt(0, 0, 0)
-                    .expect("heure valide"),
-            ),
-            status: Set(if supprime_il_y_a.is_some() { "deleting" } else { "active" }.to_string()),
+            birth_date: Set(chrono::NaiveDate::from_ymd_opt(1995, 1, 1)
+                .expect("date valide")
+                .and_hms_opt(0, 0, 0)
+                .expect("heure valide")),
+            status: Set(if supprime_il_y_a.is_some() {
+                "deleting"
+            } else {
+                "active"
+            }
+            .to_string()),
             timezone: Set("Europe/Paris".to_string()),
             locale: Set("fr".to_string()),
             verified: Set(true),
@@ -375,8 +378,14 @@ pub(super) mod tests {
             .insert(&db)
             .await
             .expect("consentement ancien");
-        ligne("recent", Some(30)).insert(&db).await.expect("retrait récent");
-        ligne("actif", None).insert(&db).await.expect("consentement actif");
+        ligne("recent", Some(30))
+            .insert(&db)
+            .await
+            .expect("retrait récent");
+        ligne("actif", None)
+            .insert(&db)
+            .await
+            .expect("consentement actif");
 
         let bilan = executer(&db).await.expect("purge");
         assert_eq!(bilan.consentements_effaces, 1, "seul le retrait échu part");
@@ -389,7 +398,10 @@ pub(super) mod tests {
             .map(|c| c.id)
             .collect();
         assert!(!restants.contains(&"ancien".to_string()));
-        assert!(restants.contains(&"recent".to_string()), "cinq ans ne sont pas écoulés");
+        assert!(
+            restants.contains(&"recent".to_string()),
+            "cinq ans ne sont pas écoulés"
+        );
         assert!(
             restants.contains(&"actif".to_string()),
             "un consentement actif autorise un traitement en cours"
@@ -419,8 +431,14 @@ pub(super) mod tests {
             created_at: Set(Utc::now().naive_utc() - Duration::days(jours)),
         };
 
-        trace("vieille", TRACES_MOIS * 30 + 1).insert(&db).await.expect("vieille trace");
-        trace("recente", 30).insert(&db).await.expect("trace récente");
+        trace("vieille", TRACES_MOIS * 30 + 1)
+            .insert(&db)
+            .await
+            .expect("vieille trace");
+        trace("recente", 30)
+            .insert(&db)
+            .await
+            .expect("trace récente");
 
         let bilan = executer(&db).await.expect("purge");
         assert_eq!(bilan.traces_effacees, 1, "seule la trace échue part");
@@ -456,8 +474,14 @@ pub(super) mod tests {
         let restants = accounts::Entity::find().all(&db).await.expect("lecture");
         let ids: Vec<&str> = restants.iter().map(|c| c.id.as_str()).collect();
         assert!(!ids.contains(&"echu"));
-        assert!(ids.contains(&"recent"), "le délai de trente jours n'est pas écoulé");
-        assert!(ids.contains(&"actif"), "un compte vivant n'est jamais touché");
+        assert!(
+            ids.contains(&"recent"),
+            "le délai de trente jours n'est pas écoulé"
+        );
+        assert!(
+            ids.contains(&"actif"),
+            "un compte vivant n'est jamais touché"
+        );
     }
 
     /// La règle qui protège la modération : supprimer son compte ne doit pas
@@ -484,9 +508,7 @@ pub(super) mod tests {
             state: Set("ouvert".to_string()),
             // Jamais instruit — et déposé il y a plus longtemps que la borne.
             handled_at: Set(None),
-            created_at: Set(
-                Utc::now().naive_utc() - Duration::days(SIGNALEMENT_DIFFERE_JOURS + 1),
-            ),
+            created_at: Set(Utc::now().naive_utc() - Duration::days(SIGNALEMENT_DIFFERE_JOURS + 1)),
         }
         .insert(&db)
         .await

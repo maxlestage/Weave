@@ -5,9 +5,9 @@
 //! deux sans que le compilateur Rust s'en aperçoive.
 
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 

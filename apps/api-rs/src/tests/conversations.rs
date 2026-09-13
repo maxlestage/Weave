@@ -16,19 +16,27 @@ async fn conversation_ouverte(service: &Service, hote: &str, invite: &str) -> St
     service.compte(invite, "depart").await;
 
     let (statut, plan) = service
-        .post("/v1/plans", Some(&service.jeton(hote)), json!({
-            "title": "Un plan dont on parlera ensuite",
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton(hote)),
+            json!({
+                "title": "Un plan dont on parlera ensuite",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{plan}");
 
     let (statut, demande) = service
-        .post("/v1/requests", Some(&service.jeton(invite)), json!({
-            "planId": plan["id"].as_str().unwrap(),
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton(invite)),
+            json!({
+                "planId": plan["id"].as_str().unwrap(),
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{demande}");
 
@@ -136,8 +144,14 @@ async fn ouvrir_une_conversation_solde_les_non_lus_de_l_autre() {
     let (_, apres) = service
         .get("/v1/conversations", Some(&service.jeton("c_invite_lu")))
         .await;
-    assert_eq!(apres[0]["unread"], 0, "les non-lus n'ont pas été soldés : {apres}");
-    assert_eq!(apres[0]["lastMessage"], "Un message que l'autre n'a pas encore lu.");
+    assert_eq!(
+        apres[0]["unread"], 0,
+        "les non-lus n'ont pas été soldés : {apres}"
+    );
+    assert_eq!(
+        apres[0]["lastMessage"],
+        "Un message que l'autre n'a pas encore lu."
+    );
 }
 
 #[tokio::test]
@@ -146,7 +160,10 @@ async fn une_conversation_close_n_accepte_plus_de_message() {
     let conversation = conversation_ouverte(&service, "c_hote_clos", "c_invite_clos").await;
 
     let (statut, _) = service
-        .delete(&format!("/v1/conversations/{conversation}"), Some(&service.jeton("c_invite_clos")))
+        .delete(
+            &format!("/v1/conversations/{conversation}"),
+            Some(&service.jeton("c_invite_clos")),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK);
 
@@ -173,7 +190,10 @@ async fn clore_deux_fois_ne_change_rien() {
 
     for _ in 0..2 {
         let (statut, _) = service
-            .delete(&format!("/v1/conversations/{conversation}"), Some(&service.jeton("c_hote_deux")))
+            .delete(
+                &format!("/v1/conversations/{conversation}"),
+                Some(&service.jeton("c_hote_deux")),
+            )
             .await;
         assert_eq!(statut, StatusCode::OK);
     }
@@ -185,15 +205,18 @@ async fn une_conversation_d_autrui_ne_se_lit_pas() {
     let conversation = conversation_ouverte(&service, "c_hote_prive", "c_invite_prive").await;
     service.compte("c_curieux_conv", "depart").await;
 
-    for chemin in [
-        format!("/v1/conversations/{conversation}/messages"),
-    ] {
-        let (statut, _) = service.get(&chemin, Some(&service.jeton("c_curieux_conv"))).await;
+    for chemin in [format!("/v1/conversations/{conversation}/messages")] {
+        let (statut, _) = service
+            .get(&chemin, Some(&service.jeton("c_curieux_conv")))
+            .await;
         assert_eq!(statut, StatusCode::FORBIDDEN, "{chemin} s'est laissé lire");
     }
 
     let (statut, _) = service
-        .delete(&format!("/v1/conversations/{conversation}"), Some(&service.jeton("c_curieux_conv")))
+        .delete(
+            &format!("/v1/conversations/{conversation}"),
+            Some(&service.jeton("c_curieux_conv")),
+        )
         .await;
     assert_eq!(statut, StatusCode::FORBIDDEN);
 }
@@ -223,19 +246,27 @@ async fn conversation_de_plus(service: &Service, hote: &str, invite: &str, titre
     service.compte(invite, "depart").await;
 
     let (statut, plan) = service
-        .post("/v1/plans", Some(&service.jeton(hote)), json!({
-            "title": titre,
-            "category": "balade",
-            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
-        }))
+        .post(
+            "/v1/plans",
+            Some(&service.jeton(hote)),
+            json!({
+                "title": titre,
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{plan}");
 
     let (statut, demande) = service
-        .post("/v1/requests", Some(&service.jeton(invite)), json!({
-            "planId": plan["id"].as_str().unwrap(),
-            "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
-        }))
+        .post(
+            "/v1/requests",
+            Some(&service.jeton(invite)),
+            json!({
+                "planId": plan["id"].as_str().unwrap(),
+                "message": "Cette balade me tente beaucoup, je serais ravi de venir.",
+            }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{demande}");
 
@@ -247,7 +278,10 @@ async fn conversation_de_plus(service: &Service, hote: &str, invite: &str, titre
         )
         .await;
     assert_eq!(statut, StatusCode::OK, "{accepte}");
-    accepte["conversationId"].as_str().expect("une conversation").to_string()
+    accepte["conversationId"]
+        .as_str()
+        .expect("une conversation")
+        .to_string()
 }
 
 /// La liste dit vrai sur PLUSIEURS conversations d'un même compte.
@@ -299,7 +333,11 @@ async fn la_liste_ne_melange_pas_les_conversations_d_un_meme_compte() {
         .await;
     assert_eq!(statut, StatusCode::OK, "{liste}");
     let lignes = liste.as_array().expect("une liste");
-    assert_eq!(lignes.len(), 3, "les trois conversations doivent être là : {liste}");
+    assert_eq!(
+        lignes.len(),
+        3,
+        "les trois conversations doivent être là : {liste}"
+    );
 
     for (rang, (conversation, _, titre)) in ouvertes.iter().enumerate() {
         let ligne = lignes
@@ -307,13 +345,21 @@ async fn la_liste_ne_melange_pas_les_conversations_d_un_meme_compte() {
             .find(|c| c["id"] == conversation.as_str())
             .unwrap_or_else(|| panic!("conversation {rang} absente : {liste}"));
 
-        assert_eq!(ligne["unread"], rang as i64 + 1, "non-lus de la conversation {rang} : {ligne}");
+        assert_eq!(
+            ligne["unread"],
+            rang as i64 + 1,
+            "non-lus de la conversation {rang} : {ligne}"
+        );
         assert_eq!(
             ligne["lastMessage"],
             format!("Message {rang} de la conversation {rang}"),
             "dernier message de la conversation {rang} : {ligne}"
         );
-        assert_eq!(ligne["planTitle"], titre.as_str(), "plan de la conversation {rang} : {ligne}");
+        assert_eq!(
+            ligne["planTitle"],
+            titre.as_str(),
+            "plan de la conversation {rang} : {ligne}"
+        );
     }
 }
 

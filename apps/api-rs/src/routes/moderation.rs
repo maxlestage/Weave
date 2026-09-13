@@ -5,25 +5,25 @@
 //! n'apaise rien et expose la personne qui s'est protégée.
 
 use crate::{
+    AppState,
     auth::Authentifie,
     entities::{
         accounts, audit_events, blocks, conversations, join_requests, messages, plans, reports,
     },
-    error::{invalide, AppError},
-    limitation::{consommer, Regle},
-    AppState,
+    error::{AppError, invalide},
+    limitation::{Regle, consommer},
 };
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::{delete, post},
-    Json, Router,
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Évite le harcèlement par signalement en masse.
 const REGLE_SIGNALEMENT: Regle = Regle {
@@ -120,7 +120,9 @@ async fn signaler(
     }
     let details = corps.details.unwrap_or_default();
     if details.chars().count() > 1000 {
-        return Err(invalide("Les précisions ne peuvent pas dépasser 1000 caractères."));
+        return Err(invalide(
+            "Les précisions ne peuvent pas dépasser 1000 caractères.",
+        ));
     }
 
     let motif = corps.reason.clone();
@@ -168,7 +170,10 @@ async fn mettre_en_pause(
     // dépendre d'un garde placé ailleurs.
     let vise = if corps.paused { "paused" } else { "active" };
     let resultat = accounts::Entity::update_many()
-        .col_expr(accounts::Column::Status, sea_orm::sea_query::Expr::value(vise))
+        .col_expr(
+            accounts::Column::Status,
+            sea_orm::sea_query::Expr::value(vise),
+        )
         .col_expr(
             accounts::Column::UpdatedAt,
             sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
@@ -195,7 +200,10 @@ async fn mettre_en_pause(
     // de bon, alors que la page publique promet de reprendre quand on veut.
     if corps.paused {
         plans::Entity::update_many()
-            .col_expr(plans::Column::State, sea_orm::sea_query::Expr::value("suspendu"))
+            .col_expr(
+                plans::Column::State,
+                sea_orm::sea_query::Expr::value("suspendu"),
+            )
             .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
             .filter(plans::Column::State.eq("ouvert"))
             .exec(&state.db)
@@ -205,7 +213,10 @@ async fn mettre_en_pause(
         // l'heure est passée pendant la pause n'a plus lieu d'être rouvert :
         // il serait republié pour une date révolue.
         plans::Entity::update_many()
-            .col_expr(plans::Column::State, sea_orm::sea_query::Expr::value("ouvert"))
+            .col_expr(
+                plans::Column::State,
+                sea_orm::sea_query::Expr::value("ouvert"),
+            )
             .filter(plans::Column::AuthorId.eq(compte.id.as_str()))
             .filter(plans::Column::State.eq("suspendu"))
             .filter(plans::Column::StartsAt.gt(Utc::now().naive_utc()))
@@ -252,7 +263,10 @@ async fn suspendre_pour_examen(
     cible: &str,
 ) -> Result<(), AppError> {
     let suspendu = accounts::Entity::update_many()
-        .col_expr(accounts::Column::Status, sea_orm::sea_query::Expr::value("suspended"))
+        .col_expr(
+            accounts::Column::Status,
+            sea_orm::sea_query::Expr::value("suspended"),
+        )
         .col_expr(
             accounts::Column::UpdatedAt,
             sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
@@ -284,7 +298,10 @@ async fn suspendre_pour_examen(
     crate::auth::oublier_compte(state, cible).await;
     oublier_fil(state, cible).await;
 
-    tracing::warn!(compte = cible, "compte suspendu sur signalement de minorité");
+    tracing::warn!(
+        compte = cible,
+        "compte suspendu sur signalement de minorité"
+    );
     Ok(())
 }
 
@@ -344,8 +361,14 @@ async fn couper_entre(state: &AppState, a: &str, b: &str) -> Result<(), AppError
             continue;
         }
         join_requests::Entity::update_many()
-            .col_expr(join_requests::Column::State, sea_orm::sea_query::Expr::value("expiree"))
-            .col_expr(join_requests::Column::DecidedAt, sea_orm::sea_query::Expr::value(maintenant))
+            .col_expr(
+                join_requests::Column::State,
+                sea_orm::sea_query::Expr::value("expiree"),
+            )
+            .col_expr(
+                join_requests::Column::DecidedAt,
+                sea_orm::sea_query::Expr::value(maintenant),
+            )
             .filter(join_requests::Column::State.eq("envoyee"))
             .filter(join_requests::Column::AuthorId.eq(demandeur))
             .filter(join_requests::Column::PlanId.is_in(plans_cibles.clone()))
@@ -376,14 +399,23 @@ async fn couper_entre(state: &AppState, a: &str, b: &str) -> Result<(), AppError
 
     if !ouvertes.is_empty() {
         conversations::Entity::update_many()
-            .col_expr(conversations::Column::ClosedAt, sea_orm::sea_query::Expr::value(maintenant))
-            .col_expr(conversations::Column::ClosedBy, sea_orm::sea_query::Expr::value(a))
+            .col_expr(
+                conversations::Column::ClosedAt,
+                sea_orm::sea_query::Expr::value(maintenant),
+            )
+            .col_expr(
+                conversations::Column::ClosedBy,
+                sea_orm::sea_query::Expr::value(a),
+            )
             .filter(conversations::Column::Id.is_in(ouvertes.clone()))
             .exec(&transaction)
             .await?;
 
         messages::Entity::update_many()
-            .col_expr(messages::Column::PurgeAfter, sea_orm::sea_query::Expr::value(purge))
+            .col_expr(
+                messages::Column::PurgeAfter,
+                sea_orm::sea_query::Expr::value(purge),
+            )
             .filter(messages::Column::ConversationId.is_in(ouvertes))
             .exec(&transaction)
             .await?;
@@ -399,4 +431,3 @@ async fn couper_entre(state: &AppState, a: &str, b: &str) -> Result<(), AppError
     crate::live_activity::publier_au_mieux(state, b).await;
     Ok(())
 }
-

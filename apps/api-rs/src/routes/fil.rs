@@ -10,22 +10,22 @@
 
 use crate::routes::me::jours_json;
 use crate::{
+    AppState,
     auth::{Authentifie, CompteAuthentifie},
     cache,
     droits::{
-        demandes_restantes, droits_pour, filtre_autorise, quota_journalier, rayon_effectif, Critere,
+        Critere, demandes_restantes, droits_pour, filtre_autorise, quota_journalier, rayon_effectif,
     },
     entities::{accounts, blocks, join_requests, plans, preferences, profiles},
     error::AppError,
-    limitation::{consommer, Regle},
+    limitation::{Regle, consommer},
     temps::{age_depuis, boite_englobante, distance_km, iso8601, jour_local},
-    AppState,
 };
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, routing::get};
 use chrono::{Datelike, Duration, Utc};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Lecture de cache, appelée à chaque ouverture de l'application, au retour
 /// d'arrière-plan et par la montre : la limite est là contre l'emballement
@@ -220,7 +220,11 @@ async fn contexte_de(
             Vec::new()
         },
         jours: si_autorise(palier, Critere::Jour, jours_json(&pref.days_json)),
-        categories: si_autorise(palier, Critere::Categorie, liste_json(&pref.categories_json)),
+        categories: si_autorise(
+            palier,
+            Critere::Categorie,
+            liste_json(&pref.categories_json),
+        ),
         escale: escale_active.then_some(pref.escale_city).flatten(),
         exclus,
     }))
@@ -289,14 +293,13 @@ async fn composer(
     let auteurs_ids: Vec<String> = lignes.iter().map(|l| l.author_id.clone()).collect();
     let plans_ids: Vec<String> = lignes.iter().map(|l| l.id.clone()).collect();
 
-    let auteurs: std::collections::HashMap<String, accounts::Model> =
-        accounts::Entity::find()
-            .filter(accounts::Column::Id.is_in(auteurs_ids.clone()))
-            .all(&state.db)
-            .await?
-            .into_iter()
-            .map(|a| (a.id.clone(), a))
-            .collect();
+    let auteurs: std::collections::HashMap<String, accounts::Model> = accounts::Entity::find()
+        .filter(accounts::Column::Id.is_in(auteurs_ids.clone()))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|a| (a.id.clone(), a))
+        .collect();
 
     // Les fiches ne servent qu'au filtre par genre : ne les charger que
     // lorsqu'il est posé évite une requête à qui ne s'en sert pas.
@@ -320,7 +323,10 @@ async fn composer(
         .all(&state.db)
         .await?
     {
-        demandes_par_plan.entry(demande.plan_id.clone()).or_default().push(demande);
+        demandes_par_plan
+            .entry(demande.plan_id.clone())
+            .or_default()
+            .push(demande);
     }
 
     let mut retenus: Vec<(String, f64, PlanDuFil)> = Vec::new();
@@ -361,7 +367,12 @@ async fn composer(
         let distance = if contexte.escale.is_some() {
             0.0
         } else {
-            distance_km(contexte.lat, contexte.lon, ligne.lat_rounded, ligne.lon_rounded)
+            distance_km(
+                contexte.lat,
+                contexte.lon,
+                ligne.lat_rounded,
+                ligne.lon_rounded,
+            )
         };
         if contexte.escale.is_none() && distance > contexte.distance_max_km {
             continue;

@@ -4,7 +4,7 @@
 //! Le Grand Tour vend par ailleurs une « vérification accélérée » : une
 //! priorité suppose une file, et il n'y en avait aucune.
 
-use super::{refuse, Service};
+use super::{Service, refuse};
 use axum::http::StatusCode;
 use serde_json::json;
 
@@ -27,7 +27,11 @@ async fn demander_place_le_compte_dans_la_file() {
     let jeton = service.jeton("c_v_file");
 
     let (statut, corps) = service
-        .post("/v1/me/verification", Some(&jeton), json!({ "note": "je suis bien moi" }))
+        .post(
+            "/v1/me/verification",
+            Some(&jeton),
+            json!({ "note": "je suis bien moi" }),
+        )
         .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
 
@@ -53,7 +57,9 @@ async fn redemander_ne_double_pas_la_file() {
     let jeton = service.jeton("c_v_double");
 
     for _ in 0..3 {
-        let (statut, corps) = service.post("/v1/me/verification", Some(&jeton), json!({})).await;
+        let (statut, corps) = service
+            .post("/v1/me/verification", Some(&jeton), json!({}))
+            .await;
         assert_eq!(statut, StatusCode::OK, "{corps}");
     }
 
@@ -72,10 +78,18 @@ async fn le_grand_tour_passe_devant_meme_en_arrivant_apres() {
 
     // Le gratuit demande en premier.
     service
-        .post("/v1/me/verification", Some(&service.jeton("c_v_tot")), json!({}))
+        .post(
+            "/v1/me/verification",
+            Some(&service.jeton("c_v_tot")),
+            json!({}),
+        )
         .await;
     service
-        .post("/v1/me/verification", Some(&service.jeton("c_v_tard")), json!({}))
+        .post(
+            "/v1/me/verification",
+            Some(&service.jeton("c_v_tard")),
+            json!({}),
+        )
         .await;
 
     let file = crate::console::verifications_en_attente(&service.db)
@@ -98,7 +112,9 @@ async fn verifier_clot_la_demande() {
     let compte = service.compte("c_v_clos", "depart").await;
     let jeton = service.jeton("c_v_clos");
 
-    service.post("/v1/me/verification", Some(&jeton), json!({})).await;
+    service
+        .post("/v1/me/verification", Some(&jeton), json!({}))
+        .await;
     crate::console::verifier(&service.db, &compte, "pièce vue en visio")
         .await
         .expect("vérification");
@@ -128,13 +144,18 @@ async fn un_refus_est_motive_et_rendu_a_qui_il_concerne() {
     let compte = service.compte("c_v_refus", "depart").await;
     let jeton = service.jeton("c_v_refus");
 
-    service.post("/v1/me/verification", Some(&jeton), json!({})).await;
+    service
+        .post("/v1/me/verification", Some(&jeton), json!({}))
+        .await;
     crate::console::refuser_verification(&service.db, &compte, "aucune réponse au courrier")
         .await
         .expect("refus");
 
     let (_, etat) = service.get("/v1/me/verification", Some(&jeton)).await;
-    assert_eq!(etat["verified"], false, "un refus ne pose pas le badge : {etat}");
+    assert_eq!(
+        etat["verified"], false,
+        "un refus ne pose pas le badge : {etat}"
+    );
     assert_eq!(etat["request"]["state"], "refusee");
     assert_eq!(
         etat["request"]["decision"], "aucune réponse au courrier",
@@ -142,10 +163,15 @@ async fn un_refus_est_motive_et_rendu_a_qui_il_concerne() {
     );
 
     // Et l'on peut redemander : un refus n'est pas une exclusion.
-    let (statut, corps) = service.post("/v1/me/verification", Some(&jeton), json!({})).await;
+    let (statut, corps) = service
+        .post("/v1/me/verification", Some(&jeton), json!({}))
+        .await;
     assert_eq!(statut, StatusCode::OK, "{corps}");
     assert_eq!(
-        crate::console::verifications_en_attente(&service.db).await.expect("file").len(),
+        crate::console::verifications_en_attente(&service.db)
+            .await
+            .expect("file")
+            .len(),
         1,
         "un refus doit pouvoir être suivi d'une nouvelle demande"
     );
@@ -158,9 +184,13 @@ async fn un_profil_deja_verifie_ne_redemande_pas() {
     let compte = service.compte("c_v_deja", "depart").await;
     let jeton = service.jeton("c_v_deja");
 
-    crate::console::verifier(&service.db, &compte, "vu").await.expect("badge");
+    crate::console::verifier(&service.db, &compte, "vu")
+        .await
+        .expect("badge");
 
-    let (statut, corps) = service.post("/v1/me/verification", Some(&jeton), json!({})).await;
+    let (statut, corps) = service
+        .post("/v1/me/verification", Some(&jeton), json!({}))
+        .await;
     refuse(statut, &corps, "validation", &format!("{corps}"));
 }
 

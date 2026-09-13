@@ -1,14 +1,96 @@
 import { useEffect, useState } from "react";
+import { useLangue, useTraduction } from "../contexte-langue.tsx";
+import { chemin, LANGUES, NOM_DE_LA_LANGUE, type Traduit } from "../langues.ts";
 
-const LIENS = [
-  { href: "#principe", texte: "Le principe" },
-  { href: "#deroule", texte: "Comment ça se passe" },
-  { href: "#montre", texte: "iPhone et Watch" },
-  { href: "#offres", texte: "Offres" },
-] as const;
+type Lien = { readonly href: string; readonly texte: string };
+
+const LIENS: Traduit<readonly Lien[]> = {
+  fr: [
+    { href: "#principe", texte: "Le principe" },
+    { href: "#deroule", texte: "Comment ça se passe" },
+    { href: "#montre", texte: "iPhone et Watch" },
+    { href: "#offres", texte: "Offres" },
+  ],
+  en: [
+    { href: "#principe", texte: "The idea" },
+    { href: "#deroule", texte: "How it goes" },
+    { href: "#montre", texte: "iPhone and Watch" },
+    { href: "#offres", texte: "Plans" },
+  ],
+  es: [
+    { href: "#principe", texte: "La idea" },
+    { href: "#deroule", texte: "Cómo funciona" },
+    { href: "#montre", texte: "iPhone y Watch" },
+    { href: "#offres", texte: "Suscripciones" },
+  ],
+};
+
+const TEXTES: Traduit<{
+  navigation: string;
+  ouvrir: string;
+  fermer: string;
+  choixDeLangue: string;
+}> = {
+  fr: {
+    navigation: "Navigation principale",
+    ouvrir: "Ouvrir le menu",
+    fermer: "Fermer le menu",
+    choixDeLangue: "Choix de la langue",
+  },
+  en: {
+    navigation: "Main navigation",
+    ouvrir: "Open the menu",
+    fermer: "Close the menu",
+    choixDeLangue: "Choose a language",
+  },
+  es: {
+    navigation: "Navegación principal",
+    ouvrir: "Abrir el menú",
+    fermer: "Cerrar el menú",
+    choixDeLangue: "Elegir idioma",
+  },
+};
+
+/*
+ * Le choix de la langue, en toutes lettres plutôt qu'en drapeaux : un drapeau
+ * désigne un pays, pas une langue, et l'espagnol se parle sur deux continents.
+ *
+ * Ce sont de vrais liens vers de vraies adresses — `/`, `/en/`, `/es/` — et
+ * non un état conservé dans le navigateur : une page traduite doit pouvoir se
+ * partager, se mettre en signet et s'indexer.
+ */
+function ChoixDeLangue() {
+  const courante = useLangue();
+  const t = useTraduction(TEXTES);
+
+  return (
+    <nav aria-label={t.choixDeLangue} className="flex items-center gap-1 text-sm">
+      {LANGUES.map((langue) => (
+        <a
+          key={langue}
+          href={chemin(langue)}
+          hrefLang={langue}
+          lang={langue}
+          aria-current={langue === courante ? "true" : undefined}
+          className="rounded-full px-2 py-1"
+          style={
+            langue === courante
+              ? { background: "var(--fil-4)", color: "var(--sur-accent)", fontWeight: 700 }
+              : { color: "var(--texte-doux)" }
+          }
+        >
+          <span className="sr-only">{NOM_DE_LA_LANGUE[langue]}</span>
+          <span aria-hidden="true">{langue.toUpperCase()}</span>
+        </a>
+      ))}
+    </nav>
+  );
+}
 
 export function Entete() {
   const [ouvert, setOuvert] = useState(false);
+  const t = useTraduction(TEXTES);
+  const liens = useTraduction(LIENS);
 
   // Le menu se referme dès qu'on navigue : sur téléphone, il occupe l'écran.
   useEffect(() => {
@@ -36,13 +118,17 @@ export function Entete() {
           </span>
         </a>
 
-        <nav aria-label="Navigation principale" className="hidden gap-7 text-sm sm:flex">
-          {LIENS.map((lien) => (
-            <a key={lien.href} href={lien.href} className="hover:underline underline-offset-4">
-              {lien.texte}
-            </a>
-          ))}
-        </nav>
+        <div className="flex items-center gap-5">
+          <nav aria-label={t.navigation} className="hidden gap-7 text-sm sm:flex">
+            {liens.map((lien) => (
+              <a key={lien.href} href={lien.href} className="hover:underline underline-offset-4">
+                {lien.texte}
+              </a>
+            ))}
+          </nav>
+
+          <ChoixDeLangue />
+        </div>
 
         <button
           type="button"
@@ -51,7 +137,7 @@ export function Entete() {
           aria-controls="menu-mobile"
           onClick={() => setOuvert((v) => !v)}
         >
-          <span className="sr-only">{ouvert ? "Fermer le menu" : "Ouvrir le menu"}</span>
+          <span className="sr-only">{ouvert ? t.fermer : t.ouvrir}</span>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             {ouvert ? (
               <path
@@ -75,12 +161,12 @@ export function Entete() {
       {ouvert && (
         <nav
           id="menu-mobile"
-          aria-label="Navigation principale"
+          aria-label={t.navigation}
           className="sm:hidden"
           style={{ borderTop: "2px solid var(--bordure)" }}
         >
           <ul className="px-5 py-2">
-            {LIENS.map((lien) => (
+            {liens.map((lien) => (
               <li key={lien.href}>
                 <a
                   href={lien.href}

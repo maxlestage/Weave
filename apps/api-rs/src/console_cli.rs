@@ -209,7 +209,11 @@ async fn verifications(db: &DatabaseConnection) -> anyhow::Result<()> {
     }
     println!("  {} demande(s) en attente\n", file.len());
     for demande in file {
-        let priorite = if demande.palier == "grandtour" { " ★ prioritaire" } else { "" };
+        let priorite = if demande.palier == "grandtour" {
+            " ★ prioritaire"
+        } else {
+            ""
+        };
         println!("  {} ({}){priorite}", demande.nom, demande.compte);
         println!(
             "    palier {} — depuis le {}",
