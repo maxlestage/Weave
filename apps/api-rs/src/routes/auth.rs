@@ -551,6 +551,7 @@ async fn creer_compte(
         verified: Set(false),
         last_seen_at: Set(None),
         deletion_requested_at: Set(None),
+        last_bilan_at: Set(None),
         created_at: Set(Utc::now().naive_utc()),
         updated_at: Set(Utc::now().naive_utc()),
     }

@@ -16,7 +16,6 @@ use crate::{
     AppState,
 };
 use axum::{extract::State, routing::{get, post}, Json, Router};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
@@ -43,13 +42,17 @@ fn unite_depuis_produit(produit_id: &str) -> Option<(&'static str, &'static str,
 }
 
 /// Le catalogue, tel qu'il est décrit dans les contrats partagés.
-/// (palier, nom, prix mensuel en centimes, prix annuel, identifiants StoreKit)
-const OFFRES: [(&str, &str, i64, Option<i64>); 5] = [
-    ("depart", "Départ", 0, None),
-    ("viree", "Virée", 499, Some(4490)),
-    ("escapade", "Escapade", 899, Some(7990)),
-    ("expedition", "Expédition", 1499, Some(12990)),
-    ("grandtour", "Grand Tour", 2499, Some(20990)),
+/// (palier, nom, prix mensuel en centimes)
+///
+/// Il n'y a pas d'abonnement annuel : un engagement de douze mois sur un
+/// service qu'on peut vouloir quitter du jour au lendemain ne rend service
+/// qu'à celui qui l'encaisse.
+const OFFRES: [(&str, &str, i64); 5] = [
+    ("depart", "Départ", 0),
+    ("viree", "Virée", 499),
+    ("escapade", "Escapade", 899),
+    ("expedition", "Expédition", 1499),
+    ("grandtour", "Grand Tour", 2499),
 ];
 
 pub fn routes() -> Router<AppState> {
@@ -295,7 +298,7 @@ async fn notification_app_store(
 ) -> Result<Json<Value>, AppError> {
     let transaction = verifier_transaction(&state, &corps.signed_payload)?;
 
-    let Some((palier, _periode)) = palier_depuis_produit(&transaction.product_id) else {
+    let Some(palier) = palier_depuis_produit(&transaction.product_id) else {
         return Ok(Json(json!({ "ok": true, "ignored": true })));
     };
 
@@ -353,18 +356,15 @@ fn prix(centimes: i64) -> String {
 async fn catalogue() -> Json<Value> {
     let tiers: Vec<Value> = OFFRES
         .iter()
-        .map(|(palier, nom, mensuel, annuel)| {
+        .map(|(palier, nom, mensuel)| {
             let d = crate::droits::droits_pour(palier);
             json!({
                 "tier": palier,
                 "name": nom,
                 "monthlyPriceCents": mensuel,
                 "monthlyPrice": prix(*mensuel),
-                "yearlyPriceCents": annuel,
-                "yearlyPrice": annuel.map(prix),
                 "storeKit": {
                     "monthly": (*mensuel > 0).then(|| format!("{BUNDLE}.sub.{palier}.monthly")),
-                    "yearly": annuel.map(|_| format!("{BUNDLE}.sub.{palier}.yearly")),
                 },
                 "entitlements": {
                     "requestsPerDay": d.demandes_par_jour,
@@ -431,7 +431,15 @@ struct Transaction {
 /// Il faudra, pour le passer à `true` : valider la chaîne de certificats `x5c`
 /// de l'en-tête contre la racine Apple, vérifier la signature ES256, puis
 /// contrôler le `bundleId` et la fraîcheur de la transaction.
-pub(crate) const VERIFICATION_JWS_IMPLEMENTEE: bool = false;
+pub(crate) const VERIFICATION_JWS_IMPLEMENTEE: bool = true;
+
+/// Âge maximal d'une transaction, en minutes.
+///
+/// Une transaction signée reste valable indéfiniment tant que rien ne borne
+/// son âge. La borne limite le rejeu à une fenêtre courte ; l'unicité de
+/// `transactionId` en base fait le reste. Large parce que l'horloge d'un
+/// appareil peut dériver, et qu'un achat fait hors ligne remonte plus tard.
+const FRAICHEUR_MINUTES: i64 = 60;
 
 /// La production accepte-t-elle cette transaction ?
 ///
@@ -461,18 +469,54 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
         ));
     }
 
-    let charge = signe
-        .split('.')
-        .nth(1)
-        .ok_or_else(|| invalide("Transaction StoreKit illisible."))?;
-    let octets = URL_SAFE_NO_PAD
-        .decode(charge)
-        .map_err(|_| invalide("Transaction StoreKit illisible."))?;
-    let claims: Value = serde_json::from_slice(&octets)
-        .map_err(|_| invalide("Transaction StoreKit illisible."))?;
+    let claims = crate::storekit::verifier(signe, &state.racine_storekit, Utc::now())
+        .map_err(|refus| {
+            // Le motif va au journal, pas à l'appelant : on ne renseigne pas
+            // qui essaie de forger sur ce qui l'a trahi.
+            tracing::warn!(motif = refus.motif(), "transaction StoreKit refusée");
+            invalide("Transaction StoreKit refusée.")
+        })?;
 
-    // C'est ici que la vérification prendra place, et `VERIFICATION_JWS_IMPLEMENTEE`
-    // passera à `true` le jour où elle sera écrite.
+    // La signature d'Apple ne dit pas POUR QUI elle a été émise.
+    //
+    // Sans ce contrôle, un achat à un euro fait dans une autre application —
+    // signé par Apple, chaîne parfaitement valide — se rejouerait ici pour
+    // s'offrir l'abonnement le plus cher. C'est le `bundleId` qui distingue,
+    // et lui seul.
+    let paquet = claims.get("bundleId").and_then(Value::as_str).unwrap_or_default();
+    if paquet != BUNDLE {
+        tracing::warn!(paquet, "transaction émise pour une autre application");
+        return Err(invalide("Transaction StoreKit refusée."));
+    }
+
+    // Sandbox et production ne se mélangent pas : une transaction d'essai ne
+    // doit pas créditer un compte réel.
+    let environnement = claims
+        .get("environment")
+        .and_then(Value::as_str)
+        .unwrap_or(&state.config.app_store.environnement);
+    if !environnement.eq_ignore_ascii_case(&state.config.app_store.environnement) {
+        tracing::warn!(
+            environnement,
+            attendu = %state.config.app_store.environnement,
+            "transaction d'un autre environnement"
+        );
+        return Err(invalide("Transaction StoreKit refusée."));
+    }
+
+    // Une transaction signée reste valable indéfiniment tant que rien ne borne
+    // son âge. La fraîcheur limite le rejeu à une fenêtre courte ; l'unicité
+    // de `transactionId` fait le reste.
+    if let Some(signee_le) = claims
+        .get("signedDate")
+        .and_then(Value::as_i64)
+        .and_then(DateTime::from_timestamp_millis)
+    {
+        if (Utc::now() - signee_le).num_minutes().abs() > FRAICHEUR_MINUTES {
+            tracing::warn!(%signee_le, "transaction trop ancienne");
+            return Err(invalide("Transaction StoreKit refusée."));
+        }
+    }
 
     let product_id = claims
         .get("productId")
@@ -509,16 +553,16 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
 }
 
 /// Retrouve le palier depuis l'identifiant de produit StoreKit.
-fn palier_depuis_produit(produit: &str) -> Option<(&'static str, &'static str)> {
-    for (palier, _, _, _) in OFFRES.iter() {
-        if produit == format!("{BUNDLE}.sub.{palier}.monthly") {
-            return Some((palier, "monthly"));
-        }
-        if produit == format!("{BUNDLE}.sub.{palier}.yearly") {
-            return Some((palier, "yearly"));
-        }
-    }
-    None
+///
+/// Seul le mensuel est reconnu. Un identifiant annuel — il n'en est plus
+/// vendu — tombe donc dans l'inconnu et la transaction est refusée, ce qui est
+/// le bon comportement : mieux vaut refuser un produit qu'on ne vend plus que
+/// d'accorder un palier sur une durée qu'on ne sait plus tenir.
+fn palier_depuis_produit(produit: &str) -> Option<&'static str> {
+    OFFRES
+        .iter()
+        .map(|(palier, ..)| *palier)
+        .find(|palier| produit == format!("{BUNDLE}.sub.{palier}.monthly"))
 }
 
 async fn enregistrer_abonnement(
@@ -531,16 +575,18 @@ async fn enregistrer_abonnement(
     }
     let transaction = verifier_transaction(&state, &corps.signed_transaction)?;
 
-    let (palier, periode) = palier_depuis_produit(&transaction.product_id).ok_or_else(|| {
+    let palier = palier_depuis_produit(&transaction.product_id).ok_or_else(|| {
         invalide(&format!(
             "Produit d'abonnement inconnu : {}",
             transaction.product_id
         ))
     })?;
 
-    let renouvelle_le = transaction.expire_le.unwrap_or_else(|| {
-        Utc::now() + Duration::days(if periode == "yearly" { 365 } else { 30 })
-    });
+    // Un mois, faute d'échéance annoncée par Apple. C'est la seule durée
+    // vendue.
+    let renouvelle_le = transaction
+        .expire_le
+        .unwrap_or_else(|| Utc::now() + Duration::days(30));
 
     let existant = subscriptions::Entity::find()
         .filter(subscriptions::Column::AccountId.eq(compte.id.as_str()))
@@ -551,7 +597,8 @@ async fn enregistrer_abonnement(
         Some(ligne) => {
             let mut maj: subscriptions::ActiveModel = ligne.into();
             maj.tier = Set(palier.to_string());
-            maj.period = Set(Some(periode.to_string()));
+            // La seule période vendue.
+            maj.period = Set(Some("monthly".to_string()));
             maj.store_kit_product_id = Set(Some(transaction.product_id));
             maj.original_transaction_id = Set(Some(transaction.original_transaction_id));
             maj.renews_at = Set(Some(renouvelle_le.naive_utc()));
@@ -567,7 +614,7 @@ async fn enregistrer_abonnement(
                 id: Set(cuid2::create_id()),
                 account_id: Set(compte.id.clone()),
                 tier: Set(palier.to_string()),
-                period: Set(Some(periode.to_string())),
+                period: Set(Some("monthly".to_string())),
                 store_kit_product_id: Set(Some(transaction.product_id)),
                 original_transaction_id: Set(Some(transaction.original_transaction_id)),
                 renews_at: Set(Some(renouvelle_le.naive_utc())),
@@ -624,14 +671,18 @@ mod tests {
         assert!(achat_acceptable(false, false));
     }
 
-    /// Le garde-fou est armé. S'il ne l'était pas sans que la vérification soit
-    /// écrite, la production accepterait n'importe quelle transaction forgée.
+    /// La vérification est écrite : le drapeau doit le dire.
+    ///
+    /// Ce test disait l'inverse jusqu'ici — il vérifiait que le drapeau était
+    /// à `false`, et demandait qu'on le retire le jour où la vérification
+    /// serait écrite. Elle l'est, dans `storekit`, et ce test garde désormais
+    /// l'autre bout : repasser le drapeau à `false` sans retirer le
+    /// vérificateur refuserait tous les achats en production, silencieusement.
     #[test]
-    fn la_verification_n_est_pas_annoncee_comme_ecrite_par_erreur() {
+    fn la_verification_est_annoncee_comme_ecrite() {
         assert!(
-            !VERIFICATION_JWS_IMPLEMENTEE,
-            "si la vérification JWS est écrite, retirez ce test — sinon, le \
-             passer à `true` ouvre la production aux transactions forgées"
+            VERIFICATION_JWS_IMPLEMENTEE,
+            "le vérificateur existe dans `storekit` : le drapeau doit suivre"
         );
     }
 }

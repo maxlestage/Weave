@@ -10,13 +10,14 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use sea_orm::ConnectionTrait;
 use serde_json::json;
 
-/// Forge une transaction signée telle que StoreKit en émet : trois segments
-/// séparés par des points, la charge utile au milieu en base64url.
+/// Une transaction signée pour de vrai, par l'autorité de test.
+///
+/// Elle se contentait d'encoder la charge utile en base64 entre deux segments
+/// inventés — ce qui suffisait tant que la vérification n'existait pas. Elle
+/// existe : une transaction non signée est désormais refusée, comme elle doit
+/// l'être, et ces tests passeraient à côté de ce qu'ils éprouvent.
 fn transaction(charge: serde_json::Value) -> String {
-    format!(
-        "entete.{}.signature",
-        URL_SAFE_NO_PAD.encode(charge.to_string())
-    )
+    super::storekit::transaction_signee(charge)
 }
 
 #[tokio::test]
@@ -544,4 +545,195 @@ async fn un_bilan_sans_matiere_ne_coute_pas_le_credit() {
 
     let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
     assert_eq!(moi["credits"]["bilan"], 1, "le crédit a été consommé pour rien");
+}
+
+/// Une transaction forgée est refusée par la route.
+///
+/// C'est ce que l'API acceptait : elle décodait le base64 de la charge et
+/// lisait les champs qu'elle y trouvait. N'importe qui pouvait encoder un JSON
+/// annonçant le produit de son choix et s'offrir l'abonnement le plus cher.
+#[tokio::test]
+async fn une_transaction_forgee_est_refusee() {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    let service = Service::monter().await;
+    service.compte("c_forgeur", "depart").await;
+
+    let charge = json!({
+        "productId": "com.weave.app.sub.grandtour.monthly",
+        "transactionId": "forgee-1",
+        "originalTransactionId": "forgee-1",
+        "bundleId": "com.weave.app",
+    });
+    let forgee = format!("entete.{}.signature", URL_SAFE_NO_PAD.encode(charge.to_string()));
+
+    let (statut, corps) = service
+        .post("/v1/billing/subscriptions", Some(&service.jeton("c_forgeur")), json!({
+            "signedTransaction": forgee,
+        }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "une transaction forgée a été acceptée : {corps}");
+
+    let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_forgeur"))).await;
+    assert_eq!(moi["tier"], "depart", "le palier a été accordé sans paiement");
+}
+
+/// Un achat fait dans une AUTRE application ne compte pas ici.
+///
+/// La signature d'Apple ne dit pas pour qui elle a été émise. Sans contrôle du
+/// `bundleId`, un achat à un euro dans une autre application — signé par
+/// Apple, chaîne parfaitement valide — se rejouerait ici pour s'offrir
+/// l'abonnement le plus cher.
+#[tokio::test]
+async fn une_transaction_emise_pour_une_autre_application_est_refusee() {
+    let service = Service::monter().await;
+    service.compte("c_rejeu", "depart").await;
+
+    let signee = super::storekit::transaction_signee(json!({
+        "productId": "com.weave.app.sub.grandtour.monthly",
+        "transactionId": "autre-app-1",
+        "originalTransactionId": "autre-app-1",
+        // Vraie signature, vraie chaîne — mais émise pour un autre paquet.
+        "bundleId": "com.exemple.autre",
+    }));
+
+    let (statut, corps) = service
+        .post("/v1/billing/subscriptions", Some(&service.jeton("c_rejeu")), json!({
+            "signedTransaction": signee,
+        }))
+        .await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "un achat d'une autre application a été accepté : {corps}"
+    );
+
+    let (_, moi) = service.get("/v1/me", Some(&service.jeton("c_rejeu"))).await;
+    assert_eq!(moi["tier"], "depart", "le palier a été accordé sur l'achat d'autrui");
+}
+
+/// Une transaction trop ancienne est refusée.
+///
+/// Une transaction signée reste valable indéfiniment tant que rien ne borne
+/// son âge : celle de quelqu'un d'autre, interceptée un jour, se rejouerait un
+/// an plus tard.
+#[tokio::test]
+async fn une_transaction_trop_ancienne_est_refusee() {
+    let service = Service::monter().await;
+    service.compte("c_vieille", "depart").await;
+
+    let signee = super::storekit::transaction_signee(json!({
+        "productId": "com.weave.app.sub.grandtour.monthly",
+        "transactionId": "vieille-1",
+        "originalTransactionId": "vieille-1",
+        "signedDate": (chrono::Utc::now() - chrono::Duration::days(2)).timestamp_millis(),
+    }));
+
+    let (statut, corps) = service
+        .post("/v1/billing/subscriptions", Some(&service.jeton("c_vieille")), json!({
+            "signedTransaction": signee,
+        }))
+        .await;
+    assert_ne!(statut, StatusCode::OK, "une transaction d'il y a deux jours : {corps}");
+}
+
+/// Un palier qui comprend le bilan ne fait pas payer deux fois.
+///
+/// « Expédition » annonce « Bilan mensuel : quels plans attirent, et
+/// pourquoi » parmi ce qu'il inclut. La route exigeait pourtant un crédit :
+/// quelqu'un versant 14,99 € par mois se voyait demander 2,99 € de plus pour
+/// ce que son abonnement promet.
+#[tokio::test]
+async fn un_palier_qui_comprend_le_bilan_ne_fait_pas_payer_deux_fois() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let auteur = service.compte("c_expedition", "expedition").await;
+    let jeton = service.jeton("c_expedition");
+    service.compte("c_curieux_exp", "depart").await;
+
+    for nom in ["c_expedition", "c_curieux_exp"] {
+        service
+            .put("/v1/me/profile", Some(&service.jeton(nom)), json!({
+                "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+            }))
+            .await;
+    }
+
+    for titre in ["Un cafe sur la place", "Une balade au bord de leau", "Un concert au hangar"] {
+        let (statut, corps) = service
+            .post("/v1/plans", Some(&jeton), json!({
+                "title": titre,
+                "category": "sortie",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+    }
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt='2020-01-01 12:00:00' WHERE authorId='{auteur}'"
+        ))
+        .await
+        .unwrap();
+
+    // Aucun crédit acheté, et pourtant le bilan doit sortir.
+    let (_, moi) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(moi["credits"]["bilan"], 0, "le test doit partir sans crédit");
+
+    let (statut, bilan) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_eq!(statut, StatusCode::OK, "le bilan inclus a été refusé : {bilan}");
+    assert_eq!(bilan["plansPasses"], 3);
+
+    // Le second du même mois, lui, se paie : l'abonnement en comprend un.
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "le second bilan du mois devrait demander un crédit : {corps}"
+    );
+
+    // Et avec un crédit, il sort — sans toucher à la part incluse.
+    crate::routes::billing::crediter_pour_test(&service.etat, &auteur, "bilan", 1)
+        .await
+        .expect("achat");
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+}
+
+/// Un palier qui ne comprend pas le bilan le fait payer, comme annoncé.
+#[tokio::test]
+async fn un_palier_sans_bilan_exige_toujours_le_credit() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let auteur = service.compte("c_viree_bilan", "viree").await;
+    let jeton = service.jeton("c_viree_bilan");
+
+    service
+        .put("/v1/me/profile", Some(&jeton), json!({
+            "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+        }))
+        .await;
+
+    for titre in ["Un premier plan a soi", "Un deuxieme plan a soi", "Un troisieme plan a soi"] {
+        service
+            .post("/v1/plans", Some(&jeton), json!({
+                "title": titre,
+                "category": "sortie",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }))
+            .await;
+    }
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt='2020-01-01 12:00:00' WHERE authorId='{auteur}'"
+        ))
+        .await
+        .unwrap();
+
+    let (statut, corps) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_ne!(statut, StatusCode::OK, "« Virée » ne comprend pas le bilan : {corps}");
 }

@@ -28,6 +28,7 @@ struct ReglagesView: View {
     @State private var demandeSuppression = false
     @State private var pauseEnCours = false
     @State private var fiche = false
+    @State private var offres = false
     @State private var erreur: String?
 
     var body: some View {
@@ -42,6 +43,7 @@ struct ReglagesView: View {
                         // mal saisie à l'inscription, ou un déménagement, et
                         // le fil restait composé autour du mauvais endroit.
                         Button("Modifier ma fiche") { fiche = true }
+                        Button("Voir les offres") { offres = true }
                     }
 
                     Section {
@@ -170,6 +172,9 @@ struct ReglagesView: View {
                 } footer: {
                     Text("Vos plans ouverts disparaissent du fil immédiatement. Tout le reste est effacé sous \(accountPurgeDays) jours.")
                 }
+            }
+            .sheet(isPresented: $offres) {
+                OffresView().environment(modele)
             }
             .sheet(isPresented: $fiche) {
                 FicheView(

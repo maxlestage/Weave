@@ -22,6 +22,10 @@ const MIGRATIONS_POSTGRES: &[(&str, &str)] = &[
         "1_media_objects",
         include_str!("../migrations/1_media_objects/migration.sql"),
     ),
+    (
+        "2_dernier_bilan",
+        include_str!("../migrations/2_dernier_bilan/migration.sql"),
+    ),
 ];
 
 const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
@@ -29,6 +33,10 @@ const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
     (
         "1_media_objects",
         include_str!("../migrations-sqlite/1_media_objects/migration.sql"),
+    ),
+    (
+        "2_dernier_bilan",
+        include_str!("../migrations-sqlite/2_dernier_bilan/migration.sql"),
     ),
 ];
 

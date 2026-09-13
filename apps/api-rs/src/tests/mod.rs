@@ -128,6 +128,9 @@ impl Service {
             // c'est bien ce qu'on veut éprouver — le reste du produit doit
             // tourner sans certificat Apple.
             apns: Arc::new(crate::apns::ClientApns::new()),
+            // Une racine de test, pour que les achats éprouvés ici portent de
+            // vraies signatures plutôt que de contourner la vérification.
+            racine_storekit: Arc::new(crate::tests::storekit::racine_de_test()),
         };
         static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let suffixe = format!(
@@ -326,6 +329,7 @@ pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
 }
 
 mod contrat;
+pub mod storekit;
 mod parcours;
 
 /// Le schéma des tests est celui que la production appliquera.
