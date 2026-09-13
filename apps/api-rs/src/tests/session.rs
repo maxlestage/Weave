@@ -189,3 +189,72 @@ async fn supprimer_son_compte_le_sort_de_la_circulation() {
     assert_eq!(statut, StatusCode::OK);
     assert_eq!(corps["requestsLeftToday"], 4, "quota rendu ou non : {corps}");
 }
+
+/// Rejouer un jeton déjà tourné doit couper toutes les sessions du compte.
+///
+/// C'est la raison d'être de la rotation, et elle ne tenait pas : `rotatedTo`
+/// était écrit à chaque renouvellement et jamais relu. Un jeton volé
+/// fonctionnait donc jusqu'à son expiration, et le vol ne se voyait nulle part.
+#[tokio::test]
+async fn rejouer_un_jeton_deja_tourne_coupe_toutes_les_sessions() {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let service = Service::monter().await;
+    let (_, premier) = session(&service, "vole").await;
+
+    // Le porteur légitime renouvelle : `premier` est tourné.
+    let (statut, corps) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": premier }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let second = corps["session"]["refreshToken"].as_str().unwrap().to_string();
+
+    // Le voleur rejoue la copie qu'il détient.
+    let (statut, _) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": premier }))
+        .await;
+    assert_eq!(statut, StatusCode::UNAUTHORIZED, "un jeton tourné ne vaut plus");
+
+    // Et le jeton du porteur légitime ne vaut plus rien non plus : on ne sait
+    // pas lequel des deux est le voleur, donc on coupe tout.
+    let (statut, _) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": second }))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "le réemploi doit couper la famille entière, pas seulement la copie rejouée"
+    );
+
+    // L'incident est consigné — la table d'audit servait à cela.
+    let traces = crate::entities::audit_events::Entity::find()
+        .filter(crate::entities::audit_events::Column::Action.eq("refresh_reuse"))
+        .all(&service.db)
+        .await
+        .expect("lecture du journal");
+    assert_eq!(traces.len(), 1, "le réemploi doit laisser une trace");
+    // Le compte est créé par le parcours réel : son identifiant est engendré,
+    // pas celui que le test nomme. Ce qui compte est qu'il soit consigné.
+    assert!(traces[0].account_id.is_some(), "la trace désigne un compte");
+    assert!(traces[0].ip.is_some(), "la trace porte l'adresse d'origine");
+    assert!(
+        traces[0].meta_json.contains("sessionsRevoquees"),
+        "la trace dit combien de sessions ont été coupées"
+    );
+}
+
+/// Deux renouvellements du même jeton ne doivent ouvrir qu'une session.
+#[tokio::test]
+async fn un_jeton_ne_se_renouvelle_qu_une_fois() {
+    let service = Service::monter().await;
+    let (_, jeton) = session(&service, "course").await;
+
+    let corps = json!({ "refreshToken": jeton });
+    let (a, b) = tokio::join!(
+        service.post("/v1/auth/refresh", None, corps.clone()),
+        service.post("/v1/auth/refresh", None, corps.clone()),
+    );
+
+    let reussites = [a.0, b.0].iter().filter(|s| s.is_success()).count();
+    assert_eq!(reussites, 1, "un jeton, une rotation — obtenu {reussites}");
+}
