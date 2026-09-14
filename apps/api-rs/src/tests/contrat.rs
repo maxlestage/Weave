@@ -1185,11 +1185,11 @@ fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
         let chemin = entree.path();
         if chemin.is_dir() {
             empiler_le_swift(&chemin, sortie);
-        } else if chemin.extension().is_some_and(|e| e == "swift") {
-            if let Ok(contenu) = std::fs::read_to_string(&chemin) {
-                sortie.push_str(&contenu);
-                sortie.push('\n');
-            }
+        } else if chemin.extension().is_some_and(|e| e == "swift")
+            && let Ok(contenu) = std::fs::read_to_string(&chemin)
+        {
+            sortie.push_str(&contenu);
+            sortie.push('\n');
         }
     }
 }
@@ -1356,5 +1356,99 @@ fn aucune_api_sensible_n_est_employee_sans_autorisation() {
                  au moment de la demande"
             );
         }
+    }
+}
+
+/// `app.json` fournit tout ce que le binaire EXIGE en production.
+///
+/// C'est le manifeste que lit le bouton « Deploy to Heroku », et il décide de
+/// ce qui existe au premier démarrage. Une variable ajoutée aux exigences du
+/// binaire et oubliée ici ne casse rien à la compilation, rien aux tests, et
+/// rien en développement — où `exiger` accepte un repli. Elle arrête le dyno
+/// au tout premier démarrage d'un déploiement neuf, c'est-à-dire chez
+/// quelqu'un qui découvre le projet.
+///
+/// Deux variables ne figurent pas dans `env` et n'ont pas à y figurer : les
+/// modules complémentaires les posent eux-mêmes.
+#[test]
+fn le_manifeste_heroku_fournit_ce_que_le_binaire_exige() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let manifeste: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(racine.join("app.json")).expect("app.json"))
+            .expect("app.json est du JSON valide");
+
+    let declarees: std::collections::BTreeSet<String> = manifeste["env"]
+        .as_object()
+        .expect("app.json déclare des variables")
+        .keys()
+        .cloned()
+        .collect();
+
+    // Ce que les modules complémentaires posent d'eux-mêmes, sans passer par
+    // `env` : les déclarer là les ferait demander à la main.
+    let par_les_modules = ["DATABASE_URL", "REDIS_URL"];
+
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/env.rs"),
+    )
+    .expect("env.rs lisible");
+
+    // Chaque `exiger("X", …)` : ce que le binaire refuse de démarrer sans.
+    let mut exigees = Vec::new();
+    for morceau in source.split("exiger(").skip(1) {
+        let Some(nom) = morceau
+            .trim_start()
+            .strip_prefix('"')
+            .and_then(|reste| reste.split('"').next())
+        else {
+            continue;
+        };
+        if nom.chars().all(|c| c.is_ascii_uppercase() || c == '_') && !nom.is_empty() {
+            exigees.push(nom.to_string());
+        }
+    }
+    assert!(
+        exigees.len() >= 3,
+        "seulement {} variables exigées lues : l'analyse d'env.rs a dérivé",
+        exigees.len()
+    );
+
+    let manquantes: Vec<&String> = exigees
+        .iter()
+        .filter(|nom| !declarees.contains(*nom) && !par_les_modules.contains(&nom.as_str()))
+        .collect();
+
+    assert!(
+        manquantes.is_empty(),
+        "le binaire exige ces variables et `app.json` ne les fournit pas : {manquantes:?} — \
+         un déploiement neuf s'arrêterait au premier démarrage"
+    );
+}
+
+/// `app.json` décrit la pile qu'on déploie vraiment.
+///
+/// Ses mots-clés annonçaient « elysia » et « prisma » : l'API TypeScript
+/// d'avant le portage. Le manifeste est public — il s'affiche sur le bouton de
+/// déploiement et dans le dépôt — et décrivait une pile qui n'existe plus.
+#[test]
+fn le_manifeste_ne_nomme_pas_une_pile_abandonnee() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let manifeste: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(racine.join("app.json")).expect("app.json"))
+            .expect("app.json est du JSON valide");
+
+    let mots: Vec<String> = manifeste["keywords"]
+        .as_array()
+        .expect("des mots-clés")
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_lowercase))
+        .collect();
+
+    for abandonnee in ["elysia", "prisma", "typescript", "node"] {
+        assert!(
+            !mots.iter().any(|m| m == abandonnee),
+            "« {abandonnee} » n'est plus la pile de Weave : l'API est en Rust"
+        );
     }
 }
