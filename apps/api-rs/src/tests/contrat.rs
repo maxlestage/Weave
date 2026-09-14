@@ -1503,6 +1503,56 @@ fn le_fil_rend_ce_que_l_application_sait_decoder() {
     );
 }
 
+/// Le compte rend exactement ce que l'application sait décoder.
+///
+/// Même risque que pour le fil, et pour la même raison : `Me` est une des
+/// trois structures typées qui atteignent le client, et une structure typée
+/// sérialise sans savoir qui la lit. Les autres réponses sont bâties clé par
+/// clé avec `json!`, à côté de ce qu'elles décrivent ; celles-ci sont écrites
+/// une fois, puis oubliées.
+///
+/// Elle correspond aujourd'hui. Ce test est là pour qu'elle continue.
+#[test]
+fn le_compte_rend_ce_que_l_application_sait_decoder() {
+    let swift = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/ios/WeaveKit/Sources/WeaveKit/Models/Account.swift"),
+    )
+    .expect("Account.swift lisible");
+
+    let rust = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/me.rs"),
+    )
+    .expect("me.rs lisible");
+
+    let envoyees = champs_serialises(&rust, "Me");
+    assert!(
+        envoyees.len() >= 10,
+        "seulement {} champs lus dans Me : l'analyse a dérivé",
+        envoyees.len()
+    );
+
+    let attendues = proprietes_swift(&swift, "public struct Me: Codable");
+    assert!(
+        attendues.len() >= 10,
+        "seulement {} propriétés lues : l'analyse a dérivé",
+        attendues.len()
+    );
+
+    let manquantes: Vec<&String> = attendues
+        .iter()
+        .filter(|(_, facultative)| !facultative)
+        .map(|(nom, _)| nom)
+        .filter(|nom| !envoyees.contains(*nom))
+        .collect();
+
+    assert!(
+        manquantes.is_empty(),
+        "le compte n'envoie pas {manquantes:?}, que `Me` déclare obligatoires : \
+         le décodage lèvera `keyNotFound` et l'écran du compte sera vide"
+    );
+}
+
 /// Les clés JSON d'une structure Rust `#[serde(rename_all = "camelCase")]`.
 fn champs_serialises(source: &str, nom: &str) -> std::collections::BTreeSet<String> {
     let debut = source
@@ -1518,6 +1568,7 @@ fn champs_serialises(source: &str, nom: &str) -> std::collections::BTreeSet<Stri
         .skip(1)
         .map(str::trim)
         .filter(|l| !l.starts_with("//") && !l.starts_with("#["))
+        .map(|l| l.strip_prefix("pub ").unwrap_or(l))
         .filter_map(|l| l.split(':').next())
         .map(str::trim)
         .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
