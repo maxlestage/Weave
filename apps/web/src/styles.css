@@ -14,8 +14,19 @@
 @theme {
   /* Les fils, en thème clair. */
   --color-framboise: #d81b60;
-  --color-mandarine: #e2621b;
-  --color-safran: #b8860b;
+  /*
+    Mandarine et safran sont plus sombres qu'ils n'en ont l'air ailleurs, et
+    c'est voulu : ils SERVENT DE TEXTE — titres de cartes, prix à l'unité — sur
+    un fond blanc. Aux valeurs d'origine (#e2621b et #b8860b) ils donnaient
+    3,50 et 3,25 de contraste, sous le seuil de 4,5 qu'un texte de cette taille
+    réclame. Les quatre autres fils passaient déjà.
+
+    Corriger la palette plutôt que chaque endroit : ces couleurs sont employées
+    partout, et un aplat décoratif ne souffre pas d'être un ton plus sombre là
+    où un libellé cesse d'être lisible.
+  */
+  --color-mandarine: #b84f0e;
+  --color-safran: #8f6a09;
   --color-menthe: #067a5a;
   --color-ocean: #1565c0;
   --color-iris: #6231c7;
