@@ -212,19 +212,19 @@ const ARTICLES: readonly Article[] = [
     contenu: (
       <>
         <p>
-          L'application demande votre position <strong>pendant son utilisation</strong> uniquement.
-          Elle ne la demande jamais en arrière-plan, et ne peut donc pas vous suivre quand elle est
-          fermée.
+          L'application <strong>ne demande jamais l'accès à votre position</strong>. Elle ne possède
+          aucune autorisation de localisation, et ne peut donc vous suivre ni quand elle est ouverte
+          ni quand elle est fermée.
         </p>
         <p>
-          La position est <strong>arrondie sur votre appareil avant l'envoi</strong>, puis stockée
-          arrondie. Nos serveurs ne disposent à aucun moment de vos coordonnées exactes : ce n'est
-          pas une politique de rétention, c'est une donnée que nous n'avons pas.
+          Vous <strong>saisissez une ville</strong>. Votre appareil la convertit lui-même en
+          coordonnées, par le géocodeur du système : rien ne sort de votre téléphone vers nous à
+          cette étape. Ces coordonnées sont{" "}
+          <strong>arrondies sur votre appareil avant l'envoi</strong>, puis stockées arrondies. Nos
+          serveurs ne disposent à aucun moment d'une position plus précise : ce n'est pas une
+          politique de rétention, c'est une donnée que nous n'avons pas.
         </p>
-        <p>
-          Les autres utilisateurs ne voient jamais que la ville et une distance arrondie. Vous
-          pouvez refuser la géolocalisation : il faut alors saisir une ville à la main.
-        </p>
+        <p>Les autres utilisateurs ne voient jamais que la ville et une distance arrondie.</p>
       </>
     ),
   },
