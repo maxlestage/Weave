@@ -1185,11 +1185,11 @@ fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
         let chemin = entree.path();
         if chemin.is_dir() {
             empiler_le_swift(&chemin, sortie);
-        } else if chemin.extension().is_some_and(|e| e == "swift") {
-            if let Ok(contenu) = std::fs::read_to_string(&chemin) {
-                sortie.push_str(&contenu);
-                sortie.push('\n');
-            }
+        } else if chemin.extension().is_some_and(|e| e == "swift")
+            && let Ok(contenu) = std::fs::read_to_string(&chemin)
+        {
+            sortie.push_str(&contenu);
+            sortie.push('\n');
         }
     }
 }
@@ -1357,4 +1357,274 @@ fn aucune_api_sensible_n_est_employee_sans_autorisation() {
             );
         }
     }
+}
+
+/// `app.json` fournit tout ce que le binaire EXIGE en production.
+///
+/// C'est le manifeste que lit le bouton « Deploy to Heroku », et il décide de
+/// ce qui existe au premier démarrage. Une variable ajoutée aux exigences du
+/// binaire et oubliée ici ne casse rien à la compilation, rien aux tests, et
+/// rien en développement — où `exiger` accepte un repli. Elle arrête le dyno
+/// au tout premier démarrage d'un déploiement neuf, c'est-à-dire chez
+/// quelqu'un qui découvre le projet.
+///
+/// Deux variables ne figurent pas dans `env` et n'ont pas à y figurer : les
+/// modules complémentaires les posent eux-mêmes.
+#[test]
+fn le_manifeste_heroku_fournit_ce_que_le_binaire_exige() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let manifeste: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(racine.join("app.json")).expect("app.json"))
+            .expect("app.json est du JSON valide");
+
+    let declarees: std::collections::BTreeSet<String> = manifeste["env"]
+        .as_object()
+        .expect("app.json déclare des variables")
+        .keys()
+        .cloned()
+        .collect();
+
+    // Ce que les modules complémentaires posent d'eux-mêmes, sans passer par
+    // `env` : les déclarer là les ferait demander à la main.
+    let par_les_modules = ["DATABASE_URL", "REDIS_URL"];
+
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/env.rs"),
+    )
+    .expect("env.rs lisible");
+
+    // Chaque `exiger("X", …)` : ce que le binaire refuse de démarrer sans.
+    let mut exigees = Vec::new();
+    for morceau in source.split("exiger(").skip(1) {
+        let Some(nom) = morceau
+            .trim_start()
+            .strip_prefix('"')
+            .and_then(|reste| reste.split('"').next())
+        else {
+            continue;
+        };
+        if nom.chars().all(|c| c.is_ascii_uppercase() || c == '_') && !nom.is_empty() {
+            exigees.push(nom.to_string());
+        }
+    }
+    assert!(
+        exigees.len() >= 3,
+        "seulement {} variables exigées lues : l'analyse d'env.rs a dérivé",
+        exigees.len()
+    );
+
+    let manquantes: Vec<&String> = exigees
+        .iter()
+        .filter(|nom| !declarees.contains(*nom) && !par_les_modules.contains(&nom.as_str()))
+        .collect();
+
+    assert!(
+        manquantes.is_empty(),
+        "le binaire exige ces variables et `app.json` ne les fournit pas : {manquantes:?} — \
+         un déploiement neuf s'arrêterait au premier démarrage"
+    );
+}
+
+/// `app.json` décrit la pile qu'on déploie vraiment.
+///
+/// Ses mots-clés annonçaient « elysia » et « prisma » : l'API TypeScript
+/// d'avant le portage. Le manifeste est public — il s'affiche sur le bouton de
+/// déploiement et dans le dépôt — et décrivait une pile qui n'existe plus.
+#[test]
+fn le_manifeste_ne_nomme_pas_une_pile_abandonnee() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let manifeste: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(racine.join("app.json")).expect("app.json"))
+            .expect("app.json est du JSON valide");
+
+    let mots: Vec<String> = manifeste["keywords"]
+        .as_array()
+        .expect("des mots-clés")
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_lowercase))
+        .collect();
+
+    for abandonnee in ["elysia", "prisma", "typescript", "node"] {
+        assert!(
+            !mots.iter().any(|m| m == abandonnee),
+            "« {abandonnee} » n'est plus la pile de Weave : l'API est en Rust"
+        );
+    }
+}
+
+/// Le fil rend exactement ce que l'application sait décoder.
+///
+/// C'est le contrat le plus coûteux à rompre, et le seul qui ne se voie
+/// nulle part avant l'exécution. `Codable` synthétise le décodage d'après les
+/// propriétés déclarées : une clé manquante pour une propriété NON FACULTATIVE
+/// fait lever `keyNotFound`, et ce n'est pas le plan qui tombe — c'est le
+/// tableau entier, donc l'écran entier.
+///
+/// Côté Rust rien ne le signale : `PlanDuFil` sérialise sans savoir qui la
+/// lit. Côté Swift rien non plus : le modèle compile seul. Les deux moitiés
+/// sont correctes, et ne s'emboîtent pas.
+#[test]
+fn le_fil_rend_ce_que_l_application_sait_decoder() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
+    let swift = std::fs::read_to_string(ios.join("WeaveKit/Sources/WeaveKit/Models/Plan.swift"))
+        .expect("Plan.swift lisible");
+
+    let rust = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/fil.rs"),
+    )
+    .expect("fil.rs lisible");
+
+    let envoyees = champs_serialises(&rust, "PlanDuFil");
+    assert!(
+        envoyees.len() >= 8,
+        "seulement {} champs lus dans PlanDuFil : l'analyse a dérivé",
+        envoyees.len()
+    );
+
+    let attendues = proprietes_swift(&swift, "public struct Plan: Codable");
+    assert!(
+        attendues.len() >= 8,
+        "seulement {} propriétés lues dans Plan : l'analyse a dérivé",
+        attendues.len()
+    );
+
+    let manquantes: Vec<&String> = attendues
+        .iter()
+        .filter(|(_, facultative)| !facultative)
+        .map(|(nom, _)| nom)
+        .filter(|nom| !envoyees.contains(*nom))
+        .collect();
+
+    assert!(
+        manquantes.is_empty(),
+        "le fil n'envoie pas {manquantes:?}, que `Plan` déclare obligatoires : \
+         le décodage lèvera `keyNotFound` et l'écran du fil sera vide"
+    );
+}
+
+/// Le compte rend exactement ce que l'application sait décoder.
+///
+/// Même risque que pour le fil, et pour la même raison : `Me` est une des
+/// trois structures typées qui atteignent le client, et une structure typée
+/// sérialise sans savoir qui la lit. Les autres réponses sont bâties clé par
+/// clé avec `json!`, à côté de ce qu'elles décrivent ; celles-ci sont écrites
+/// une fois, puis oubliées.
+///
+/// Elle correspond aujourd'hui. Ce test est là pour qu'elle continue.
+#[test]
+fn le_compte_rend_ce_que_l_application_sait_decoder() {
+    let swift = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/ios/WeaveKit/Sources/WeaveKit/Models/Account.swift"),
+    )
+    .expect("Account.swift lisible");
+
+    let rust = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/me.rs"),
+    )
+    .expect("me.rs lisible");
+
+    let envoyees = champs_serialises(&rust, "Me");
+    assert!(
+        envoyees.len() >= 10,
+        "seulement {} champs lus dans Me : l'analyse a dérivé",
+        envoyees.len()
+    );
+
+    let attendues = proprietes_swift(&swift, "public struct Me: Codable");
+    assert!(
+        attendues.len() >= 10,
+        "seulement {} propriétés lues : l'analyse a dérivé",
+        attendues.len()
+    );
+
+    let manquantes: Vec<&String> = attendues
+        .iter()
+        .filter(|(_, facultative)| !facultative)
+        .map(|(nom, _)| nom)
+        .filter(|nom| !envoyees.contains(*nom))
+        .collect();
+
+    assert!(
+        manquantes.is_empty(),
+        "le compte n'envoie pas {manquantes:?}, que `Me` déclare obligatoires : \
+         le décodage lèvera `keyNotFound` et l'écran du compte sera vide"
+    );
+}
+
+/// Les clés JSON d'une structure Rust `#[serde(rename_all = "camelCase")]`.
+fn champs_serialises(source: &str, nom: &str) -> std::collections::BTreeSet<String> {
+    let debut = source
+        .find(&format!("struct {nom} {{"))
+        .unwrap_or_else(|| panic!("la structure « {nom} » a disparu"));
+    let fin = source[debut..]
+        .find("\n}")
+        .unwrap_or_else(|| panic!("« {nom} » sans fin"))
+        + debut;
+
+    source[debut..fin]
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .filter(|l| !l.starts_with("//") && !l.starts_with("#["))
+        .map(|l| l.strip_prefix("pub ").unwrap_or(l))
+        .filter_map(|l| l.split(':').next())
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+        .map(en_camel)
+        .collect()
+}
+
+/// `starts_at` → `startsAt`, comme le fait serde.
+fn en_camel(serpent: &str) -> String {
+    let mut sortie = String::with_capacity(serpent.len());
+    let mut majuscule = false;
+    for c in serpent.chars() {
+        if c == '_' {
+            majuscule = true;
+        } else if majuscule {
+            sortie.extend(c.to_uppercase());
+            majuscule = false;
+        } else {
+            sortie.push(c);
+        }
+    }
+    sortie
+}
+
+/// Les propriétés stockées d'une structure Swift, et leur caractère facultatif.
+///
+/// Une `CodingKeys` renomme : la clé JSON est alors celle qu'elle donne, pas
+/// le nom de la propriété.
+fn proprietes_swift(source: &str, entete: &str) -> Vec<(String, bool)> {
+    let debut = source
+        .find(entete)
+        .unwrap_or_else(|| panic!("« {entete} » a disparu"));
+    let fin = source[debut..].find("\n}").expect("structure sans fin") + debut;
+    let corps = &source[debut..fin];
+
+    corps
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("public let "))
+        .filter_map(|l| {
+            let (nom, reste) = l.split_once(':')?;
+            let nom = nom.trim();
+            // Une propriété calculée n'est pas décodée.
+            if reste.contains('{') {
+                return None;
+            }
+            let renommee = corps
+                .lines()
+                .map(str::trim)
+                .find_map(|c| c.strip_prefix(&format!("case {nom} = \"")))
+                .and_then(|c| c.split('"').next())
+                .map(str::to_string);
+            Some((
+                renommee.unwrap_or_else(|| nom.to_string()),
+                reste.trim().ends_with('?'),
+            ))
+        })
+        .collect()
 }

@@ -198,9 +198,22 @@ export function Principe() {
               <li
                 key={categorie}
                 className="rounded-full px-4 py-2 text-sm font-bold"
+                /*
+                  Le texte est à la couleur du texte, pas à celle du fil.
+                  
+                  Il portait la couleur du fil sur un aplat du même fil à 16 % :
+                  deux tons d'une même teinte, donc un contraste de 2,7 à 3,9
+                  selon la couleur — sous le seuil de 4,5 que réclame un texte
+                  de cette taille. Éclaircir l'aplat n'y suffisait pas : le
+                  safran lui-même ne dépasse pas 3,0 sur du blanc.
+                  
+                  La couleur reste dite par l'aplat ET par le trait, qui
+                  n'ont rien à lire. Le libellé, lui, se lit.
+                */
                 style={{
                   background: `color-mix(in oklab, ${filVar(((index % 6) + 1) as Fil)} 16%, var(--fond))`,
-                  color: filVar(((index % 6) + 1) as Fil),
+                  border: `1.5px solid ${filVar(((index % 6) + 1) as Fil)}`,
+                  color: "var(--texte)",
                 }}
               >
                 {categories[categorie]}

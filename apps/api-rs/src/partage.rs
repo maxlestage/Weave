@@ -148,9 +148,45 @@ pub fn poser_l_origine(dist: Option<&str>, origine: &str) {
             origine,
             "adresse publique posée sur les pages (SITE.origine absente à la construction)"
         );
+    } else if !adresses.is_empty() {
+        // Aucune page posée alors qu'il y en avait à poser.
+        //
+        // Deux causes, et il faut les distinguer sans ouvrir un fichier : ou
+        // bien la construction avait déjà l'origine — cas normal, rien à
+        // faire — ou bien AUCUNE écriture n'a abouti, par exemple sur un
+        // système de fichiers en lecture seule. Dans ce second cas, les pages
+        // partent sans canonique, sans `og:url` et sans `hreflang`, et les
+        // avertissements par page se perdent dans le bruit du démarrage.
+        //
+        // Une ligne d'ensemble le dit, parce que c'est invisible autrement :
+        // le site répond, s'affiche, et n'est simplement jamais indexé.
+        let deja = premiere_page_deja_posee(racine, &adresses);
+        if !deja {
+            tracing::error!(
+                origine,
+                "aucune adresse publique posée : les pages partiront sans canonique, \
+                 sans og:url et sans hreflang. Système de fichiers en lecture seule ?"
+            );
+        }
     }
 
     poser_le_plan_du_site(racine, origine, &adresses);
+}
+
+/// La construction avait-elle déjà posé l'adresse ?
+///
+/// Sert à distinguer « rien à faire » de « rien n'a pu être fait » : les deux
+/// donnent zéro page posée, et seul le second est une panne.
+fn premiere_page_deja_posee(racine: &Path, adresses: &[String]) -> bool {
+    let Some(premiere) = adresses.first() else {
+        return false;
+    };
+    let chemin = if premiere == "/" {
+        racine.join("index.html")
+    } else {
+        racine.join(premiere.trim_matches('/')).join("index.html")
+    };
+    std::fs::read_to_string(chemin).is_ok_and(|html| html.contains(DEJA_POSEE))
 }
 
 /// Écrit `sitemap.xml`, et complète `robots.txt`, quand la construction n'a
@@ -594,6 +630,36 @@ mod tests {
 
         let relu = std::fs::read_to_string(dist.join("sitemap.xml")).expect("plan relu");
         assert_eq!(relu, deja, "la construction fait foi quand elle a parlé");
+    }
+
+    /// Un système de fichiers en lecture seule ne fait rien échouer.
+    ///
+    /// Ce module ÉCRIT dans `dist` au démarrage. Rien ne garantit que ce
+    /// répertoire soit accessible en écriture là où le service tourne : une
+    /// image montée en lecture seule, un utilisateur d'exécution différent de
+    /// celui qui a construit l'image, et chaque écriture échoue.
+    ///
+    /// Le service doit alors démarrer quand même — une page sans vignette se
+    /// partage encore, un service qui refuse de démarrer ne sert plus rien.
+    #[test]
+    fn un_repertoire_en_lecture_seule_ne_fait_rien_echouer() {
+        let dist = dist_de_test("lecture-seule");
+
+        let mut droits = std::fs::metadata(&dist).expect("métadonnées").permissions();
+        droits.set_readonly(true);
+        if std::fs::set_permissions(&dist, droits).is_err() {
+            // Certains systèmes de fichiers refusent de se laisser figer ;
+            // le test n'a alors rien à éprouver.
+            return;
+        }
+
+        // Ne doit ni paniquer ni bloquer.
+        poser_l_origine(Some(&dist.display().to_string()), "https://weave.example");
+
+        let mut droits = std::fs::metadata(&dist).expect("métadonnées").permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        droits.set_readonly(false);
+        let _ = std::fs::set_permissions(&dist, droits);
     }
 
     /// Un site absent n'empêche pas le service de démarrer.
