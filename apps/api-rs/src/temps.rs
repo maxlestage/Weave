@@ -4,7 +4,7 @@
 //! expire à minuit dans le fuseau de l'utilisateur, pas dans celui du serveur.
 //! Un fuseau mal résolu rendrait ses demandes au mauvais moment.
 
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use chrono::{DateTime, Datelike, TimeZone, Utc};
 use chrono_tz::Tz;
 
 /// Résout un fuseau nommé. Un fuseau inconnu retombe sur UTC plutôt que
@@ -25,9 +25,39 @@ pub fn jour_local(nom_fuseau: &str, a: DateTime<Utc>) -> String {
 }
 
 /// Secondes restantes avant minuit, dans un fuseau donné.
+///
+/// Le calcul cherche l'instant du prochain minuit local, puis le soustrait.
+/// Il partait auparavant de « vingt-quatre moins l'heure locale », ce qui
+/// suppose deux choses fausses : qu'un jour dure toujours vingt-quatre heures,
+/// et que les secondes ne comptent pas.
+///
+/// La seconde erreur ne prêtait pas à conséquence — la clé survivait une
+/// minute de trop à un jour qui ne la relit plus. La première, si : le jour du
+/// retour à l'heure d'hiver dure vingt-cinq heures, la clé du quota expirait
+/// une heure avant la fin du jour, et le compteur de demandes repartait de
+/// zéro. Le plafond journalier — ce qui distingue les paliers, et donc ce qui
+/// se paie — se levait une fois par an, dans chaque fuseau qui change d'heure.
 pub fn secondes_avant_minuit(nom_fuseau: &str, depuis: DateTime<Utc>) -> i64 {
-    let local = depuis.with_timezone(&fuseau(nom_fuseau));
-    (24 - local.hour() as i64) * 3600 - local.minute() as i64 * 60
+    let zone = fuseau(nom_fuseau);
+    let local = depuis.with_timezone(&zone);
+    let Some(demain) = local.date_naive().succ_opt() else {
+        // Fin de l'ère représentable : mieux vaut un jour entier qu'un zéro,
+        // qui ferait expirer la clé sur-le-champ et lèverait le plafond.
+        return 24 * 3600;
+    };
+
+    // Minuit n'existe pas partout tous les jours : à Santiago, le passage à
+    // l'heure d'été se fait à minuit et la journée commence à 01h00. Quand
+    // l'heure demandée n'existe pas, on prend la première qui existe.
+    let instant = (0..=3).find_map(|heure| {
+        let candidat = demain.and_hms_opt(heure, 0, 0)?;
+        zone.from_local_datetime(&candidat).earliest()
+    });
+
+    match instant {
+        Some(minuit) => (minuit.with_timezone(&Utc) - depuis).num_seconds().max(0),
+        None => 24 * 3600,
+    }
 }
 
 /// Âge en années révolues.
@@ -101,6 +131,56 @@ mod tests {
         // 22h00 à Paris : il reste deux heures.
         let t = instant("2026-09-11T20:00:00Z");
         assert_eq!(secondes_avant_minuit("Europe/Paris", t), 2 * 3600);
+    }
+
+    /// Les secondes comptent aussi.
+    #[test]
+    fn les_secondes_ne_sont_pas_perdues() {
+        // 23h59m30 à Paris : il reste trente secondes, pas soixante.
+        let t = instant("2026-09-11T21:59:30Z");
+        assert_eq!(secondes_avant_minuit("Europe/Paris", t), 30);
+    }
+
+    /// Le jour du retour à l'heure d'hiver dure vingt-cinq heures.
+    ///
+    /// La formule partait de « vingt-quatre moins l'heure locale ». Le
+    /// 25 octobre 2026, à Paris, 02h00 sonne deux fois : de minuit à minuit il
+    /// s'écoule vingt-cinq heures, et la clé du quota expirait une heure avant
+    /// la fin du jour. Le compteur repartait de zéro, et le plafond de demandes
+    /// — ce qui distingue les paliers — se levait une fois par an.
+    #[test]
+    fn le_jour_du_changement_d_heure_dure_ce_qu_il_dure() {
+        // 00h30 heure locale, le jour du retour à l'heure d'hiver.
+        let t = instant("2026-10-24T22:30:00Z");
+        assert_eq!(
+            secondes_avant_minuit("Europe/Paris", t),
+            24 * 3600 + 30 * 60,
+            "le 25 octobre 2026 dure vingt-cinq heures à Paris"
+        );
+
+        // Et le jour du passage à l'heure d'été, vingt-trois.
+        let t = instant("2026-03-28T23:30:00Z");
+        assert_eq!(
+            secondes_avant_minuit("Europe/Paris", t),
+            22 * 3600 + 30 * 60,
+            "le 29 mars 2026 dure vingt-trois heures à Paris"
+        );
+    }
+
+    /// Il existe des fuseaux où minuit n'existe pas certains jours.
+    ///
+    /// À Santiago, le passage à l'heure d'été se fait à minuit : la journée
+    /// commence à 01h00. Demander « l'instant de minuit » n'y rend rien, et une
+    /// résolution naïve paniquerait ou rendrait zéro — un quota expirant
+    /// sur-le-champ, donc illimité.
+    #[test]
+    fn un_minuit_qui_n_existe_pas_ne_fait_pas_tomber_le_quota() {
+        let t = instant("2026-09-05T20:00:00Z");
+        let reste = secondes_avant_minuit("America/Santiago", t);
+        assert!(
+            reste > 3600,
+            "il reste plus d'une heure avant la fin du jour, or {reste} s"
+        );
     }
 }
 
