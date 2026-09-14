@@ -1825,3 +1825,126 @@ async fn une_notification_depassee_est_ignoree_mais_pas_une_relance() {
     let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_ordre"))).await;
     assert_eq!(fiche["tier"], "grandtour", "{fiche}");
 }
+
+/// Le bilan compte juste quand plusieurs demandes portent sur un même plan.
+///
+/// Les demandes se lisaient plan par plan — une requête par ligne du bilan,
+/// sans borne au-dessus. Elles se lisent maintenant d'un coup et se groupent
+/// en mémoire, comme le fil le fait déjà. Le regroupement est ce qui peut se
+/// tromper : deux demandes sur un plan et aucune sur un autre, dont une seule
+/// acceptée. `demandesAcceptees` n'était éprouvé nulle part.
+#[tokio::test]
+async fn le_bilan_groupe_les_demandes_par_plan_sans_en_perdre() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let auteur = service.compte("c_groupe", "depart").await;
+    let jeton = service.jeton("c_groupe");
+    service.compte("c_premier", "depart").await;
+    service.compte("c_second", "depart").await;
+
+    for nom in ["c_groupe", "c_premier", "c_second"] {
+        service
+            .put(
+                "/v1/me/profile",
+                Some(&service.jeton(nom)),
+                json!({
+                    "city": "Nantes", "latitude": 47.21, "longitude": -1.55, "gender": "autre",
+                }),
+            )
+            .await;
+    }
+
+    let mut publies = Vec::new();
+    for titre in [
+        "Un concert dans une cave voutee",
+        "Une partie de petanque au parc",
+        "Un atelier de reliure ancienne",
+    ] {
+        let (statut, corps) = service
+            .post(
+                "/v1/plans",
+                Some(&jeton),
+                json!({
+                    "title": titre,
+                    "category": "sortie",
+                    "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+                }),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+        publies.push(corps["id"].as_str().unwrap().to_string());
+    }
+
+    // Deux demandes sur le premier plan, une sur le deuxième, aucune sur le
+    // troisième. C'est le groupement qu'on éprouve.
+    let mut demandes = Vec::new();
+    for (qui, plan) in [
+        ("c_premier", &publies[0]),
+        ("c_second", &publies[0]),
+        ("c_premier", &publies[1]),
+    ] {
+        let (statut, corps) = service
+            .post(
+                "/v1/requests",
+                Some(&service.jeton(qui)),
+                json!({
+                    "planId": plan,
+                    "message": "Ce plan me tente beaucoup, je serais ravi de venir.",
+                }),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+        demandes.push(corps["id"].as_str().unwrap().to_string());
+    }
+
+    // Deux acceptées, sur deux plans différents.
+    //
+    // Deux et non une : accepter sur un plan solo referme l'autre demande du
+    // même plan, si bien qu'avec une seule acceptation il resterait exactement
+    // une demande « envoyee » — et compter le mauvais état donnerait le même
+    // total. Le test ne distinguerait alors rien.
+    for demande in [&demandes[0], &demandes[2]] {
+        let (statut, corps) = service
+            .post(
+                &format!("/v1/requests/{demande}/accept"),
+                Some(&jeton),
+                json!({}),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+    }
+
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt='2020-01-01 12:00:00' WHERE authorId='{auteur}'"
+        ))
+        .await
+        .unwrap();
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &auteur, "bilan", 1)
+        .await
+        .expect("achat");
+
+    let (statut, bilan) = service.post("/v1/me/bilan", Some(&jeton), json!({})).await;
+    assert_eq!(statut, StatusCode::OK, "{bilan}");
+
+    assert_eq!(bilan["plansPasses"], 3, "{bilan}");
+    assert_eq!(
+        bilan["demandesRecues"], 3,
+        "trois demandes en tout : {bilan}"
+    );
+    assert_eq!(
+        bilan["demandesAcceptees"], 2,
+        "deux ont été acceptées, sur deux plans : {bilan}"
+    );
+    assert_eq!(
+        bilan["plansSansAucuneDemande"], 1,
+        "le troisième plan n'a rien reçu : {bilan}"
+    );
+    assert_eq!(
+        bilan["cequiAttire"][0]["demandes"], 2,
+        "le plan le plus demandé en porte deux : {bilan}"
+    );
+}

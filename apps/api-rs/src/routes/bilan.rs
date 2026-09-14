@@ -84,21 +84,40 @@ async fn etablir(
         }));
     }
 
-    let mut lignes = Vec::with_capacity(passes.len());
-    for plan in &passes {
-        let demandes = join_requests::Entity::find()
-            .filter(join_requests::Column::PlanId.eq(plan.id.as_str()))
-            .all(&state.db)
-            .await?;
-
-        lignes.push(Ligne {
-            titre: plan.title.clone(),
-            categorie: plan.category.clone(),
-            demandes: demandes.len(),
-            acceptees: demandes.iter().filter(|d| d.state == "acceptee").count(),
-            delai_jours: (plan.starts_at - plan.created_at).num_days().max(0),
-        });
+    // Les demandes de tous les plans en une requête, groupées en mémoire.
+    //
+    // Une requête par plan, c'était une par LIGNE du bilan : trois au minimum,
+    // mais sans borne au-dessus. Quelqu'un qui publie depuis un an en a des
+    // centaines, et autant d'allers-retours en série sur la base — pour un
+    // bilan qu'il vient de payer. Le fil compose déjà de cette façon, pour la
+    // même raison.
+    let mut demandes_par_plan: std::collections::HashMap<String, (usize, usize)> =
+        std::collections::HashMap::new();
+    for demande in join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.is_in(passes.iter().map(|p| p.id.clone())))
+        .all(&state.db)
+        .await?
+    {
+        let compte = demandes_par_plan.entry(demande.plan_id).or_default();
+        compte.0 += 1;
+        if demande.state == "acceptee" {
+            compte.1 += 1;
+        }
     }
+
+    let lignes: Vec<Ligne> = passes
+        .iter()
+        .map(|plan| {
+            let (demandes, acceptees) = demandes_par_plan.get(&plan.id).copied().unwrap_or((0, 0));
+            Ligne {
+                titre: plan.title.clone(),
+                categorie: plan.category.clone(),
+                demandes,
+                acceptees,
+                delai_jours: (plan.starts_at - plan.created_at).num_days().max(0),
+            }
+        })
+        .collect();
 
     // La part incluse dans l'abonnement passe avant le crédit.
     //
