@@ -314,12 +314,23 @@ impl Service {
     /// La réponse entière, en-têtes compris : ce que `get` jette est
     /// précisément ce que le cache du navigateur lit.
     pub async fn get_brut(&self, chemin: &str) -> (StatusCode, axum::http::HeaderMap, String) {
-        let requete = Request::builder()
+        self.get_brut_dans_la_langue(chemin, None).await
+    }
+
+    /// Le même GET, en annonçant une langue préférée.
+    pub async fn get_brut_dans_la_langue(
+        &self,
+        chemin: &str,
+        accept_language: Option<&str>,
+    ) -> (StatusCode, axum::http::HeaderMap, String) {
+        let mut requete = Request::builder()
             .method("GET")
             .uri(chemin)
-            .extension(adresse_appelante())
-            .body(Body::empty())
-            .expect("requête bien formée");
+            .extension(adresse_appelante());
+        if let Some(langue) = accept_language {
+            requete = requete.header(axum::http::header::ACCEPT_LANGUAGE, langue);
+        }
+        let requete = requete.body(Body::empty()).expect("requête bien formée");
 
         let reponse = self
             .routeur
