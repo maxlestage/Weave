@@ -1628,3 +1628,113 @@ fn proprietes_swift(source: &str, entete: &str) -> Vec<(String, bool)> {
         })
         .collect()
 }
+
+/// Tout ce que le catalogue vend, l'API sait le vendre.
+///
+/// Le contrôle des prix parcourt la liste de l'API et la compare au contrat :
+/// il attrape un prix qui diverge, jamais un produit que le contrat annonce et
+/// que l'API ignore. Or c'est ce sens-là qui coûte de l'argent — le site et
+/// l'application affichent le catalogue partagé, et StoreKit encaisserait un
+/// achat que `unite_depuis_produit` ne reconnaîtrait pas. La transaction est
+/// refusée après le paiement.
+#[test]
+fn tout_ce_que_le_catalogue_vend_est_vendable_par_l_api() {
+    let catalogue = catalogue();
+
+    let debut = catalogue
+        .find("export const UNIT_SKUS = [")
+        .expect("UNIT_SKUS a disparu du catalogue");
+    let fin = catalogue[debut..].find(']').expect("UNIT_SKUS sans fin") + debut;
+    let declaration = &catalogue[debut..fin];
+
+    let annonces: Vec<String> = declaration
+        .match_indices('"')
+        .collect::<Vec<_>>()
+        .chunks(2)
+        .filter_map(|paire| match paire {
+            [(ouvre, _), (ferme, _)] => Some(declaration[ouvre + 1..*ferme].to_string()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        annonces.len() >= 5,
+        "seulement {} SKU lus : l'analyse du catalogue a dérivé",
+        annonces.len()
+    );
+
+    let vendables: std::collections::BTreeSet<&str> = crate::routes::billing::unites_pour_test()
+        .into_iter()
+        .map(|(sku, _)| sku)
+        .collect();
+
+    let orphelins: Vec<&String> = annonces
+        .iter()
+        .filter(|sku| !vendables.contains(sku.as_str()))
+        .collect();
+
+    assert!(
+        orphelins.is_empty(),
+        "le catalogue annonce {orphelins:?}, que l'API ne sait pas vendre : \
+         l'achat serait encaissé par Apple puis refusé ici"
+    );
+}
+
+/// Tout crédit que l'API vend se dépense quelque part.
+///
+/// C'est l'autre bout, et le plus cher : un crédit accordé qu'aucune route ne
+/// consomme est de l'argent pris pour rien. Rien ne le signale — le solde
+/// monte, l'achat « réussit », et le produit ne rend simplement jamais ce
+/// qu'il promet.
+///
+/// La dépense se reconnaît à un appel qui exige le crédit par son nom. Les
+/// deux formes comptent : celle qui ouvre sa propre transaction et celle qui
+/// s'inscrit dans une transaction déjà ouverte.
+#[test]
+fn tout_credit_vendu_se_depense_quelque_part() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut sources = String::new();
+    empiler_le_rust(&racine, &mut sources);
+    assert!(
+        sources.len() > 100_000,
+        "seulement {} octets de Rust lus : le parcours a dérivé",
+        sources.len()
+    );
+
+    for (sku, _) in crate::routes::billing::unites_pour_test() {
+        // La dépense se reconnaît à un appel qui EXIGE le crédit par son nom.
+        //
+        // Le motif est volontairement étroit : chercher seulement `"{sku}"`
+        // quelque part aurait trouvé la table des unités elle-même, et le test
+        // aurait passé pour tout le monde sans rien vérifier.
+        let depense = sources.contains(&format!("exiger_credit(&state, &compte.id, \"{sku}\""))
+            || sources.contains(&format!(
+                "exiger_credit_dans(&transaction, &compte.id, \"{sku}\""
+            ));
+        assert!(
+            depense,
+            "« {sku} » se vend et ne se dépense nulle part : le crédit s'accumule \
+             et le produit ne rend jamais ce qu'il promet"
+        );
+    }
+}
+
+/// Concatène tout le Rust d'un répertoire, hors tests.
+fn empiler_le_rust(repertoire: &std::path::Path, sortie: &mut String) {
+    let Ok(entrees) = std::fs::read_dir(repertoire) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.is_dir() {
+            if chemin.file_name().is_some_and(|n| n == "tests") {
+                continue;
+            }
+            empiler_le_rust(&chemin, sortie);
+        } else if chemin.extension().is_some_and(|e| e == "rs")
+            && let Ok(contenu) = std::fs::read_to_string(&chemin)
+        {
+            sortie.push_str(&contenu);
+            sortie.push('\n');
+        }
+    }
+}
