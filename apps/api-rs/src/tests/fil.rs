@@ -513,3 +513,153 @@ async fn on_n_accepte_pas_une_demande_adressee_a_un_autre() {
         "l'hôte ne peut plus accepter : {corps}"
     );
 }
+
+/// Une « Escale » fait basculer le fil sur une autre ville.
+///
+/// C'est ce qui se vend 3,99 € : « publier et voir depuis une autre ville
+/// pendant sept jours ». Le crédit était éprouvé — son achat, son débit, son
+/// solde — mais jamais ce qu'il achète. Retirer la bascule du fil laissait
+/// toute la suite au vert : on aurait pu vendre l'escale et ne rien livrer.
+///
+/// C'est exactement le défaut qu'`escaleCity` avait déjà eu : un mécanisme
+/// complet à la ligne près qui le rend utile.
+#[tokio::test]
+async fn une_escale_fait_basculer_le_fil_sur_l_autre_ville() {
+    let service = Service::monter().await;
+    let voyageur = service.compte("c_voyageur", "depart").await;
+    service.compte("c_reste_a_lyon", "depart").await;
+    let parisien = service.compte("c_parisien", "depart").await;
+
+    // Le Parisien vit à Paris ; les comptes de test naissent à Lyon.
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE profiles SET city='Paris', latRounded=48.86, lonRounded=2.35 \
+             WHERE accountId='{parisien}'"
+        ))
+        .await
+        .unwrap();
+
+    let a_lyon = plan_de(&service, "c_reste_a_lyon", "Un bouchon rue Mercière").await;
+    let a_paris = plan_de(&service, "c_parisien", "Un concert à la Bellevilloise").await;
+
+    // Avant l'escale : Lyon oui, Paris non — trois cents kilomètres.
+    let avant = titres_du_fil(&service, "c_voyageur").await;
+    assert!(
+        avant.contains(&a_lyon),
+        "le plan lyonnais manque : {avant:?}"
+    );
+    assert!(
+        !avant.contains(&a_paris),
+        "le plan parisien paraît sans escale : {avant:?}"
+    );
+
+    crate::routes::billing::crediter_pour_test(&service.etat, &voyageur, "escale", 1)
+        .await
+        .expect("achat de l'escale");
+
+    let (statut, corps) = service
+        .post(
+            "/v1/me/escale",
+            Some(&service.jeton("c_voyageur")),
+            json!({ "city": "Paris" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Après : le fil est celui de Paris.
+    let apres = titres_du_fil(&service, "c_voyageur").await;
+    assert!(
+        apres.contains(&a_paris),
+        "l'escale n'a pas ouvert le fil parisien : {apres:?}"
+    );
+    assert!(
+        !apres.contains(&a_lyon),
+        "l'escale n'a pas refermé le fil lyonnais : {apres:?}"
+    );
+
+    // Et le crédit a bien été dépensé.
+    let (_, fiche) = service
+        .get("/v1/me", Some(&service.jeton("c_voyageur")))
+        .await;
+    assert_eq!(
+        fiche["credits"]["escale"], 0,
+        "l'escale n'a rien coûté : {fiche}"
+    );
+}
+
+/// Les plans de groupe se paient — par le palier, ou par « Tablée ».
+///
+/// C'est la deuxième chose que le catalogue vend et que rien n'éprouvait :
+/// retirer la garde donnait les plans de groupe à tout le monde, et les trois
+/// cent vingt tests restaient au vert.
+///
+/// Le test tient les trois chemins : refusé sans rien, accepté avec le crédit
+/// — qui se dépense —, et accepté sans crédit sur un palier qui les comprend.
+#[tokio::test]
+async fn un_plan_de_groupe_se_paie() {
+    let service = Service::monter().await;
+    let solo = service.compte("c_solo", "depart").await;
+    service.compte("c_escapade", "escapade").await;
+
+    let groupe = |titre: &str| {
+        json!({
+            "title": titre,
+            "category": "repas",
+            "capacity": 4,
+            "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+        })
+    };
+
+    // Sans rien : refusé, et l'on dit quoi acheter.
+    let (statut, corps) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_solo")),
+            groupe("Une tablée de quatre au comptoir"),
+        )
+        .await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "un plan de groupe est passé sans rien : {corps}"
+    );
+    assert_eq!(corps["details"]["sku"], "tablee", "{corps}");
+
+    // Avec le crédit : accepté, et le crédit part.
+    crate::routes::billing::crediter_pour_test(&service.etat, &solo, "tablee", 1)
+        .await
+        .expect("achat de la tablée");
+    let (statut, corps) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_solo")),
+            groupe("Une tablée de quatre au comptoir"),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "le crédit n'a pas ouvert le groupe : {corps}"
+    );
+
+    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_solo"))).await;
+    assert_eq!(
+        fiche["credits"]["tablee"], 0,
+        "la tablée n'a rien coûté : {fiche}"
+    );
+
+    // Et un palier qui les comprend n'a pas besoin de crédit.
+    let (statut, corps) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_escapade")),
+            groupe("Un dîner à six chez moi"),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "un palier qui comprend les plans de groupe en redemande le crédit : {corps}"
+    );
+}
