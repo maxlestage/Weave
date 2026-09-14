@@ -31,6 +31,7 @@ use crate::{
     apns::{Envoi, TypeEnvoi},
     entities::devices,
 };
+use chrono::{Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
 /// Une alerte à pousser : ce qui s'affiche, et rien de plus.
@@ -91,6 +92,11 @@ async fn pousser(state: &AppState, compte_id: &str, texte: Texte) -> Result<u32,
                     // Deux messages rapprochés ne doivent pas empiler deux
                     // bannières : la seconde remplace la première.
                     collapse_id: Some(format!("{}-{}", texte.fil, compte_id)),
+                    // Un jour. Passé ce délai, l'alerte n'apprend plus rien —
+                    // l'application montre la demande dès qu'on l'ouvre. Mais
+                    // dans l'intervalle, un téléphone éteint ou hors réseau ne
+                    // doit pas la faire disparaître.
+                    peremption: (Utc::now() + Duration::hours(24)).timestamp(),
                     charge: serde_json::json!({
                         "aps": {
                             "alert": { "title": texte.titre, "body": texte.corps },

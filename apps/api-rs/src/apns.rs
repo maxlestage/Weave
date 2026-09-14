@@ -52,6 +52,25 @@ pub struct Envoi<'a> {
     /// Clé de dédoublonnage : un seul état en vol par fil. Sans elle, deux
     /// mises à jour rapprochées feraient clignoter la bannière.
     pub collapse_id: Option<String>,
+    /// Jusqu'à quand APNs doit garder la notification, en secondes UNIX.
+    ///
+    /// Sans cet en-tête, rien n'est gardé. La documentation d'Apple est
+    /// explicite : « If the value is nonzero, APNs stores the notification and
+    /// tries to deliver it at least once, repeating the attempt as needed
+    /// until the specified date. If the value is `0`, APNs attempts to deliver
+    /// the notification only once and doesn't store it. » Et plus haut :
+    /// APNs garde une notification « for 30 days or less, depending on the
+    /// date you specify in the `apns-expiration` header ».
+    ///
+    /// L'en-tête n'était pas envoyé du tout. Une alerte partie vers un
+    /// téléphone éteint ou hors réseau était donc perdue, sans reprise —
+    /// « quelqu'un veut venir » compris, qui est le seul message du produit
+    /// qui attende une réponse.
+    ///
+    /// Obligatoire, et non facultatif : il n'existe aucun envoi de Weave qu'on
+    /// accepterait de perdre, et un champ qu'on peut laisser vide finit par
+    /// l'être. Le compilateur tient l'invariant à chaque nouvel appel.
+    pub peremption: i64,
     pub charge: Value,
 }
 
@@ -99,6 +118,42 @@ impl Resultat {
 struct Claims {
     iss: String,
     iat: u64,
+}
+
+/// L'adresse à laquelle APNs attend la notification.
+fn adresse(config: &Env, jeton_appareil: &str) -> String {
+    let hote = if config.apns.environnement == "production" {
+        HOTE_PRODUCTION
+    } else {
+        HOTE_BAC_A_SABLE
+    };
+    format!("{hote}/3/device/{jeton_appareil}")
+}
+
+/// Les en-têtes d'un envoi, hors autorisation.
+///
+/// Fonction à part, et c'est le point : ces cinq valeurs décident si la
+/// notification arrive, et aucune ne se voit dans un journal. Un sujet sans le
+/// suffixe d'ActivityKit, un type d'envoi qui ne correspond pas, une
+/// péremption oubliée — APNs refuse, ou accepte puis ne livre rien. Écrites
+/// dans le constructeur de requête, elles n'étaient éprouvables que par un
+/// vrai appel à Apple ; ici, elles se lisent.
+fn en_tetes(config: &Env, envoi: &Envoi<'_>) -> Vec<(&'static str, String)> {
+    let sujet = match envoi.suffixe_sujet {
+        Some(suffixe) => format!("{}{suffixe}", config.apns.bundle_id),
+        None => config.apns.bundle_id.clone(),
+    };
+
+    let mut en_tetes = vec![
+        ("apns-topic", sujet),
+        ("apns-push-type", envoi.type_envoi.en_tete().to_string()),
+        ("apns-priority", envoi.priorite.to_string()),
+        ("apns-expiration", envoi.peremption.to_string()),
+    ];
+    if let Some(cle) = &envoi.collapse_id {
+        en_tetes.push(("apns-collapse-id", cle.clone()));
+    }
+    en_tetes
 }
 
 /// Client APNs. Le jeton d'autorisation est partagé entre les envois : en
@@ -150,29 +205,20 @@ impl ClientApns {
             }
         };
 
-        let hote = if config.apns.environnement == "production" {
-            HOTE_PRODUCTION
-        } else {
-            HOTE_BAC_A_SABLE
-        };
-        let sujet = match envoi.suffixe_sujet {
-            Some(suffixe) => format!("{}{suffixe}", config.apns.bundle_id),
-            None => config.apns.bundle_id.clone(),
-        };
+        let en_tetes = en_tetes(config, &envoi);
+        let sujet_journal = en_tetes
+            .iter()
+            .find(|(nom, _)| *nom == "apns-topic")
+            .map(|(_, valeur)| valeur.clone())
+            .unwrap_or_default();
 
-        let sujet_journal = sujet.clone();
-        let requete = self
+        let mut requete = self
             .http
-            .post(format!("{hote}/3/device/{}", envoi.jeton_appareil))
-            .header("authorization", format!("bearer {jeton}"))
-            .header("apns-topic", sujet)
-            .header("apns-push-type", envoi.type_envoi.en_tete())
-            .header("apns-priority", envoi.priorite.to_string());
-
-        let requete = match &envoi.collapse_id {
-            Some(cle) => requete.header("apns-collapse-id", cle.as_str()),
-            None => requete,
-        };
+            .post(adresse(config, envoi.jeton_appareil))
+            .header("authorization", format!("bearer {jeton}"));
+        for (nom, valeur) in &en_tetes {
+            requete = requete.header(*nom, valeur.as_str());
+        }
 
         let reponse = requete.json(&envoi.charge).send().await;
 
@@ -271,6 +317,133 @@ impl ClientApns {
 mod tests {
     use super::*;
 
+    fn config(environnement: &str, bundle: &str) -> crate::env::Env {
+        crate::env::Env {
+            mode: crate::env::Mode::Development,
+            port: 0,
+            db: crate::env::Db {
+                driver: crate::env::Driver::Sqlite,
+                url: String::new(),
+                ssl_insecure: false,
+            },
+            cache: crate::env::Cache {
+                url: String::new(),
+                tls_insecure: false,
+            },
+            media: crate::env::Media {
+                signing_secret: String::new(),
+                base_url: String::new(),
+                ttl_url_signee_secondes: 600,
+            },
+            apns: crate::env::Apns {
+                key_id: None,
+                team_id: None,
+                key_path: None,
+                bundle_id: bundle.to_string(),
+                environnement: environnement.to_string(),
+                configure: false,
+            },
+            app_store: crate::env::AppStore {
+                environnement: "sandbox".to_string(),
+                configure: false,
+            },
+            auth: crate::env::Auth {
+                jwt_secret: String::new(),
+                access_ttl_secondes: 900,
+                refresh_ttl_jours: 60,
+            },
+            web_origin: String::new(),
+            web_dist: None,
+        }
+    }
+
+    fn envoi<'a>(type_envoi: TypeEnvoi, suffixe: Option<&'a str>) -> Envoi<'a> {
+        Envoi {
+            jeton_appareil: "jeton",
+            type_envoi,
+            suffixe_sujet: suffixe,
+            priorite: 5,
+            collapse_id: Some("fil-1".to_string()),
+            peremption: 1_789_500_000,
+            charge: serde_json::json!({}),
+        }
+    }
+
+    fn valeur<'a>(en_tetes: &'a [(&'static str, String)], nom: &str) -> Option<&'a str> {
+        en_tetes
+            .iter()
+            .find(|(n, _)| *n == nom)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Les cinq en-têtes qui décident si une notification arrive.
+    ///
+    /// Aucun ne se voit dans un journal, et aucun n'était éprouvé : un sujet
+    /// sans le suffixe d'ActivityKit, un type d'envoi qui ne correspond pas,
+    /// et APNs refuse — ou accepte, puis ne livre rien.
+    #[test]
+    fn une_alerte_porte_les_en_tetes_qu_apple_attend() {
+        let config = config("sandbox", "com.weave.app");
+        let en_tetes = en_tetes(&config, &envoi(TypeEnvoi::Alerte, None));
+
+        assert_eq!(valeur(&en_tetes, "apns-topic"), Some("com.weave.app"));
+        assert_eq!(valeur(&en_tetes, "apns-push-type"), Some("alert"));
+        assert_eq!(valeur(&en_tetes, "apns-priority"), Some("5"));
+        assert_eq!(valeur(&en_tetes, "apns-collapse-id"), Some("fil-1"));
+    }
+
+    /// ActivityKit exige son suffixe de sujet et son propre type d'envoi.
+    #[test]
+    fn une_live_activity_porte_son_suffixe_de_sujet() {
+        let config = config("sandbox", "com.weave.app");
+        let en_tetes = en_tetes(
+            &config,
+            &envoi(TypeEnvoi::LiveActivity, Some(".push-type.liveactivity")),
+        );
+
+        assert_eq!(
+            valeur(&en_tetes, "apns-topic"),
+            Some("com.weave.app.push-type.liveactivity"),
+        );
+        assert_eq!(valeur(&en_tetes, "apns-push-type"), Some("liveactivity"));
+    }
+
+    /// Sans péremption, APNs ne garde rien.
+    ///
+    /// L'en-tête n'était pas envoyé du tout. La documentation d'Apple est
+    /// explicite : « If the value is `0`, APNs attempts to deliver the
+    /// notification only once and doesn't store it. » Une alerte partie vers
+    /// un téléphone éteint était donc perdue sans reprise — « quelqu'un veut
+    /// venir » compris, le seul message du produit qui attende une réponse.
+    #[test]
+    fn chaque_envoi_dit_jusqu_a_quand_le_garder() {
+        let config = config("sandbox", "com.weave.app");
+        for (type_envoi, suffixe) in [
+            (TypeEnvoi::Alerte, None),
+            (TypeEnvoi::LiveActivity, Some(".push-type.liveactivity")),
+        ] {
+            let en_tetes = en_tetes(&config, &envoi(type_envoi, suffixe));
+            let date = valeur(&en_tetes, "apns-expiration")
+                .expect("« apns-expiration » absent : APNs ne gardera rien")
+                .parse::<i64>()
+                .expect("une date en secondes UNIX");
+            assert!(date > 0, "une péremption nulle vaut « ne garde rien »");
+        }
+    }
+
+    /// Le bac à sable et la production ne se joignent pas à la même adresse.
+    #[test]
+    fn l_adresse_suit_l_environnement() {
+        assert!(
+            adresse(&config("production", "com.weave.app"), "jeton")
+                .starts_with("https://api.push.apple.com/3/device/")
+        );
+        assert!(
+            adresse(&config("sandbox", "com.weave.app"), "jeton")
+                .starts_with("https://api.sandbox.push.apple.com/3/device/")
+        );
+    }
+
     fn refus(raison: &str) -> Resultat {
         Resultat {
             ok: false,
@@ -319,44 +492,7 @@ mod tests {
     /// de l'autre ne s'allume pas.
     #[tokio::test]
     async fn sans_configuration_l_envoi_est_simule() {
-        let config = crate::env::Env {
-            mode: crate::env::Mode::Development,
-            port: 0,
-            db: crate::env::Db {
-                driver: crate::env::Driver::Sqlite,
-                url: String::new(),
-                ssl_insecure: false,
-            },
-            cache: crate::env::Cache {
-                url: String::new(),
-                tls_insecure: false,
-            },
-            media: crate::env::Media {
-                signing_secret: String::new(),
-                base_url: String::new(),
-                ttl_url_signee_secondes: 600,
-            },
-            apns: crate::env::Apns {
-                key_id: None,
-                team_id: None,
-                key_path: None,
-                bundle_id: "com.weave.app".to_string(),
-                environnement: "sandbox".to_string(),
-                configure: false,
-            },
-            app_store: crate::env::AppStore {
-                environnement: "sandbox".to_string(),
-                configure: false,
-            },
-            auth: crate::env::Auth {
-                jwt_secret: String::new(),
-                access_ttl_secondes: 900,
-                refresh_ttl_jours: 60,
-            },
-            web_origin: String::new(),
-            web_dist: None,
-        };
-
+        let config = config("sandbox", "com.weave.app");
         let resultat = ClientApns::new()
             .envoyer(
                 &config,
@@ -366,6 +502,7 @@ mod tests {
                     suffixe_sujet: None,
                     priorite: 10,
                     collapse_id: None,
+                    peremption: 0,
                     charge: serde_json::json!({}),
                 },
             )
