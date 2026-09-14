@@ -64,18 +64,34 @@ pub struct Resultat {
 
 /// Les raisons pour lesquelles Apple dit qu'un jeton ne vaut plus rien.
 /// Continuer à pousser dessus n'aboutira jamais : la ligne se ferme.
-const JETONS_MORTS: [&str; 4] = [
-    "BadDeviceToken",
-    "Unregistered",
-    "ExpiredToken",
-    "DeviceTokenNotForTopic",
-];
+const JETONS_MORTS: [&str; 3] = ["BadDeviceToken", "Unregistered", "ExpiredToken"];
+
+/// `DeviceTokenNotForTopic` n'est pas de ceux-là, et l'y compter coûtait cher.
+///
+/// Cette raison dit que le jeton n'est pas pour CE sujet. Elle ne dit pas
+/// lequel des deux est en cause — un jeton périmé, ou notre `apns-topic`. Le
+/// serveur ne peut pas trancher, et les deux lectures ne se paient pas pareil.
+///
+/// Si le jeton est mort, le garder coûte quelques envois dans le vide jusqu'à
+/// ce que l'appareil se réinscrive. Si c'est `APNS_BUNDLE_ID` qui est faux,
+/// l'effacer vide **toutes** les inscriptions à la fois — jetons d'alerte,
+/// jetons de démarrage, sessions closes — et plus rien ne part tant que chaque
+/// personne n'a pas rouvert l'application. Une faute d'un caractère dans une
+/// variable de configuration, au lancement, c'est-à-dire au pire moment.
+///
+/// On garde donc le jeton, et on le dit assez fort pour qu'on aille vérifier.
+const SUJET_SUSPECT: &str = "DeviceTokenNotForTopic";
 
 impl Resultat {
     pub fn jeton_mort(&self) -> bool {
         self.raison
             .as_deref()
             .is_some_and(|r| JETONS_MORTS.contains(&r))
+    }
+
+    /// Le refus met-il en cause notre configuration plutôt que le jeton ?
+    pub fn sujet_suspect(&self) -> bool {
+        self.raison.as_deref() == Some(SUJET_SUSPECT)
     }
 }
 
@@ -144,6 +160,7 @@ impl ClientApns {
             None => config.apns.bundle_id.clone(),
         };
 
+        let sujet_journal = sujet.clone();
         let requete = self
             .http
             .post(format!("{hote}/3/device/{}", envoi.jeton_appareil))
@@ -172,12 +189,28 @@ impl ClientApns {
                     .await
                     .ok()
                     .and_then(|v| v.get("reason").and_then(Value::as_str).map(str::to_string));
-                tracing::warn!(statut, raison = ?raison, "APNs a refusé l'envoi");
-                Resultat {
+                let resultat = Resultat {
                     ok: false,
                     statut,
                     raison,
+                };
+                if resultat.sujet_suspect() {
+                    // En erreur, pas en avertissement : c'est une configuration
+                    // à corriger, et rien ne partira tant qu'elle ne l'est pas.
+                    tracing::error!(
+                        statut,
+                        sujet = %sujet_journal,
+                        "APNs refuse le sujet : vérifiez APNS_BUNDLE_ID et le sujet \
+                         de l'application. Les jetons sont conservés."
+                    );
+                } else {
+                    tracing::warn!(
+                        statut,
+                        raison = ?resultat.raison,
+                        "APNs a refusé l'envoi"
+                    );
                 }
+                resultat
             }
             Err(erreur) => {
                 tracing::warn!(erreur = %erreur, "APNs injoignable");
@@ -198,7 +231,7 @@ impl ClientApns {
 
         if let Ok(cache) = self.jeton.read() {
             if let Some((valeur, emis_le)) = cache.as_ref() {
-                if maintenant - emis_le < DUREE_JETON_SECONDES {
+                if maintenant.saturating_sub(*emis_le) < DUREE_JETON_SECONDES {
                     return Ok(valeur.clone());
                 }
             }
@@ -237,6 +270,48 @@ impl ClientApns {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn refus(raison: &str) -> Resultat {
+        Resultat {
+            ok: false,
+            statut: 400,
+            raison: Some(raison.to_string()),
+        }
+    }
+
+    /// Un jeton mort s'efface ; un sujet refusé, non.
+    ///
+    /// `DeviceTokenNotForTopic` figurait parmi les jetons morts. La raison ne
+    /// dit pourtant pas lequel des deux est en cause — le jeton, ou notre
+    /// `apns-topic` — et les deux lectures ne se paient pas pareil. Garder un
+    /// jeton réellement mort coûte quelques envois dans le vide. Effacer sur
+    /// une erreur de sujet vide **toutes** les inscriptions à la fois, sur une
+    /// faute d'un caractère dans `APNS_BUNDLE_ID`, au lancement.
+    #[test]
+    fn un_sujet_refuse_ne_fait_pas_effacer_les_jetons() {
+        for raison in ["BadDeviceToken", "Unregistered", "ExpiredToken"] {
+            assert!(
+                refus(raison).jeton_mort(),
+                "« {raison} » devrait faire abandonner le jeton"
+            );
+        }
+
+        let sujet = refus("DeviceTokenNotForTopic");
+        assert!(
+            !sujet.jeton_mort(),
+            "un sujet refusé efface encore les jetons : une erreur de \
+             configuration viderait toutes les inscriptions"
+        );
+        assert!(
+            sujet.sujet_suspect(),
+            "un sujet refusé passe inaperçu : personne n'ira vérifier la configuration"
+        );
+
+        // Un refus quelconque n'est ni l'un ni l'autre.
+        let autre = refus("PayloadTooLarge");
+        assert!(!autre.jeton_mort());
+        assert!(!autre.sujet_suspect());
+    }
 
     /// Sans configuration APNs, l'envoi est simulé plutôt que d'échouer. Une
     /// notification perdue ne doit jamais faire échouer la requête qui l'a

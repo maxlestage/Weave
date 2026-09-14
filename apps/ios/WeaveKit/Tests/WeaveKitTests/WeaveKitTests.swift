@@ -169,8 +169,7 @@ private let decodeur: JSONDecoder = {
     let decodeur = JSONDecoder()
     decodeur.dateDecodingStrategy = .custom { decoder in
         let texte = try decoder.singleValueContainer().decode(String.self)
-        if let date = ISO8601DateFormatter.weaveWithFraction.date(from: texte) { return date }
-        if let date = ISO8601DateFormatter.weave.date(from: texte) { return date }
+        if let date = DateWeave.lire(texte) { return date }
         throw DecodingError.dataCorrupted(
             .init(codingPath: decoder.codingPath, debugDescription: "Date illisible")
         )
@@ -198,14 +197,14 @@ private func plan(
       "title": "Un plan de test",
       "note": "",
       "category": "sortie",
-      "startsAt": "\(ISO8601DateFormatter.weaveWithFraction.string(from: debut))",
+      "startsAt": "\(DateWeave.avecFractions.format(debut))",
       "city": "Paris",
       "distanceKm": \(distance),
       "capacity": 1,
       "seatsLeft": \(places),
       "state": "ouvert",
       "requested": \(demande),
-      "createdAt": "\(ISO8601DateFormatter.weaveWithFraction.string(from: .now))"
+      "createdAt": "\(DateWeave.avecFractions.format(.now))"
     }
     """
     return try! decodeur.decode(Plan.self, from: Data(json.utf8))

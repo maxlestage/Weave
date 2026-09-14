@@ -74,6 +74,15 @@ publier.
 
 ### Variante : déployer depuis le tableau de bord Heroku
 
+> **Les deux voies s'excluent.** Le buildpack ne s'emploie que hors de la pile
+> `container`, et c'est cette pile qui fait lire `heroku.yml`. Passer à la
+> variante arrête donc les deux workflows : « Heroku — mettre en ligne » force
+> la pile à `container` — ce qui défait la variante — et le déploiement
+> automatique refuse de partir tant qu'elle ne l'est pas, en renvoyant
+> justement vers « Heroku — mettre en ligne ».
+>
+> Autrement dit : suivez A1–A4, **ou** cette variante. Pas les deux.
+
 Si vous préférez le tableau de bord et ses déploiements automatiques depuis
 GitHub, c'est possible — mais pas avec le buildpack Node.js, qui appelle `npm`
 et bute aussitôt :

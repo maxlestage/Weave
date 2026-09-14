@@ -97,7 +97,17 @@ async fn lever_blocage(
         .exec(&state.db)
         .await?;
 
+    // Les deux fils changent, donc les deux s'oublient.
+    //
+    // Poser un blocage coupe des deux côtés — `couper_entre` oublie bien les
+    // deux fils. Le lever n'en oubliait qu'un : celui de la personne qui lève.
+    // Le fil de l'autre restait celui d'avant, composé sans les plans de qui
+    // la bloquait, et le déblocage n'avait aucun effet visible pour elle
+    // pendant toute la durée du cache. Elle n'a rien demandé et ne sait rien
+    // de ce qui s'est passé : c'est précisément le côté qui ne peut pas
+    // comprendre pourquoi rien ne revient.
     oublier_fil(&state, &compte.id).await;
+    oublier_fil(&state, &cible).await;
     Ok(Json(json!({ "ok": true })))
 }
 

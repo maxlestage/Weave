@@ -193,41 +193,48 @@ fn les_categories_de_plan_sont_les_memes_des_deux_cotes() {
 /// échouait d'un bloc, et l'écran entier tombait, pour un état qu'aucun des
 /// deux autres côtés ne connaissait.
 #[test]
-fn les_etats_de_plan_ecrits_par_l_api_sont_declares_au_contrat() {
+fn les_etats_ecrits_par_l_api_sont_declares_au_contrat() {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../packages/contracts/src/domain.ts");
     let source = std::fs::read_to_string(&chemin)
         .unwrap_or_else(|e| panic!("contrat illisible en {} : {e}", chemin.display()));
 
-    let debut = source
-        .find("export type PlanState =")
-        .expect("les états de plan ont disparu du contrat");
-    let fin = source[debut..].find(';').expect("déclaration fermée") + debut;
-    let declaration = &source[debut..fin];
-
     // Ce que l'API écrit réellement en base, relu dans ses propres sources
     // plutôt que recopié ici : une liste tenue à la main dériverait comme le
     // reste, et c'est précisément ce que ce fichier existe pour empêcher.
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut ecrits = std::collections::BTreeSet::new();
-    for etat in ETATS_CONNUS {
-        if sources_contiennent(&racine, &format!("\"{etat}\"")) {
-            ecrits.insert(*etat);
+
+    for (type_du_contrat, connus, ecran) in [
+        ("PlanState", ETATS_DE_PLAN_CONNUS, "« Mes plans »"),
+        ("RequestState", ETATS_DE_DEMANDE_CONNUS, "« Mes demandes »"),
+    ] {
+        let debut = source
+            .find(&format!("export type {type_du_contrat} ="))
+            .unwrap_or_else(|| panic!("« {type_du_contrat} » a disparu du contrat"));
+        let fin = source[debut..].find(';').expect("déclaration fermée") + debut;
+        let declaration = &source[debut..fin];
+
+        let mut ecrits = std::collections::BTreeSet::new();
+        for etat in connus {
+            if sources_contiennent(&racine, &format!("\"{etat}\"")) {
+                ecrits.insert(*etat);
+            }
         }
+
+        let absents: Vec<&str> = ecrits
+            .iter()
+            .copied()
+            .filter(|etat| !declaration.contains(&format!("\"{etat}\"")))
+            .collect();
+
+        assert!(
+            absents.is_empty(),
+            "l'API écrit des états que le contrat ne déclare pas en \
+             « {type_du_contrat} » : {absents:?}\n\
+             Le modèle iOS le décode sans repli : un état inconnu fait échouer \
+             {ecran} en entier."
+        );
     }
-
-    let absents: Vec<&str> = ecrits
-        .iter()
-        .copied()
-        .filter(|etat| !declaration.contains(&format!("\"{etat}\"")))
-        .collect();
-
-    assert!(
-        absents.is_empty(),
-        "l'API écrit des états que le contrat ne déclare pas : {absents:?}\n\
-         Le modèle iOS décode `PlanState` sans repli : un état inconnu fait \
-         échouer l'écran entier."
-    );
 }
 
 /// Les états qu'un plan peut prendre, tous côtés confondus.
@@ -235,7 +242,15 @@ fn les_etats_de_plan_ecrits_par_l_api_sont_declares_au_contrat() {
 /// Écrite ici parce qu'il faut bien un point de départ pour chercher. Le test
 /// ne vérifie pas cette liste : il vérifie que ceux qu'il retrouve dans les
 /// sources de l'API figurent au contrat.
-const ETATS_CONNUS: &[&str] = &["ouvert", "complet", "passe", "annule", "suspendu"];
+const ETATS_DE_PLAN_CONNUS: &[&str] = &["ouvert", "complet", "passe", "annule", "suspendu"];
+
+/// Les états qu'une demande peut prendre, au même titre.
+///
+/// Une demande se lit dans un tableau — « Mes demandes » les décode toutes ou
+/// aucune. Le risque est donc celui du fil, pas celui d'une ligne fautive.
+const ETATS_DE_DEMANDE_CONNUS: &[&str] = &[
+    "envoyee", "acceptee", "refusee", "expiree", "retiree", "annulee",
+];
 
 fn sources_contiennent(racine: &std::path::Path, aiguille: &str) -> bool {
     let Ok(entrees) = std::fs::read_dir(racine) else {
@@ -926,6 +941,34 @@ fn les_vocabulaires_de_l_application_ios_sont_ceux_du_contrat() {
             "Consentement.swift",
             "ConsentKind",
             liste_du_contrat(&contrat, "CONSENT_KINDS"),
+        ),
+        // Les quatre suivants tiennent les champs que le lancement traverse.
+        //
+        // `Me` porte `status` et `tier`, et l'application lit `/v1/me` avant
+        // tout le reste : un palier ou un statut que Swift ignore ne fait pas
+        // tomber un écran, il fait tomber l'ouverture. Les deux autres
+        // décodent des tableaux — une demande dans un état inconnu emporte
+        // « Mes demandes », un message d'un auteur inconnu emporte le fil de
+        // la conversation.
+        (
+            "Account.swift",
+            "AccountStatus",
+            liste_du_type(&domaine, "AccountStatus"),
+        ),
+        (
+            "Account.swift",
+            "PlanTier",
+            liste_du_contrat(&catalogue(), "PLAN_TIERS"),
+        ),
+        (
+            "Plan.swift",
+            "RequestState",
+            liste_du_type(&domaine, "RequestState"),
+        ),
+        (
+            "Plan.swift",
+            "MessageAuthor",
+            liste_du_type(&domaine, "MessageAuthor"),
         ),
     ] {
         let source = std::fs::read_to_string(racine.join(fichier))
@@ -1736,5 +1779,160 @@ fn empiler_le_rust(repertoire: &std::path::Path, sortie: &mut String) {
             sortie.push_str(&contenu);
             sortie.push('\n');
         }
+    }
+}
+
+/// Ce que le serveur pousse sur l'écran verrouillé est ce que l'appareil sait
+/// lire.
+///
+/// Trois accords tiennent une Live Activity, et aucun n'était gardé.
+///
+///  • `attributes-type` est repris **tel quel** par ActivityKit pour retrouver
+///    le type à instancier. Le commentaire de `WeaveActivityAttributes` le dit
+///    déjà — « le renommer casse le démarrage à distance » — mais rien ne
+///    l'empêchait.
+///  • `attributes` doit porter les propriétés stockées de ce type. Il n'y en a
+///    qu'une, et une clé absente fait échouer le démarrage.
+///  • `content-state` doit porter celles de `ContentState`. C'est le même
+///    piège que le fil : une énumération `Codable` non facultative, ou un champ
+///    manquant, et rien ne s'affiche — sur un écran verrouillé, où personne ne
+///    verra jamais l'erreur.
+#[test]
+fn la_live_activity_pousse_ce_que_l_appareil_sait_lire() {
+    let modeles = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Models/WeaveActivityAttributes.swift");
+    if !modeles.is_file() {
+        eprintln!(
+            "modèle iOS absent en {} — accord non vérifié",
+            modeles.display()
+        );
+        return;
+    }
+    let swift = std::fs::read_to_string(&modeles).expect("modèle lisible");
+    let rust = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/live_activity.rs"),
+    )
+    .expect("live_activity.rs lisible");
+
+    // 1. Le nom du type, tel qu'ActivityKit le cherche.
+    let annonce = rust
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("const TYPE_ATTRIBUTS: &str = \""))
+        .and_then(|l| l.split('"').next())
+        .expect("« TYPE_ATTRIBUTS » a disparu du serveur");
+    assert!(
+        swift.contains(&format!("public struct {annonce}:")),
+        "le serveur annonce « {annonce} », que les modèles iOS ne déclarent pas"
+    );
+
+    // 2. Les attributs du démarrage.
+    //
+    // `proprietes_swift` s'arrête au premier « \n} », ce qui, ici, tombe sur la
+    // fin de `ContentState`. On repart donc de la fin de ce type imbriqué.
+    let apres_content_state = swift
+        .find("    public let accountHandle")
+        .expect("« accountHandle » a disparu");
+    let attributs_swift: Vec<String> = proprietes_swift(
+        &swift[apres_content_state..],
+        "    public let accountHandle",
+    )
+    .into_iter()
+    .map(|(nom, _)| nom)
+    .collect();
+    assert_eq!(
+        attributs_swift,
+        vec!["accountHandle".to_string()],
+        "les attributs du type ont changé sans que le serveur suive"
+    );
+    for attribut in &attributs_swift {
+        assert!(
+            rust.contains(&format!("\"{attribut}\"")),
+            "le serveur n'envoie pas « {attribut} » dans « attributes » : \
+             le démarrage à distance échouera"
+        );
+    }
+
+    // 3. L'état dynamique.
+    // Lues à la main plutôt qu'avec `proprietes_swift` : ce helper s'arrête au
+    // premier « \n} », qui ferme ici le type ENGLOBANT et non le type imbriqué.
+    // Le corps de `ContentState` s'arrête juste avant `accountHandle`.
+    let debut_etat = swift
+        .find("public struct ContentState")
+        .expect("« ContentState » a disparu");
+    let attendues: std::collections::BTreeSet<String> = swift[debut_etat..apres_content_state]
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("public let "))
+        .filter_map(|l| l.split_once(':'))
+        // Une propriété calculée n'est pas décodée.
+        .filter(|(_, reste)| !reste.contains('{'))
+        .map(|(nom, _)| nom.trim().to_string())
+        .collect();
+    assert!(
+        attendues.len() >= 5,
+        "lecture de « ContentState » suspecte : {attendues:?}"
+    );
+
+    let envoyees = champs_serialises(&rust, "Etat");
+    let manquantes: Vec<&String> = attendues.difference(&envoyees).collect();
+    assert!(
+        manquantes.is_empty(),
+        "« content-state » n'a pas {manquantes:?} — l'appareil ne décodera rien, \
+         et l'écran verrouillé restera sur l'état d'avant.\n\
+         envoyées : {envoyees:?}"
+    );
+}
+
+/// Rien de ce que Redis écrit ne doit pouvoir entrer dans le dépôt.
+///
+/// `dump.rdb` y était suivi. `redis-server` écrit son instantané dans son
+/// répertoire courant — la racine du dépôt dès qu'on le lance à la main — et
+/// le cache contient le résumé d'identité de chaque personne connectée : nom
+/// affiché, pseudonyme, palier, fuseau, puis la composition de son fil, avec
+/// les titres de plans, les prénoms, les âges et les adresses de photos. Un
+/// fichier suivi posé exactement là où Redis écrit finit par être committé
+/// avec tout cela dedans.
+///
+/// Deux choses l'empêchent, et ce test les tient l'une et l'autre : le fichier
+/// est ignoré, et le crochet de session lance Redis sans instantané du tout.
+#[test]
+fn aucun_instantane_du_cache_ne_peut_entrer_dans_le_depot() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ignores = std::fs::read_to_string(racine.join(".gitignore")).expect(".gitignore lisible");
+    for motif in ["dump.rdb", "*.rdb"] {
+        assert!(
+            ignores.lines().any(|l| l.trim() == motif),
+            "« {motif} » ne figure plus dans .gitignore : un instantané du cache \
+             peut à nouveau être committé"
+        );
+    }
+
+    assert!(
+        !racine.join("dump.rdb").exists(),
+        "un instantané du cache traîne à la racine du dépôt"
+    );
+
+    // Le crochet de session lance Redis lui-même : c'est le seul endroit du
+    // dépôt qui le fait, et `--save ''` est ce qui garantit qu'aucun instantané
+    // n'est écrit, ignoré ou non.
+    let crochets = racine.join(".claude/hooks");
+    if !crochets.is_dir() {
+        return;
+    }
+    for entree in std::fs::read_dir(&crochets)
+        .expect("crochets lisibles")
+        .flatten()
+    {
+        let source = std::fs::read_to_string(entree.path()).unwrap_or_default();
+        if !source.contains("redis-server") {
+            continue;
+        }
+        assert!(
+            source.contains("--save ''") || source.contains("--save \"\""),
+            "{} lance Redis sans « --save '' » : il écrira un instantané du \
+             cache à la racine du dépôt",
+            entree.path().display()
+        );
     }
 }
