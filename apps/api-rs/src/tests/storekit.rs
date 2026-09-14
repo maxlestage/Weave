@@ -85,6 +85,66 @@ pub fn racine_de_test() -> Vec<u8> {
 /// `claims` reçoit les champs propres au test ; `bundleId`, `environment` et
 /// `signedDate` sont posés ici parce que la route les contrôle et qu'un test
 /// qui les oublierait échouerait pour une raison sans rapport avec son objet.
+/// Une notification serveur à serveur, de la forme qu'Apple envoie vraiment.
+///
+/// L'enveloppe ne porte ni `bundleId` ni `productId` : la documentation d'Apple
+/// lui donne `notificationType`, `subtype`, `data`, `version`, `signedDate` et
+/// `notificationUUID`. Le paquet et l'environnement vivent dans `data`, et la
+/// transaction dans `data.signedTransactionInfo` — un JWS de plus, à vérifier
+/// à son tour.
+///
+/// Les tests construisaient jusqu'ici une transaction et l'envoyaient telle
+/// quelle à la route des notifications. Ils éprouvaient donc une forme
+/// qu'Apple n'émet pas, et la route refusait tout le reste sans que personne
+/// ne le voie.
+pub fn notification_signee(
+    genre: &str,
+    sous_genre: Option<&str>,
+    transaction: Value,
+    infos_de_renouvellement: Option<Value>,
+) -> String {
+    let mut donnees = serde_json::json!({
+        "appAppleId": 1_234_567_890_u64,
+        "bundleId": "com.weave.app",
+        "bundleVersion": "1",
+        "environment": "sandbox",
+        "signedTransactionInfo": transaction_signee(transaction),
+    });
+    if let Some(infos) = infos_de_renouvellement {
+        donnees["signedRenewalInfo"] = Value::String(transaction_signee(infos));
+    }
+
+    enveloppe_signee(serde_json::json!({
+        "notificationType": genre,
+        "subtype": sous_genre,
+        "notificationUUID": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "version": "2.0",
+        "signedDate": chrono::Utc::now().timestamp_millis(),
+        "data": donnees,
+    }))
+}
+
+/// Signe une charge telle quelle, sans y ajouter les champs d'une transaction.
+pub fn enveloppe_signee(charge: Value) -> String {
+    let ca = autorite();
+    let entete = serde_json::json!({
+        "alg": "ES256",
+        "x5c": [
+            STANDARD.encode(&ca.feuille_der),
+            STANDARD.encode(&ca.intermediaire_der),
+            STANDARD.encode(&ca.racine_der),
+        ],
+    });
+
+    let signe = format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(entete.to_string()),
+        URL_SAFE_NO_PAD.encode(charge.to_string())
+    );
+    let signature: Signature = ca.cle_feuille.sign(signe.as_bytes());
+    format!("{signe}.{}", URL_SAFE_NO_PAD.encode(signature.to_bytes()))
+}
+
 pub fn transaction_signee(mut claims: Value) -> String {
     let objet = claims.as_object_mut().expect("un objet JSON");
     objet

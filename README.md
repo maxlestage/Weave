@@ -114,7 +114,9 @@ n'est nécessaire.
   déploie d'un seul tenant, dans un conteneur bâti sur l'image officielle Bun.
 - **Variante** : pour déployer depuis le tableau de bord Heroku, le dépôt
   embarque son propre buildpack Bun (`bin/compile`), exécuté par le buildpack
-  officiel `heroku-community/inline`. Heroku n'en fournit pas pour Bun.
+  officiel `heroku-community/inline`. Heroku n'en fournit pas pour Bun. Les deux
+  voies s'excluent — un buildpack ne s'emploie que hors de la pile `container`,
+  et les workflows exigent cette pile.
 - **L'application iOS** est construite sur un exécuteur macOS loué à la minute
   par GitHub, signée par `fastlane match`, puis envoyée à TestFlight. Posséder
   un Mac n'est donc pas nécessaire ; un compte Apple Developer l'est.

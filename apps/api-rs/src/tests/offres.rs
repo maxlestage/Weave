@@ -19,6 +19,16 @@ fn transaction(charge: serde_json::Value) -> String {
     super::storekit::transaction_signee(charge)
 }
 
+/// Une notification serveur à serveur, telle qu'Apple la forme.
+fn notification(
+    genre: &str,
+    sous_genre: Option<&str>,
+    transaction: serde_json::Value,
+    renouvellement: Option<serde_json::Value>,
+) -> String {
+    super::storekit::notification_signee(genre, sous_genre, transaction, renouvellement)
+}
+
 #[tokio::test]
 async fn un_achat_a_l_unite_credite_le_solde() {
     let service = Service::monter().await;
@@ -147,11 +157,16 @@ async fn une_notification_orpheline_est_ignoree() {
             "/v1/billing/apple/notifications",
             None,
             json!({
-                "signedPayload": transaction(json!({
-                    "productId": "com.weave.app.sub.escapade.monthly",
-                    "transactionId": "tx-inconnue",
-                    "originalTransactionId": "orig-inconnue",
-                })),
+                "signedPayload": notification(
+                    "DID_RENEW",
+                    None,
+                    json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "transactionId": "tx-inconnue",
+                        "originalTransactionId": "orig-inconnue",
+                    }),
+                    None,
+                ),
             }),
         )
         .await;
@@ -187,12 +202,17 @@ async fn un_abonnement_expire_retombe_au_palier_de_depart() {
             "/v1/billing/apple/notifications",
             None,
             json!({
-                "signedPayload": transaction(json!({
-                    "productId": "com.weave.app.sub.escapade.monthly",
-                    "transactionId": "tx-expire",
-                    "originalTransactionId": "orig-expire",
-                    "expiresDate": hier,
-                })),
+                "signedPayload": notification(
+                    "EXPIRED",
+                    Some("VOLUNTARY"),
+                    json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "transactionId": "tx-expire",
+                        "originalTransactionId": "orig-expire",
+                        "expiresDate": hier,
+                    }),
+                    None,
+                ),
             }),
         )
         .await;
@@ -245,12 +265,17 @@ async fn un_renouvellement_recharge_la_dotation_sans_effacer_les_achats() {
             "/v1/billing/apple/notifications",
             None,
             json!({
-                "signedPayload": transaction(json!({
-                    "productId": "com.weave.app.sub.escapade.monthly",
-                    "transactionId": "tx-renouvelle",
-                    "originalTransactionId": "orig-renouvelle",
-                    "expiresDate": demain,
-                })),
+                "signedPayload": notification(
+                    "DID_RENEW",
+                    None,
+                    json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "transactionId": "tx-renouvelle",
+                        "originalTransactionId": "orig-renouvelle",
+                        "expiresDate": demain,
+                    }),
+                    None,
+                ),
             }),
         )
         .await;
@@ -1417,4 +1442,386 @@ async fn une_escale_sans_credit_n_ouvre_rien() {
         criteres["escaleCity"].is_null(),
         "une escale a été ouverte sans être payée : {criteres}"
     );
+}
+
+/// La forme qu'Apple envoie vraiment est celle que la route lit.
+///
+/// Elle ne l'était pas. Le `signedPayload` d'une notification V2 n'est pas un
+/// JWSTransaction : la documentation d'Apple lui donne pour champs de premier
+/// niveau `notificationType`, `subtype`, `data`, `summary`,
+/// `externalPurchaseToken`, `appData`, `version`, `signedDate` et
+/// `notificationUUID`. Ni `bundleId`, ni `environment`, ni `productId` — ceux-là
+/// vivent dans `data`, et la transaction dans `data.signedTransactionInfo`.
+///
+/// Le contrôle du paquet lisait donc une chaîne vide et refusait. Aucune
+/// notification réelle n'a jamais pu être traitée. Les tests ne le voyaient pas
+/// : ils envoyaient à cette route une transaction, la seule forme qu'elle
+/// savait lire — et qu'Apple n'émet jamais ici.
+#[tokio::test]
+async fn une_transaction_nue_n_est_pas_une_notification() {
+    let service = Service::monter().await;
+
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": transaction(json!({
+                    "productId": "com.weave.app.sub.escapade.monthly",
+                    "transactionId": "tx-mauvaise-forme",
+                    "originalTransactionId": "orig-mauvaise-forme",
+                })),
+            }),
+        )
+        .await;
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        "une transaction nue passe pour une notification",
+    );
+}
+
+/// L'enveloppe est signée, mais la transaction qu'elle porte ne l'est pas.
+///
+/// Vérifier l'enveloppe seule authentifierait n'importe quel contenu glissé
+/// dedans : `signedTransactionInfo` est un JWS à part entière, et il se vérifie
+/// à son tour.
+#[tokio::test]
+async fn une_transaction_emboitee_non_signee_est_refusee() {
+    let service = Service::monter().await;
+
+    let enveloppe = super::storekit::enveloppe_signee(json!({
+        "notificationType": "DID_RENEW",
+        "notificationUUID": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "version": "2.0",
+        "signedDate": chrono::Utc::now().timestamp_millis(),
+        "data": {
+            "bundleId": "com.weave.app",
+            "environment": "sandbox",
+            // Trois segments, aucune signature valable.
+            "signedTransactionInfo": "eyJhbGciOiJFUzI1NiJ9.eyJwcm9kdWN0SWQiOiJ4In0.c2ln",
+        },
+    }));
+
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({ "signedPayload": enveloppe }),
+        )
+        .await;
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        "l'enveloppe a authentifié une transaction qu'elle ne signe pas",
+    );
+}
+
+/// Un remboursement coupe l'accès sur-le-champ.
+///
+/// Apple rend l'argent sans raccourcir la période : l'échéance ne bouge pas.
+/// S'en tenir à la date laissait donc l'accès ouvert jusqu'au bout d'un mois
+/// qui n'a plus été payé.
+#[tokio::test]
+async fn un_remboursement_coupe_l_acces_sans_attendre_l_echeance() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_rembourse", "escapade").await;
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET originalTransactionId='orig-rembourse' WHERE accountId='{compte}'"
+        ))
+        .await
+        .unwrap();
+
+    let (_, avant) = service
+        .get("/v1/me", Some(&service.jeton("c_rembourse")))
+        .await;
+    assert_eq!(avant["tier"], "escapade");
+
+    // L'échéance reste dans un mois : c'est bien le remboursement, et lui seul,
+    // qui doit fermer la porte.
+    let dans_un_mois = (chrono::Utc::now() + chrono::Duration::days(30)).timestamp_millis();
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": notification(
+                    "REFUND",
+                    None,
+                    json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "transactionId": "tx-rembourse",
+                        "originalTransactionId": "orig-rembourse",
+                        "expiresDate": dans_un_mois,
+                    }),
+                    None,
+                ),
+            }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (_, apres) = service
+        .get("/v1/me", Some(&service.jeton("c_rembourse")))
+        .await;
+    assert_eq!(
+        apres["tier"], "depart",
+        "un abonnement remboursé garde ses droits : {apres}"
+    );
+}
+
+/// Une période de grâce prolonge l'accès — c'est sa raison d'être.
+///
+/// Apple réessaie de prélever et demande qu'on serve la personne pendant ce
+/// temps. La date de fin vit dans `signedRenewalInfo`, que la route ne lisait
+/// pas : `inGracePeriod` était écrit `false` aux trois endroits qui le
+/// touchent, jamais `true`. Le champ existait en base, l'API le rendait,
+/// l'application le décodait, et rien ne pouvait le lever.
+#[tokio::test]
+async fn une_periode_de_grace_prolonge_l_acces_et_se_voit() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_grace", "escapade").await;
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET originalTransactionId='orig-grace' WHERE accountId='{compte}'"
+        ))
+        .await
+        .unwrap();
+
+    // L'échéance est passée — le prélèvement a échoué — mais la grâce court.
+    let hier = (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis();
+    let dans_six_jours = (chrono::Utc::now() + chrono::Duration::days(6)).timestamp_millis();
+
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": notification(
+                    "DID_FAIL_TO_RENEW",
+                    Some("GRACE_PERIOD"),
+                    json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "transactionId": "tx-grace",
+                        "originalTransactionId": "orig-grace",
+                        "expiresDate": hier,
+                    }),
+                    Some(json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "gracePeriodExpiresDate": dans_six_jours,
+                    })),
+                ),
+            }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(corps["inGracePeriod"], true, "{corps}");
+
+    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_grace"))).await;
+    assert_eq!(
+        fiche["tier"], "escapade",
+        "la grâce n'a pas prolongé l'accès : {fiche}"
+    );
+
+    let (_, droits) = service
+        .get("/v1/billing/entitlement", Some(&service.jeton("c_grace")))
+        .await;
+    assert_eq!(
+        droits["inGracePeriod"], true,
+        "la grâce ne se voit pas depuis l'application : {droits}"
+    );
+}
+
+/// Une grâce déjà terminée ne prolonge rien.
+#[tokio::test]
+async fn une_grace_perimee_ne_prolonge_pas_l_acces() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_grace_finie", "escapade").await;
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET originalTransactionId='orig-grace-finie' WHERE accountId='{compte}'"
+        ))
+        .await
+        .unwrap();
+
+    let avant_hier = (chrono::Utc::now() - chrono::Duration::days(2)).timestamp_millis();
+    let hier = (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis();
+
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({
+                "signedPayload": notification(
+                    "DID_FAIL_TO_RENEW",
+                    Some("GRACE_PERIOD"),
+                    json!({
+                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "transactionId": "tx-grace-finie",
+                        "originalTransactionId": "orig-grace-finie",
+                        "expiresDate": avant_hier,
+                    }),
+                    Some(json!({ "gracePeriodExpiresDate": hier })),
+                ),
+            }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(corps["inGracePeriod"], false, "{corps}");
+
+    let (_, fiche) = service
+        .get("/v1/me", Some(&service.jeton("c_grace_finie")))
+        .await;
+    assert_eq!(fiche["tier"], "depart", "{fiche}");
+}
+
+/// Une notification émise pour une autre application est refusée.
+///
+/// C'est le même contrôle que pour un achat, mais il porte sur `data.bundleId`
+/// et non sur un `bundleId` de premier niveau, qui n'existe pas ici.
+#[tokio::test]
+async fn une_notification_d_une_autre_application_est_refusee() {
+    let service = Service::monter().await;
+
+    let enveloppe = super::storekit::enveloppe_signee(json!({
+        "notificationType": "DID_RENEW",
+        "notificationUUID": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "version": "2.0",
+        "signedDate": chrono::Utc::now().timestamp_millis(),
+        "data": {
+            "bundleId": "com.autre.application",
+            "environment": "sandbox",
+            "signedTransactionInfo": transaction(json!({
+                "productId": "com.weave.app.sub.grandtour.monthly",
+                "transactionId": "tx-autre-appli",
+                "originalTransactionId": "orig-autre-appli",
+            })),
+        },
+    }));
+
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({ "signedPayload": enveloppe }),
+        )
+        .await;
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        "une notification d'une autre application a été acceptée",
+    );
+}
+
+/// Une notification ancienne ne défait pas un état plus récent.
+///
+/// Apple relance pendant trois jours et ne garantit pas l'ordre : une
+/// « EXPIRED » arrivant après un réabonnement ferait retomber au palier de
+/// départ un compte qui vient de payer.
+///
+/// Et une relance qui, elle, est bien postérieure au dernier état connu doit
+/// passer — c'est tout l'objet des relances, et une simple fenêtre de
+/// fraîcheur les aurait toutes écartées.
+#[tokio::test]
+async fn une_notification_depassee_est_ignoree_mais_pas_une_relance() {
+    let service = Service::monter().await;
+    let compte = service.compte("c_ordre", "escapade").await;
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET originalTransactionId='orig-ordre' WHERE accountId='{compte}'"
+        ))
+        .await
+        .unwrap();
+
+    let dans_un_mois = (chrono::Utc::now() + chrono::Duration::days(30)).timestamp_millis();
+    let transaction_expiree = json!({
+        "productId": "com.weave.app.sub.escapade.monthly",
+        "transactionId": "tx-ordre",
+        "originalTransactionId": "orig-ordre",
+        "expiresDate": (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis(),
+    });
+
+    // Le compte vient de se réabonner : l'état en base date d'il y a un instant.
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET expiresAt='{}', updatedAt='{}' WHERE accountId='{compte}'",
+            (chrono::Utc::now() + chrono::Duration::days(30))
+                .naive_utc()
+                .format("%Y-%m-%d %H:%M:%S"),
+            chrono::Utc::now().naive_utc().format("%Y-%m-%d %H:%M:%S"),
+        ))
+        .await
+        .unwrap();
+
+    // Une « EXPIRED » signée la veille : trop vieille pour défaire cela.
+    let vieille = super::storekit::enveloppe_signee(json!({
+        "notificationType": "EXPIRED",
+        "notificationUUID": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+        "version": "2.0",
+        "signedDate": (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis(),
+        "data": {
+            "bundleId": "com.weave.app",
+            "environment": "sandbox",
+            "signedTransactionInfo": transaction(transaction_expiree.clone()),
+        },
+    }));
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({ "signedPayload": vieille }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(corps["stale"], true, "{corps}");
+
+    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_ordre"))).await;
+    assert_eq!(
+        fiche["tier"], "escapade",
+        "une notification dépassée a défait un réabonnement : {fiche}"
+    );
+
+    // La relance d'une notification bien réelle, signée il y a deux heures —
+    // au-delà de toute fenêtre de fraîcheur, et pourtant à traiter.
+    let relance = super::storekit::enveloppe_signee(json!({
+        "notificationType": "DID_RENEW",
+        "notificationUUID": "aaaaaaaa-bbbb-cccc-dddd-000000000002",
+        "version": "2.0",
+        "signedDate": chrono::Utc::now().timestamp_millis(),
+        "data": {
+            "bundleId": "com.weave.app",
+            "environment": "sandbox",
+            "signedTransactionInfo": transaction(json!({
+                "productId": "com.weave.app.sub.grandtour.monthly",
+                "transactionId": "tx-relance",
+                "originalTransactionId": "orig-ordre",
+                "expiresDate": dans_un_mois,
+                "signedDate": (chrono::Utc::now() - chrono::Duration::hours(2)).timestamp_millis(),
+            })),
+        },
+    }));
+    let (statut, corps) = service
+        .post(
+            "/v1/billing/apple/notifications",
+            None,
+            json!({ "signedPayload": relance }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        corps["ignored"], false,
+        "une relance a été écartée : {corps}"
+    );
+
+    let (_, fiche) = service.get("/v1/me", Some(&service.jeton("c_ordre"))).await;
+    assert_eq!(fiche["tier"], "grandtour", "{fiche}");
 }

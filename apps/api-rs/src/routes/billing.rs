@@ -327,7 +327,8 @@ async fn notification_app_store(
     State(state): State<AppState>,
     Json(corps): Json<ChargeSignee>,
 ) -> Result<Json<Value>, AppError> {
-    let transaction = verifier_transaction(&state, &corps.signed_payload)?;
+    let notification = verifier_notification(&state, &corps.signed_payload)?;
+    let transaction = &notification.transaction;
 
     let Some(palier) = palier_depuis_produit(&transaction.product_id) else {
         return Ok(Json(json!({ "ok": true, "ignored": true })));
@@ -345,11 +346,46 @@ async fn notification_app_store(
         return Ok(Json(json!({ "ok": true, "ignored": true })));
     };
 
+    // Une notification plus ancienne que ce qu'on sait déjà ne défait rien.
+    //
+    // Apple relance pendant trois jours et ne garantit pas l'ordre : une
+    // notification « EXPIRED » arrivant après un réabonnement ferait retomber
+    // au palier de départ un compte qui vient de payer. On compare donc la
+    // date de signature à celle du dernier état écrit.
+    if let Some(signee_le) = notification.signee_le {
+        if signee_le < abonnement.updated_at.and_utc() {
+            return Ok(Json(json!({ "ok": true, "ignored": true, "stale": true })));
+        }
+    }
+
     let compte_id = abonnement.account_id.clone();
-    let echeance = transaction.expire_le;
+
+    // Un remboursement ou une révocation coupe l'accès sur-le-champ.
+    //
+    // L'échéance, elle, ne bouge pas : Apple rend l'argent sans raccourcir la
+    // période. S'en tenir à la date laissait donc l'accès ouvert jusqu'au bout
+    // d'un mois qui n'a plus été payé.
+    let rendu = matches!(notification.genre.as_str(), "REFUND" | "REVOKE");
+
+    // Une période de grâce prolonge l'accès, c'est sa raison d'être : Apple
+    // réessaie de prélever et demande qu'on serve la personne pendant ce
+    // temps. La date de fin vit dans `signedRenewalInfo` ; sans elle, il n'y a
+    // rien à prolonger.
+    let en_grace = !rendu
+        && notification.sous_genre.as_deref() == Some("GRACE_PERIOD")
+        && notification
+            .grace_jusqu_a
+            .is_some_and(|fin| fin > Utc::now());
+
+    let echeance = if en_grace {
+        notification.grace_jusqu_a
+    } else {
+        transaction.expire_le
+    };
+
     // Une échéance passée fait retomber le compte au palier de départ. Jamais
     // l'inverse : un abonnement expiré ne doit pas conserver ses droits.
-    let expire = echeance.is_some_and(|date| date < Utc::now());
+    let expire = rendu || echeance.is_some_and(|date| date < Utc::now());
 
     let mut maj: subscriptions::ActiveModel = abonnement.into();
     maj.tier = Set(if expire {
@@ -359,7 +395,10 @@ async fn notification_app_store(
     });
     maj.renews_at = Set(echeance.map(|d| d.naive_utc()));
     maj.expires_at = Set(echeance.map(|d| d.naive_utc()));
-    maj.in_grace_period = Set(false);
+    maj.in_grace_period = Set(en_grace);
+    if rendu {
+        maj.cancelled_at = Set(Some(Utc::now().naive_utc()));
+    }
     maj.updated_at = Set(Utc::now().naive_utc());
     maj.update(&state.db).await?;
 
@@ -384,7 +423,12 @@ async fn notification_app_store(
     // garderait son ancien palier un quart d'heure après le renouvellement.
     crate::auth::oublier_compte(&state, &compte_id).await;
 
-    Ok(Json(json!({ "ok": true, "ignored": false })))
+    Ok(Json(json!({
+        "ok": true,
+        "ignored": false,
+        "type": notification.genre,
+        "inGracePeriod": en_grace,
+    })))
 }
 
 fn prix(centimes: i64) -> String {
@@ -507,40 +551,30 @@ fn achat_acceptable(production: bool, verification_ecrite: bool) -> bool {
 /// remonte : les tests épinglent la leur et signent pour de vrai, ce qui
 /// permet d'éprouver le parcours d'achat — et surtout le rejet d'une chaîne
 /// qui ne mène pas chez Apple — sans compte Apple Developer.
-fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, AppError> {
+/// Vérifie la signature d'un JWS d'Apple et rend ses revendications.
+fn revendications_signees(state: &AppState, signe: &str) -> Result<Value, AppError> {
     if !achat_acceptable(state.config.is_production(), VERIFICATION_JWS_IMPLEMENTEE) {
         return Err(invalide(Msg::VerificationDesAchatsIndisponible));
     }
 
-    let claims =
-        crate::storekit::verifier(signe, &state.racine_storekit, Utc::now()).map_err(|refus| {
-            // Le motif va au journal, pas à l'appelant : on ne renseigne pas
-            // qui essaie de forger sur ce qui l'a trahi.
-            tracing::warn!(motif = refus.motif(), "transaction StoreKit refusée");
-            invalide(Msg::TransactionStoreKitRefusee)
-        })?;
+    crate::storekit::verifier(signe, &state.racine_storekit, Utc::now()).map_err(|refus| {
+        // Le motif va au journal, pas à l'appelant : on ne renseigne pas
+        // qui essaie de forger sur ce qui l'a trahi.
+        tracing::warn!(motif = refus.motif(), "transaction StoreKit refusée");
+        invalide(Msg::TransactionStoreKitRefusee)
+    })
+}
 
-    // La signature d'Apple ne dit pas POUR QUI elle a été émise.
-    //
-    // Sans ce contrôle, un achat à un euro fait dans une autre application —
-    // signé par Apple, chaîne parfaitement valide — se rejouerait ici pour
-    // s'offrir l'abonnement le plus cher. C'est le `bundleId` qui distingue,
-    // et lui seul.
-    let paquet = claims
-        .get("bundleId")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+/// Le paquet est-il le nôtre, et l'environnement le bon ?
+fn controler_paquet_et_environnement(
+    state: &AppState,
+    paquet: &str,
+    environnement: &str,
+) -> Result<(), AppError> {
     if paquet != BUNDLE {
         tracing::warn!(paquet, "transaction émise pour une autre application");
         return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
-
-    // Sandbox et production ne se mélangent pas : une transaction d'essai ne
-    // doit pas créditer un compte réel.
-    let environnement = claims
-        .get("environment")
-        .and_then(Value::as_str)
-        .unwrap_or(&state.config.app_store.environnement);
     if !environnement.eq_ignore_ascii_case(&state.config.app_store.environnement) {
         tracing::warn!(
             environnement,
@@ -549,21 +583,27 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
         );
         return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
+    Ok(())
+}
 
-    // Une transaction signée reste valable indéfiniment tant que rien ne borne
-    // son âge. La fraîcheur limite le rejeu à une fenêtre courte ; l'unicité
-    // de `transactionId` fait le reste.
-    if let Some(signee_le) = claims
+/// La charge a-t-elle été signée assez récemment ?
+fn controler_la_fraicheur(claims: &Value) -> Result<(), AppError> {
+    let Some(signee_le) = claims
         .get("signedDate")
         .and_then(Value::as_i64)
         .and_then(DateTime::from_timestamp_millis)
-    {
-        if (Utc::now() - signee_le).num_minutes().abs() > FRAICHEUR_MINUTES {
-            tracing::warn!(%signee_le, "transaction trop ancienne");
-            return Err(invalide(Msg::TransactionStoreKitRefusee));
-        }
+    else {
+        return Ok(());
+    };
+    if (Utc::now() - signee_le).num_minutes().abs() > FRAICHEUR_MINUTES {
+        tracing::warn!(%signee_le, "transaction trop ancienne");
+        return Err(invalide(Msg::TransactionStoreKitRefusee));
     }
+    Ok(())
+}
 
+/// Compose une `Transaction` à partir des revendications d'un JWSTransaction.
+fn transaction_depuis(claims: &Value, environnement: &str) -> Result<Transaction, AppError> {
     let product_id = claims
         .get("productId")
         .and_then(Value::as_str)
@@ -590,11 +630,147 @@ fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, Ap
             .get("expiresDate")
             .and_then(Value::as_i64)
             .and_then(DateTime::from_timestamp_millis),
-        environnement: claims
-            .get("environment")
+        environnement: environnement.to_string(),
+    })
+}
+
+fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, AppError> {
+    let claims = revendications_signees(state, signe)?;
+
+    // La signature d'Apple ne dit pas POUR QUI elle a été émise.
+    //
+    // Sans ce contrôle, un achat à un euro fait dans une autre application —
+    // signé par Apple, chaîne parfaitement valide — se rejouerait ici pour
+    // s'offrir l'abonnement le plus cher. C'est le `bundleId` qui distingue,
+    // et lui seul. Sandbox et production ne se mélangent pas non plus : une
+    // transaction d'essai ne doit pas créditer un compte réel.
+    let environnement = claims
+        .get("environment")
+        .and_then(Value::as_str)
+        .unwrap_or(&state.config.app_store.environnement)
+        .to_string();
+    controler_paquet_et_environnement(
+        state,
+        claims
+            .get("bundleId")
             .and_then(Value::as_str)
-            .unwrap_or(&state.config.app_store.environnement)
+            .unwrap_or_default(),
+        &environnement,
+    )?;
+    controler_la_fraicheur(&claims)?;
+
+    transaction_depuis(&claims, &environnement)
+}
+
+/// Ce qu'Apple annonce dans une notification serveur à serveur.
+struct Notification {
+    /// `notificationType` : `DID_RENEW`, `EXPIRED`, `REFUND`…
+    genre: String,
+    /// `subtype`, quand il y en a un : `GRACE_PERIOD`, `VOLUNTARY`…
+    sous_genre: Option<String>,
+    transaction: Transaction,
+    /// Fin de la période de grâce, lue dans `signedRenewalInfo`.
+    grace_jusqu_a: Option<DateTime<Utc>>,
+    /// Quand Apple a signé la notification. Sert à ne pas laisser une
+    /// notification ancienne défaire un état plus récent.
+    signee_le: Option<DateTime<Utc>>,
+}
+
+/// Vérifie une notification V2 de l'App Store — l'enveloppe, pas la transaction.
+///
+/// ## Ce qui n'allait pas
+///
+/// Cette route lisait le `signedPayload` d'Apple **comme s'il s'agissait d'un
+/// JWSTransaction**, c'est-à-dire du format que le client envoie. Ce n'en est
+/// pas un. La documentation d'Apple donne pour champs de premier niveau
+/// `notificationType`, `subtype`, `data`, `summary`, `externalPurchaseToken`,
+/// `appData`, `version`, `signedDate` et `notificationUUID` — et rien d'autre.
+/// Pas de `bundleId`, pas d'`environment`, pas de `productId`.
+///
+/// Le contrôle du paquet lisait donc une chaîne vide, la comparait à
+/// `com.weave.app`, et refusait. **Aucune notification réelle d'Apple n'a
+/// jamais pu être traitée** : ni renouvellement, ni expiration, ni
+/// remboursement, ni période de grâce. Les tests ne le voyaient pas — ils
+/// envoyaient à cette route une transaction, la forme qu'elle savait lire.
+///
+/// Ce que cela coûtait : `expiresAt` n'avançait qu'aux passages de
+/// l'application dans la boutique. Entre deux, l'échéance du mois précédent
+/// finissait par tomber, et un abonné à jour de ses paiements retombait au
+/// palier de départ.
+///
+/// La vraie forme est emboîtée : l'enveloppe porte `data.bundleId` et
+/// `data.environment`, et la transaction vit dans `data.signedTransactionInfo`,
+/// qui est elle-même un JWS à vérifier. On vérifie donc les deux.
+fn verifier_notification(state: &AppState, signe: &str) -> Result<Notification, AppError> {
+    let enveloppe = revendications_signees(state, signe)?;
+
+    // Pas de fenêtre de fraîcheur ici, contrairement au chemin du client.
+    //
+    // Elle y borne le rejeu d'une transaction qu'on nous présente. Apple, lui,
+    // RÉESSAIE une notification non acquittée pendant trois jours : refuser
+    // au-delà d'une heure écarterait chaque relance, c'est-à-dire exactement
+    // les cas où le serveur était indisponible. Ce qui protège ici, c'est la
+    // signature — et, plus bas, le refus de laisser une notification ancienne
+    // défaire un état plus récent.
+    let donnees = enveloppe.get("data").ok_or_else(|| {
+        tracing::warn!("notification sans « data »");
+        invalide(Msg::TransactionStoreKitRefusee)
+    })?;
+
+    let environnement = donnees
+        .get("environment")
+        .and_then(Value::as_str)
+        .unwrap_or(&state.config.app_store.environnement)
+        .to_string();
+    controler_paquet_et_environnement(
+        state,
+        donnees
+            .get("bundleId")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        &environnement,
+    )?;
+
+    let signee = donnees
+        .get("signedTransactionInfo")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            tracing::warn!("notification sans transaction signée");
+            invalide(Msg::TransactionStoreKitRefusee)
+        })?;
+    // La transaction emboîtée porte sa propre signature : on la vérifie comme
+    // l'enveloppe, sans quoi l'enveloppe authentifierait un contenu quelconque.
+    let claims = revendications_signees(state, signee)?;
+
+    // `signedRenewalInfo` est facultatif, et son absence n'est pas une faute :
+    // un remboursement n'en porte pas.
+    let grace_jusqu_a = donnees
+        .get("signedRenewalInfo")
+        .and_then(Value::as_str)
+        .and_then(|jws| revendications_signees(state, jws).ok())
+        .and_then(|infos| {
+            infos
+                .get("gracePeriodExpiresDate")
+                .and_then(Value::as_i64)
+                .and_then(DateTime::from_timestamp_millis)
+        });
+
+    Ok(Notification {
+        genre: enveloppe
+            .get("notificationType")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
             .to_string(),
+        sous_genre: enveloppe
+            .get("subtype")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        transaction: transaction_depuis(&claims, &environnement)?,
+        grace_jusqu_a,
+        signee_le: enveloppe
+            .get("signedDate")
+            .and_then(Value::as_i64)
+            .and_then(DateTime::from_timestamp_millis),
     })
 }
 

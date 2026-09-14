@@ -514,6 +514,7 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
         .expect("les migrations postérieures à « 0_init » doivent être appliquées");
 }
 mod activite;
+mod blocages;
 mod consentements;
 mod conversations;
 mod demandes;

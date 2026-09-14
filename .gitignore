@@ -24,6 +24,20 @@ bin-release/
 *.db-shm
 weave-dev.sqlite*
 
+# Instantané Redis.
+#
+# `redis-server` écrit son `dump.rdb` dans son répertoire courant, qui est la
+# racine du dépôt dès qu'on le lance à la main. Le cache contient le résumé
+# d'identité de chaque personne connectée — nom affiché, pseudonyme, palier,
+# fuseau — et la composition de son fil : titres de plans, prénoms, âges,
+# adresses de photos. Un fichier suivi posé exactement là où Redis écrit finit
+# par être committé avec tout cela dedans.
+#
+# Le crochet de session lance Redis avec `--save ''` et `docker compose` le
+# range dans un volume nommé : aucun des deux n'écrit ici. Reste la main.
+dump.rdb
+*.rdb
+
 # Prisma généré
 
 # Schéma SQLite dérivé (généré par scripts/gen-sqlite-schema.ts)

@@ -110,8 +110,7 @@ public actor WeaveAPI {
             let text = try decoder.singleValueContainer().decode(String.self)
             // L'API renvoie des dates ISO 8601 avec millisecondes ; certaines
             // routes n'en mettent pas. On accepte les deux formes.
-            if let date = ISO8601DateFormatter.weaveWithFraction.date(from: text) { return date }
-            if let date = ISO8601DateFormatter.weave.date(from: text) { return date }
+            if let date = DateWeave.lire(text) { return date }
             throw DecodingError.dataCorrupted(
                 .init(codingPath: decoder.codingPath, debugDescription: "Date illisible : \(text)")
             )
@@ -837,7 +836,7 @@ public struct PlanDraft: Encodable, Sendable {
         self.title = title
         self.note = note
         self.category = category
-        self.startsAt = ISO8601DateFormatter.weave.string(from: startsAt)
+        self.startsAt = DateWeave.ecrire(startsAt)
         self.city = city
         self.capacity = capacity
     }
@@ -930,16 +929,34 @@ public struct DeviceRegistration: Encodable, Sendable {
     }
 }
 
-extension ISO8601DateFormatter {
-    static let weave: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
+/// Les dates ISO 8601 telles que l'API les écrit et les attend.
+///
+/// C'était deux `static let` d'`ISO8601DateFormatter`. Une classe à état
+/// mutable partagée entre toutes les tâches : le mode Swift 6 le refuse, et il
+/// a raison — le décodeur tourne hors de l'acteur principal, sur autant de
+/// requêtes qu'il y a d'écrans ouverts.
+///
+/// `Date.ISO8601FormatStyle` est une valeur, donc `Sendable` de plein droit.
+/// C'est la même bibliothèque qui l'implémente — Foundation a basculé sur
+/// swift-foundation — et elle lit les mêmes chaînes : vérifié sur toutes celles
+/// que l'API a réellement produites au cours d'un parcours complet.
+public enum DateWeave {
+    /// La forme que l'API produit : « …T20:00:00.000Z ».
+    public static let avecFractions = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    /// La forme sans millisecondes, que certaines routes emploient encore.
+    public static let sansFractions = Date.ISO8601FormatStyle()
 
-    static let weaveWithFraction: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    /// Lit l'une ou l'autre forme.
+    ///
+    /// L'ordre compte : un lecteur sans fractions REFUSE une chaîne qui en
+    /// porte. C'est ce qui faisait tomber la session au bout d'un quart
+    /// d'heure, `expiresAt` valant « …T16:30:00.000Z ».
+    public static func lire(_ texte: String) -> Date? {
+        (try? avecFractions.parse(texte)) ?? (try? sansFractions.parse(texte))
+    }
+
+    /// Écrit la forme que l'API accepte en entrée.
+    public static func ecrire(_ date: Date) -> String {
+        date.formatted(sansFractions)
+    }
 }
