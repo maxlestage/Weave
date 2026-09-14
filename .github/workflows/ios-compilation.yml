@@ -106,6 +106,55 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             2>&1 | tee /tmp/xcodebuild.log
 
+      # ------------------------------------------------------------------
+      # Les tests de WeaveKit, mais sur la chaîne d'outils d'Apple
+      #
+      # Ils tournent déjà sous Linux, à chaque poussée. Ce n'est pas la même
+      # chose : Foundation n'y est pas la même implémentation. Le décodage des
+      # dates, notamment, est passé d'`ISO8601DateFormatter` à
+      # `Date.ISO8601FormatStyle` sur la foi d'une comparaison faite sous
+      # Linux — c'est ici, et ici seulement, que cette foi se vérifie.
+      #
+      # Le simulateur est choisi à l'exécution : les noms d'appareils changent
+      # d'une image d'exécuteur à l'autre, et en coder un en dur casserait le
+      # jour où GitHub met la sienne à jour.
+      # ------------------------------------------------------------------
+      - name: Tests de WeaveKit sur simulateur
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          udid=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          appareils = json.load(sys.stdin)['devices']
+          for moteur in sorted(appareils, reverse=True):
+              if 'iOS' not in moteur:
+                  continue
+              for a in appareils[moteur]:
+                  if a.get('isAvailable') and 'iPhone' in a['name']:
+                      print(a['udid'])
+                      raise SystemExit
+          raise SystemExit('aucun simulateur iPhone disponible')
+          ")
+          echo "Simulateur : $udid"
+
+          xcodebuild test \
+            -project Weave.xcodeproj \
+            -scheme Weave \
+            -configuration Debug \
+            -destination "id=$udid" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee -a /tmp/xcodebuild.log | grep -E "Test Case|Test Suite|passed|failed|error:" || true
+
+          # `grep` masque le code de sortie de xcodebuild : on le relit.
+          if grep -q "\*\* TEST FAILED \*\*" /tmp/xcodebuild.log; then
+            echo "::error::Des tests ont échoué sur le simulateur."
+            exit 1
+          fi
+
       - name: Ce qui a échoué
         if: failure()
         run: |
