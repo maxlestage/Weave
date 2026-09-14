@@ -205,6 +205,16 @@ export const PLAN_CATEGORY_LABELS_PAR_LANGUE: Readonly<
 };
 
 /** Rétention des messages après clôture d'une conversation, en jours. */
+/**
+ * Longueur maximale d'un message de conversation.
+ *
+ * Elle n'était écrite qu'au serveur : ni le contrat, ni l'application ne la
+ * connaissaient. Le champ de saisie laissait donc écrire sans fin, et le
+ * serveur refusait à l'envoi — la personne perdait ce qu'elle venait
+ * d'écrire, pour une règle que rien ne lui avait annoncée.
+ */
+export const CONVERSATION_MAX_CHARS = 2000;
+
 export const MESSAGE_RETENTION_DAYS = 90;
 
 /** Délai de purge d'un compte supprimé, en jours. */

@@ -34,13 +34,13 @@ const REGLE_MESSAGE: Regle = Regle {
     fenetre_secondes: 60 * 60,
 };
 
-const MESSAGE_MAX: usize = 2000;
+pub(crate) const MESSAGE_MAX: usize = 2000;
 
 /// Page de messages renvoyée par lecture.
 const PAGE: u64 = 50;
 
 /// Conversations rendues d'un coup. Une borne, pas une pagination.
-const CONVERSATIONS_RENDUES_MAX: u64 = 100;
+pub(crate) const CONVERSATIONS_RENDUES_MAX: u64 = 100;
 
 /// Les messages d'une conversation close sont purgés au bout de ce délai.
 /// `packages/contracts` fait foi.

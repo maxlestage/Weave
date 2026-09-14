@@ -211,6 +211,12 @@ public enum MessageAuthor: String, Codable, Sendable {
     case systeme
 }
 
+/// Longueur maximale d'un message de conversation.
+///
+/// Le serveur refuse au-delà. L'application l'ignorait : on pouvait écrire
+/// sans fin, et perdre son texte à l'envoi.
+public let conversationMaxChars = 2000
+
 public struct Message: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let conversationId: String
