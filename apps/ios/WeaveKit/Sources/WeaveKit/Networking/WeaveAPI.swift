@@ -395,8 +395,15 @@ public actor WeaveAPI {
     /// fiche — et sans fiche, le serveur rend un fil vide et refuse toute
     /// publication avec « Renseignez d'abord votre ville. »
     ///
-    /// La position est arrondie au kilomètre par le serveur : Weave ne
-    /// conserve jamais de position plus précise, pas même pour soi.
+    /// La position est arrondie ICI, avant de partir — pas seulement à
+    /// l'arrivée. La politique de confidentialité le promet en toutes lettres :
+    /// « arrondie sur votre appareil avant l'envoi […] une donnée que nous
+    /// n'avons pas ». Envoyer les coordonnées exactes et les arrondir au dépôt
+    /// aurait laissé le serveur les voir passer — dans le corps de la requête,
+    /// en mémoire, et dans tout ce qui journalise une requête.
+    ///
+    /// Le serveur arrondit quand même, sur la même grille : un client n'est
+    /// jamais une garantie, et deux arrondis identiques ne se contredisent pas.
     public func submitProfile(
         city: String,
         latitude: Double,
@@ -417,8 +424,8 @@ public actor WeaveAPI {
             "/v1/me/profile",
             encodable: Body(
                 city: city.trimmingCharacters(in: .whitespacesAndNewlines),
-                latitude: latitude,
-                longitude: longitude,
+                latitude: Self.arrondirPosition(latitude),
+                longitude: Self.arrondirPosition(longitude),
                 gender: gender.rawValue,
                 bio: (texte?.isEmpty ?? true) ? nil : texte
             )
@@ -552,6 +559,20 @@ public actor WeaveAPI {
             }
             .joined(separator: ",")
     }()
+
+    /// Le pas de la grille de position, en degrés.
+    ///
+    /// C'est CELUI DU SERVEUR (`routes/me.rs`), et il doit le rester : arrondir
+    /// ici sur une grille plus fine laisserait le serveur ré-arrondir et
+    /// déplacer le point, ce qui viderait de son sens l'arrondi fait sur
+    /// l'appareil. Un test de contrat rapproche les deux.
+    static let pasDeLaGrillePosition = 0.01
+
+    /// Arrondit une coordonnée sur la grille, avant qu'elle ne quitte
+    /// l'appareil.
+    static func arrondirPosition(_ degres: Double) -> Double {
+        (degres / pasDeLaGrillePosition).rounded() * pasDeLaGrillePosition
+    }
 
     private enum Method: String {
         case get = "GET"

@@ -1193,3 +1193,62 @@ fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
         }
     }
 }
+
+/// La position est arrondie SUR L'APPAREIL, comme la politique le promet.
+///
+/// La politique de confidentialité le dit en toutes lettres, et en gras : « La
+/// position est arrondie sur votre appareil avant l'envoi […] Nos serveurs ne
+/// disposent à aucun moment de vos coordonnées exactes : ce n'est pas une
+/// politique de rétention, c'est une donnée que nous n'avons pas. »
+///
+/// L'application envoyait les coordonnées exactes, et le serveur les
+/// arrondissait au dépôt. L'affirmation était donc fausse : les coordonnées
+/// exactes traversaient le réseau, entraient dans le corps de la requête, et
+/// passaient par tout ce qui journalise une requête.
+///
+/// Rien ne l'aurait signalé. Les deux bouts fonctionnaient, la base ne
+/// contenait bien que des positions arrondies, et seul le trajet mentait.
+#[test]
+fn la_position_est_arrondie_avant_de_quitter_l_appareil() {
+    let client = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/ios/WeaveKit/Sources/WeaveKit/Networking/WeaveAPI.swift");
+    let swift = std::fs::read_to_string(&client)
+        .unwrap_or_else(|e| panic!("WeaveAPI.swift illisible en {} : {e}", client.display()));
+
+    for champ in ["latitude", "longitude"] {
+        let attendu = format!("{champ}: Self.arrondirPosition({champ})");
+        assert!(
+            swift.contains(&attendu),
+            "« {champ} » part sans être arrondie : la politique promet le contraire"
+        );
+    }
+
+    // La grille du client est celle du serveur.
+    //
+    // Arrondir sur l'appareil à un pas plus fin laisserait le serveur
+    // ré-arrondir et déplacer le point : l'arrondi de l'appareil ne
+    // garantirait plus rien de ce qui est stocké.
+    let pas_client: f64 = swift
+        .split("static let pasDeLaGrillePosition = ")
+        .nth(1)
+        .and_then(|reste| reste.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
+        .expect("le pas de la grille a disparu du client");
+
+    let serveur = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/me.rs"),
+    )
+    .expect("me.rs lisible");
+    let facteur: f64 = serveur
+        .split("let lat = (corps.latitude * ")
+        .nth(1)
+        .and_then(|reste| reste.split(')').next())
+        .and_then(|v| v.trim().parse().ok())
+        .expect("l'arrondi du serveur a changé de forme");
+
+    assert!(
+        (pas_client - 1.0 / facteur).abs() < f64::EPSILON,
+        "l'appareil arrondit au {pas_client}° et le serveur au {}° : le serveur déplacerait le point",
+        1.0 / facteur
+    );
+}
