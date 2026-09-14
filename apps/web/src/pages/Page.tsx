@@ -183,16 +183,33 @@ export function Page({
   );
 }
 
-/** Un tableau lisible au téléphone : il défile seul plutôt que de déborder. */
+/**
+ * Un tableau lisible au téléphone : il défile seul plutôt que de déborder.
+ *
+ * Le conteneur qui défile est FOCALISABLE, et porte un nom. Sans cela, ce qui
+ * dépasse à droite n'était atteignable qu'à la souris ou au doigt : personne
+ * ne peut faire défiler au clavier une zone qui ne prend pas le focus, et les
+ * colonnes cachées d'un tableau de tarifs devenaient illisibles pour qui
+ * navigue au clavier. Le nom vient du titre : une zone focalisable et muette
+ * ne dit pas ce qu'on vient d'atteindre.
+ */
 export function Tableau({
   entetes,
   lignes,
+  titre,
 }: {
   entetes: readonly string[];
   lignes: readonly (readonly ReactNode[])[];
+  /** Ce que le tableau montre, pour qui l'atteint au clavier. */
+  titre?: string;
 }) {
   return (
-    <div className="-mx-5 mt-4 overflow-x-auto px-5 sm:mx-0 sm:px-0">
+    <div
+      className="-mx-5 mt-4 overflow-x-auto px-5 sm:mx-0 sm:px-0"
+      tabIndex={0}
+      role="group"
+      aria-label={titre ?? "Tableau"}
+    >
       <table className="w-full min-w-[34rem] border-collapse text-sm">
         <thead>
           <tr>
