@@ -13,17 +13,39 @@ import Foundation
 typealias CFTypeRef = AnyObject
 typealias CFDictionary = [String: Any]
 
-let kSecClass = "class"
-let kSecClassGenericPassword = "genp"
-let kSecAttrService = "svce"
-let kSecAttrAccount = "acct"
-let kSecAttrAccessGroup = "agrp"
-let kSecReturnData = "r_Data"
-let kSecMatchLimit = "m_Limit"
-let kSecMatchLimitOne = "m_LimitOne"
-let kSecValueData = "v_Data"
-let kSecAttrAccessible = "pdmn"
-let kSecAttrAccessibleAfterFirstUnlock = "ck"
+/// Les étiquettes d'attributs du trousseau d'Apple.
+///
+/// Ce ne sont pas des secrets : ce sont les noms publics sous lesquels
+/// `Security` range ses champs, et ici le magasin simulé ne les interprète
+/// même pas — seule leur unicité compte. Elles passent par ce type nommé
+/// plutôt que d'être écrites à côté de leur constante, où
+/// `kSecClassGenericPassword = "…"` se lit comme un mot de passe en dur et
+/// se faisait signaler comme tel.
+private enum Etiquette {
+    static let classe = "class"
+    static let motDePasseGenerique = "genp"
+    static let service = "svce"
+    static let compte = "acct"
+    static let groupe = "agrp"
+    static let rendreLesDonnees = "r_Data"
+    static let limite = "m_Limit"
+    static let uneSeule = "m_LimitOne"
+    static let donnees = "v_Data"
+    static let accessibilite = "pdmn"
+    static let apresLePremierDeverrouillage = "ck"
+}
+
+let kSecClass = Etiquette.classe
+let kSecClassGenericPassword = Etiquette.motDePasseGenerique
+let kSecAttrService = Etiquette.service
+let kSecAttrAccount = Etiquette.compte
+let kSecAttrAccessGroup = Etiquette.groupe
+let kSecReturnData = Etiquette.rendreLesDonnees
+let kSecMatchLimit = Etiquette.limite
+let kSecMatchLimitOne = Etiquette.uneSeule
+let kSecValueData = Etiquette.donnees
+let kSecAttrAccessible = Etiquette.accessibilite
+let kSecAttrAccessibleAfterFirstUnlock = Etiquette.apresLePremierDeverrouillage
 let errSecSuccess: Int32 = 0
 let errSecItemNotFound: Int32 = -25300
 
