@@ -302,3 +302,34 @@ fn la_liste_des_messages_verifies_est_complete() {
         declarees.len()
     );
 }
+
+/// L'API dit aux caches que sa réponse dépend de la langue demandée.
+///
+/// Sans `Vary`, un cache partagé garde la première réponse venue sous
+/// l'adresse seule : la première erreur reçue en anglais devient l'erreur de
+/// tous les francophones qui suivent. `Content-Language` décrit ce qui a été
+/// rendu ; `Vary` dit qu'il aurait pu en être autrement, et c'est celui-là que
+/// le cache lit.
+#[tokio::test]
+async fn une_reponse_d_api_previent_les_caches_qu_elle_depend_de_la_langue() {
+    let service = Service::monter().await;
+
+    let (_, entetes, _) = service
+        .post_dans_la_langue(
+            "/v1/auth/otp/request",
+            None,
+            json!({ "email": "pas-une-adresse" }),
+            "en-GB",
+        )
+        .await;
+
+    let vary = entetes
+        .get(axum::http::header::VARY)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    assert!(
+        vary.contains("accept-language"),
+        "la réponse ne prévient aucun cache : Vary = « {vary} »"
+    );
+}
