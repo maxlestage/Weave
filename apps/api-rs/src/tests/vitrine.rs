@@ -31,6 +31,13 @@ fn dist_de_test() -> std::path::PathBuf {
     std::fs::write(racine.join("photo-couverture.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     // Une page juridique, construite comme en produit : un répertoire portant
     // le nom de l'adresse, et l'index dedans.
+    // Un accueil traduit, comme la construction en produit un.
+    std::fs::create_dir_all(racine.join("en")).unwrap();
+    std::fs::write(
+        racine.join("en/index.html"),
+        "<!doctype html><html lang=\"en\"><title>Weave</title>",
+    )
+    .unwrap();
     std::fs::create_dir_all(racine.join("cgv")).unwrap();
     std::fs::write(
         racine.join("cgv/index.html"),
@@ -231,4 +238,92 @@ async fn les_adresses_fixes_ne_se_gardent_pas_un_an() {
         Some("public, max-age=31536000, immutable"),
         "un fichier empreint doit se garder indéfiniment"
     );
+}
+
+/// Une page traduite annonce SA langue, pas celle qui a été demandée.
+///
+/// `Content-Language` décrit le document rendu. Le poser depuis
+/// `Accept-Language` — ce que fait la couche qui traduit les messages de
+/// l'API — le retourne : un lecteur francophone qui ouvre « /en/ » reçoit une
+/// page anglaise étiquetée française.
+///
+/// Ce n'est pas qu'une étiquette fausse. Un cache intermédiaire s'y fie : il
+/// garde la page sous cette langue, et la ressert ensuite à qui demandait
+/// vraiment du français.
+///
+/// Une page dit sa langue par son adresse et par son attribut `lang` ; elle
+/// n'a pas à être renseignée par la requête.
+#[tokio::test]
+async fn une_page_traduite_annonce_sa_propre_langue() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    let (statut, entetes, _) = service
+        .get_brut_dans_la_langue("/en/", Some("fr-FR,fr;q=0.9"))
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    let annoncee = entetes
+        .get(axum::http::header::CONTENT_LANGUAGE)
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(
+        annoncee,
+        Some("en"),
+        "« /en/ » doit s'annoncer anglaise même demandée par un francophone"
+    );
+}
+
+/// Le même piège sur une page juridique, qui n'existe qu'en français.
+///
+/// Demandée par un anglophone, elle reste française — et doit le dire, sans
+/// quoi un lecteur anglophone recevrait un texte français annoncé comme
+/// anglais.
+#[tokio::test]
+async fn une_page_juridique_reste_annoncee_en_francais() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    let (statut, entetes, _) = service
+        .get_brut_dans_la_langue("/cgv/", Some("en-GB,en;q=0.9"))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{statut}");
+
+    let annoncee = entetes
+        .get(axum::http::header::CONTENT_LANGUAGE)
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(
+        annoncee,
+        Some("fr"),
+        "« /cgv » n'existe qu'en français et doit le dire à un anglophone"
+    );
+}
+
+/// Une page du site ne dépend pas de la langue demandée, et ne le prétend pas.
+///
+/// L'API porte `Vary: Accept-Language` parce que ses messages suivent la
+/// demande. Une page, non : « /en/ » est anglaise pour tout le monde. Lui
+/// coller ce `Vary` ferait garder au cache une copie PAR LANGUE DEMANDÉE de
+/// la même page identique — trois entrées pour un seul fichier, et autant de
+/// visiteurs servis depuis l'origine plutôt que depuis le cache.
+#[tokio::test]
+async fn une_page_ne_depend_pas_de_la_langue_demandee() {
+    let dist = dist_de_test();
+    let service = Service::monter_avec(Some(dist.display().to_string())).await;
+
+    for adresse in ["/", "/en/", "/cgv/"] {
+        let (statut, entetes, _) = service
+            .get_brut_dans_la_langue(adresse, Some("es-ES,es;q=0.9"))
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{adresse} : {statut}");
+
+        let vary = entetes
+            .get(axum::http::header::VARY)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        assert!(
+            !vary.contains("accept-language"),
+            "{adresse} sera mis en cache une fois par langue demandée : Vary = « {vary} »"
+        );
+    }
 }

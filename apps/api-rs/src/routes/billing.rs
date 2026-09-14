@@ -465,13 +465,15 @@ struct Transaction {
 
 /// La vérification cryptographique de la charge JWS est-elle écrite ?
 ///
-/// Elle ne l'est pas. Ce booléen existe pour que la réponse soit à UN seul
-/// endroit, et pour que l'activer soit un geste délibéré plutôt qu'un effet de
-/// bord.
+/// Elle l'est, dans `storekit` : chaîne de certificats `x5c` validée contre la
+/// racine Apple épinglée, signature ES256 vérifiée, puis `bundleId`,
+/// environnement et fraîcheur contrôlés ici même.
 ///
-/// Il faudra, pour le passer à `true` : valider la chaîne de certificats `x5c`
-/// de l'en-tête contre la racine Apple, vérifier la signature ES256, puis
-/// contrôler le `bundleId` et la fraîcheur de la transaction.
+/// Ce booléen ne commande donc plus rien — et c'est exactement ce qu'on lui
+/// demande. Il reste un fil-piège : le repasser à `false` sans retirer le
+/// vérificateur ferait refuser tous les achats en production, et le test
+/// `la_verification_est_annoncee_comme_ecrite` s'y oppose. Le retirer, lui,
+/// supprimerait le seul endroit où la question se pose.
 pub(crate) const VERIFICATION_JWS_IMPLEMENTEE: bool = true;
 
 /// Âge maximal d'une transaction, en minutes.
@@ -500,8 +502,11 @@ fn achat_acceptable(production: bool, verification_ecrite: bool) -> bool {
 
 /// Vérifie une transaction signée StoreKit 2.
 ///
-/// Hors production, la charge est décodée et crue sur parole : c'est ce qui
-/// permet d'éprouver le parcours d'achat sans compte Apple Developer.
+/// La signature est vérifiée DANS TOUS LES ENVIRONNEMENTS. Ce qui change hors
+/// production n'est pas la rigueur du contrôle mais la racine à laquelle il
+/// remonte : les tests épinglent la leur et signent pour de vrai, ce qui
+/// permet d'éprouver le parcours d'achat — et surtout le rejet d'une chaîne
+/// qui ne mène pas chez Apple — sans compte Apple Developer.
 fn verifier_transaction(state: &AppState, signe: &str) -> Result<Transaction, AppError> {
     if !achat_acceptable(state.config.is_production(), VERIFICATION_JWS_IMPLEMENTEE) {
         return Err(invalide(Msg::VerificationDesAchatsIndisponible));
@@ -704,10 +709,14 @@ mod tests {
         );
     }
 
-    /// Hors production, on décode et on croit sur parole : c'est ce qui permet
-    /// d'éprouver le parcours d'achat sans compte Apple Developer.
+    /// Hors production, le garde-fou laisse passer même sans vérificateur.
+    ///
+    /// C'est le garde-fou qui s'efface, pas la vérification : `verifier_transaction`
+    /// contrôle la signature dans tous les environnements. Ce test dit
+    /// seulement qu'un service de développement dont le vérificateur aurait
+    /// été retiré n'en serait pas bloqué.
     #[test]
-    fn le_developpement_accepte_sans_verification() {
+    fn le_developpement_passe_le_garde_fou_sans_verificateur() {
         assert!(achat_acceptable(false, false));
     }
 
