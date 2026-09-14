@@ -78,6 +78,52 @@ jobs:
         if: steps.verifier.outputs.pret == 'true'
         uses: actions/checkout@v5
 
+      # ------------------------------------------------------------------
+      # L'adresse de l'API, avant de construire quoi que ce soit.
+      #
+      # `project.yml` porte « https://api.weave.app » en configuration Release.
+      # C'est un domaine de remplacement, et le dépôt le dit lui-même ailleurs :
+      # « https://weave.app […] un domaine qui ne répond pas »
+      # (apps/web/src/pages/identite.ts).
+      #
+      # Une version envoyée à TestFlight avec cette adresse s'installe, s'ouvre,
+      # et échoue à CHAQUE appel réseau — sans rien qui relie la panne à sa
+      # cause. Le site avait exactement ce défaut et sa construction le refuse
+      # depuis ; la correction n'avait pas atteint l'application.
+      #
+      # Mieux vaut ne rien envoyer qu'envoyer cela.
+      # ------------------------------------------------------------------
+      - name: Vérifier l'adresse de l'API
+        if: steps.verifier.outputs.pret == 'true'
+        run: |
+          adresse=$(sed -n 's/.*WEAVE_API_URL: *//p' apps/ios/project.yml \
+            | sed 's/$()//g' | tail -1 | tr -d ' ')
+          echo "Adresse Release : $adresse"
+
+          refuser() {
+            {
+              echo "## Envoi interrompu : l'adresse de l'API"
+              echo ""
+              echo "\`WEAVE_API_URL\` vaut \`$adresse\` en configuration Release."
+              echo ""
+              echo "$1"
+              echo ""
+              echo "Renseignez votre domaine dans \`apps/ios/project.yml\`,"
+              echo "section \`configs.Release\`, puis relancez."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::$1"
+            exit 1
+          }
+
+          case "$adresse" in
+            *weave.app*)
+              refuser "C'est le domaine de remplacement du dépôt, et il ne répond pas. L'application s'installerait et échouerait à chaque appel réseau." ;;
+            https://*)
+              echo "::notice::Adresse de l'API : $adresse" ;;
+            *)
+              refuser "Ce n'est pas une adresse https. Une application de l'App Store ne peut pas appeler une adresse en clair." ;;
+          esac
+
       - name: Choisir la version de Xcode
         if: steps.verifier.outputs.pret == 'true'
         uses: maxim-lobanov/setup-xcode@v1
