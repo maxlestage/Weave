@@ -132,11 +132,18 @@ pub fn depuis_l_entete(entete: &str) -> Langue {
     meilleure.map(|(langue, _)| langue).unwrap_or_default()
 }
 
-/// Pose la langue de la requête, et l'annonce sur la réponse.
+/// Pose la langue de la requête pour la durée de celle-ci.
 ///
-/// `Content-Language` n'est pas décoratif : il dit au client — et à tout cache
-/// intermédiaire — dans quelle langue la réponse a été rendue. Sans lui, une
-/// réponse française mise en cache serait resservie à qui demandait l'anglais.
+/// Cette couche NE POSE AUCUN EN-TÊTE, et c'est délibéré. Elle enveloppe tout
+/// le service, site vitrine compris ; or une page traduite ne se rend pas dans
+/// la langue demandée, elle se rend dans la sienne. Annoncer ici la langue de
+/// la requête étiquetait « /en/ » comme française dès qu'un francophone
+/// l'ouvrait, et la page juridique française comme anglaise dès qu'un
+/// anglophone la demandait.
+///
+/// L'annonce revient donc à qui sait ce qui a été rendu : `annoncer_la_langue`
+/// pour l'API, qui compose vraiment sa réponse dans cette langue, et le
+/// service de fichiers pour les pages, qui la lisent dans leur adresse.
 pub async fn poser_la_langue(requete: Request, suite: Next) -> Response {
     let langue = requete
         .headers()
@@ -145,14 +152,61 @@ pub async fn poser_la_langue(requete: Request, suite: Next) -> Response {
         .map(depuis_l_entete)
         .unwrap_or_default();
 
-    let mut reponse = LANGUE.scope(langue, suite.run(requete)).await;
+    LANGUE.scope(langue, suite.run(requete)).await
+}
 
+/// Annonce sur la réponse la langue dans laquelle l'API l'a composée.
+///
+/// `Content-Language` n'est pas décoratif : il dit au client — et à tout cache
+/// intermédiaire — dans quelle langue la réponse a été rendue. Sans lui, une
+/// erreur française mise en cache serait resservie à qui demandait l'anglais.
+///
+/// Il n'a de sens que là où la réponse SUIT la demande, c'est-à-dire sur
+/// l'API : ses messages sont composés dans la langue négociée. Une page du
+/// site, elle, existe dans une langue avant qu'on la demande.
+pub async fn annoncer_la_langue(requete: Request, suite: Next) -> Response {
+    let mut reponse = suite.run(requete).await;
+    poser_l_entete(&mut reponse, courante());
+
+    // `Vary` dit aux caches que cette réponse DÉPEND de l'en-tête de langue.
+    //
+    // Sans lui, un cache partagé — un proxy d'entreprise, un CDN — garde la
+    // première réponse venue sous l'adresse seule et la ressert à tout le
+    // monde : la première erreur reçue en anglais devient l'erreur de tous les
+    // francophones qui suivent. `Content-Language` décrit la réponse ; `Vary`
+    // dit qu'il aurait pu en être autrement.
+    //
+    // Le site, lui, n'en a pas besoin : ses pages tiennent leur langue de leur
+    // adresse, et « /en/ » est anglaise pour tout le monde. C'est ce qui les
+    // garde cachables telles quelles.
+    reponse.headers_mut().insert(
+        axum::http::header::VARY,
+        axum::http::HeaderValue::from_static("accept-language"),
+    );
+    reponse
+}
+
+/// La langue d'une page du site, lue dans son adresse.
+///
+/// C'est la construction qui décide : « /en/… » et « /es/… » sont les accueils
+/// traduits, tout le reste — la racine et les pages juridiques — est français.
+pub fn langue_du_chemin(chemin: &str) -> Langue {
+    let premier = chemin.split('/').find(|morceau| !morceau.is_empty());
+    premier
+        .and_then(Langue::depuis_etiquette)
+        .unwrap_or_default()
+}
+
+/// Pose `Content-Language`, si l'étiquette est écrivable en en-tête.
+///
+/// Un échec n'est jamais fatal : une réponse sans cet en-tête reste une
+/// réponse, une erreur à sa place n'en est plus une.
+pub fn poser_l_entete(reponse: &mut Response, langue: Langue) {
     if let Ok(valeur) = axum::http::HeaderValue::from_str(langue.etiquette()) {
         reponse
             .headers_mut()
             .insert(axum::http::header::CONTENT_LANGUAGE, valeur);
     }
-    reponse
 }
 
 #[cfg(test)]

@@ -170,12 +170,12 @@ async fn main() -> anyhow::Result<()> {
     let port = config.port;
     let driver = config.db.driver.as_str();
 
-    // Dire pourquoi les achats seront refusés, plutôt que de laisser chercher.
+    // Dire pourquoi les achats seraient refusés, plutôt que de laisser chercher.
     //
-    // Poser les identifiants App Store est le geste par lequel on croit activer
-    // les achats. Tant que la vérification cryptographique des transactions
-    // n'est pas écrite, ils restent refusés en production — et sans ce message,
-    // rien ne relierait ce refus à sa cause.
+    // La vérification est écrite, et ce message ne part donc plus. Il reste
+    // pour le jour où quelqu'un retirerait le vérificateur : poser les
+    // identifiants App Store est le geste par lequel on croit activer les
+    // achats, et sans cette ligne rien ne relierait leur refus à sa cause.
     if config.is_production()
         && config.app_store.configure
         && !routes::billing::VERIFICATION_JWS_IMPLEMENTEE
@@ -241,11 +241,17 @@ fn construire_routeur(state: AppState) -> Router {
         .merge(routes::billing::routes())
         .merge(routes::bilan::routes())
         .merge(routes::verification::routes())
-        .with_state(state);
+        .with_state(state)
+        // L'API compose vraiment ses messages dans la langue demandée : elle
+        // est donc la seule à pouvoir l'annoncer. La couche est posée ICI, et
+        // non autour de tout, parce que le recours vers le site est ajouté
+        // ensuite — une page se rend dans SA langue, pas dans celle qu'on
+        // demande, et l'étiqueter d'après la requête la décrivait à l'envers.
+        .layer(axum::middleware::from_fn(langue::annoncer_la_langue));
 
-    // La langue se pose AUTOUR de tout, site vitrine compris : la couche
-    // s'applique à la réponse comme à la requête, et `Content-Language` a sa
-    // place sur une page comme sur une erreur d'API.
+    // La langue de la requête, elle, se pose autour de tout : le site n'en a
+    // pas besoin, mais l'y faire entrer ne coûte rien et évite d'avoir deux
+    // endroits où la lire.
     monter_vitrine(api, vitrine.as_deref())
         .layer(axum::middleware::from_fn(langue::poser_la_langue))
 }
@@ -304,6 +310,12 @@ async fn servir_vitrine(mut requete: Request, suite: Next) -> Response {
     let chemin = requete.uri().path().to_string();
     let mut reponse = suite.run(requete).await;
     if reponse.status().is_success() {
+        // La langue de la page vient de son ADRESSE, pas de la requête.
+        // « /en/ » est anglaise pour tout le monde, y compris pour qui
+        // préfère le français ; les pages juridiques n'existent qu'en
+        // français et le disent, y compris à un anglophone.
+        langue::poser_l_entete(&mut reponse, langue::langue_du_chemin(&chemin));
+
         // Le cache se décide sur le type de contenu, pas sur la forme de
         // l'adresse. Une page rendue à « /cgv » n'a ni barre oblique finale
         // ni extension : la déduire du chemin la faisait garder un an comme
