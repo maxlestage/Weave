@@ -1936,3 +1936,308 @@ fn aucun_instantane_du_cache_ne_peut_entrer_dans_le_depot() {
         );
     }
 }
+
+/// Les deux schémas décrivent la même base.
+///
+/// Le dépôt en porte deux : `migrations/` pour Postgres, qui est ce que le
+/// dyno exécute, et `migrations-sqlite/` pour SQLite, qui est ce que ces tests
+/// exécutent. Une colonne ajoutée d'un seul côté ne se voit nulle part : la
+/// suite passe au vert sur un schéma que la production n'a pas, et la première
+/// requête réelle rend une erreur de base que rien, dans l'intégration
+/// continue, n'annonçait.
+///
+/// Seuls les noms sont comparés. Les types diffèrent légitimement — `TIMESTAMP(3)`
+/// d'un côté, `DATETIME` de l'autre, `BOOLEAN` contre `INTEGER` — et c'est
+/// l'ORM qui les réconcilie. Ce qui ne peut pas différer, ce sont les tables et
+/// leurs colonnes.
+#[test]
+fn les_deux_schemas_decrivent_la_meme_base() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let postgres = colonnes_des_migrations(&racine.join("migrations"));
+    let sqlite = colonnes_des_migrations(&racine.join("migrations-sqlite"));
+
+    assert!(
+        postgres.len() > 15,
+        "lecture des migrations Postgres suspecte : {} tables",
+        postgres.len()
+    );
+
+    let mut ecarts = Vec::new();
+    let mut tables: Vec<&String> = postgres.keys().chain(sqlite.keys()).collect();
+    tables.sort();
+    tables.dedup();
+
+    for table in tables {
+        match (postgres.get(table), sqlite.get(table)) {
+            (Some(pg), Some(lite)) => {
+                let absentes_de_sqlite: Vec<&String> = pg.difference(lite).collect();
+                let absentes_de_postgres: Vec<&String> = lite.difference(pg).collect();
+                if !absentes_de_sqlite.is_empty() {
+                    ecarts.push(format!(
+                        "{table} : {absentes_de_sqlite:?} manquent à SQLite — la suite \
+                         ne les éprouve pas"
+                    ));
+                }
+                if !absentes_de_postgres.is_empty() {
+                    ecarts.push(format!(
+                        "{table} : {absentes_de_postgres:?} manquent à Postgres — la \
+                         production ne les a pas"
+                    ));
+                }
+            }
+            (Some(_), None) => ecarts.push(format!("table « {table} » absente de SQLite")),
+            (None, Some(_)) => ecarts.push(format!("table « {table} » absente de Postgres")),
+            (None, None) => unreachable!(),
+        }
+    }
+
+    assert!(
+        ecarts.is_empty(),
+        "les deux schémas ont divergé :\n  {}",
+        ecarts.join("\n  ")
+    );
+}
+
+/// Les colonnes déclarées par un jeu de migrations, table par table.
+///
+/// Lit les `CREATE TABLE`, puis applique les `ADD COLUMN` et `DROP COLUMN` des
+/// migrations suivantes : c'est l'état final qui compte, pas la première
+/// version.
+fn colonnes_des_migrations(
+    dossier: &std::path::Path,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    let mut tables: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+
+    let mut fichiers: Vec<std::path::PathBuf> = std::fs::read_dir(dossier)
+        .unwrap_or_else(|e| panic!("migrations lisibles en {} : {e}", dossier.display()))
+        .flatten()
+        .map(|e| e.path().join("migration.sql"))
+        .filter(|p| p.is_file())
+        .collect();
+    fichiers.sort();
+
+    for fichier in fichiers {
+        let sql = std::fs::read_to_string(&fichier).expect("migration lisible");
+        let mut reste = sql.as_str();
+
+        while let Some(debut) = reste.find("CREATE TABLE") {
+            let apres = &reste[debut..];
+            let Some(ouvrante) = apres.find('(') else {
+                break;
+            };
+            let Some(fin) = apres.find("\n);") else { break };
+            let nom = apres[..ouvrante]
+                .rsplit_once('"')
+                .and_then(|(avant, _)| avant.rsplit_once('"'))
+                .map(|(_, nom)| nom.to_string());
+            if let Some(nom) = nom {
+                let entree = tables.entry(nom).or_default();
+                for ligne in apres[ouvrante + 1..fin].lines() {
+                    let ligne = ligne.trim();
+                    let majuscules = ligne.to_uppercase();
+                    if majuscules.starts_with("CONSTRAINT")
+                        || majuscules.starts_with("PRIMARY")
+                        || majuscules.starts_with("FOREIGN")
+                        || majuscules.starts_with("UNIQUE")
+                    {
+                        continue;
+                    }
+                    if let Some(colonne) = nom_entre_guillemets(ligne) {
+                        entree.insert(colonne);
+                    }
+                }
+            }
+            reste = &apres[fin + 3..];
+        }
+
+        for ligne in sql.lines() {
+            let ligne = ligne.trim();
+            let majuscules = ligne.to_uppercase();
+            if !majuscules.starts_with("ALTER TABLE") {
+                continue;
+            }
+            let noms: Vec<String> = ligne
+                .split('"')
+                .skip(1)
+                .step_by(2)
+                .map(str::to_string)
+                .collect();
+            let (Some(table), Some(colonne)) = (noms.first(), noms.get(1)) else {
+                continue;
+            };
+            if majuscules.contains("ADD COLUMN") {
+                tables
+                    .entry(table.clone())
+                    .or_default()
+                    .insert(colonne.clone());
+            } else if majuscules.contains("DROP COLUMN")
+                && let Some(entree) = tables.get_mut(table)
+            {
+                entree.remove(colonne);
+            }
+        }
+    }
+    tables
+}
+
+/// Le premier nom entre guillemets d'une ligne, s'il ouvre la ligne.
+fn nom_entre_guillemets(ligne: &str) -> Option<String> {
+    let reste = ligne.strip_prefix('"')?;
+    let (nom, _) = reste.split_once('"')?;
+    Some(nom.to_string())
+}
+
+/// Chaque méthode que l'application appelle existe dans WeaveKit.
+///
+/// C'est le seul accord qu'aucun compilateur ne tient ici. WeaveKit se
+/// compile sous Linux — `apps/ios/verification-linux/` s'en charge — mais les
+/// écrans, eux, dépendent de SwiftUI, et rien hors d'un Mac ne les type. Une
+/// méthode renommée dans le client réseau laisse donc ses appelants intacts
+/// et muets jusqu'à la prochaine ouverture d'Xcode.
+///
+/// Ce que ce test NE vérifie PAS, et il faut le dire : ni les étiquettes
+/// d'arguments, ni les types, ni les valeurs de retour. Seulement qu'un nom
+/// appelé existe. C'est étroit — mais jamais faux, et cela couvre la faute la
+/// plus probable : renommer d'un côté sans suivre de l'autre.
+#[test]
+fn chaque_methode_appelee_par_l_application_existe_dans_weavekit() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
+    if !ios.is_dir() {
+        eprintln!(
+            "application iOS absente en {} — accord non vérifié",
+            ios.display()
+        );
+        return;
+    }
+
+    // Le nom sous lequel l'application tient chaque objet, et le fichier qui
+    // le déclare. `WeaveApp.swift` porte `ModeleApplication`, qui donne accès
+    // aux autres.
+    let porteurs = [
+        ("api", "WeaveKit/Sources/WeaveKit/Networking/WeaveAPI.swift"),
+        (
+            "boutique",
+            "WeaveKit/Sources/WeaveKit/Stores/BoutiqueController.swift",
+        ),
+        (
+            "activites",
+            "WeaveKit/Sources/WeaveKit/Stores/ActivityController.swift",
+        ),
+        (
+            "notifications",
+            "WeaveKit/Sources/WeaveKit/Stores/NotificationsController.swift",
+        ),
+        ("modele", "Weave/WeaveApp.swift"),
+    ];
+
+    let mut declarees: std::collections::BTreeMap<&str, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    for (nom, chemin) in porteurs {
+        let source = std::fs::read_to_string(ios.join(chemin))
+            .unwrap_or_else(|e| panic!("{chemin} illisible : {e}"));
+        let noms = methodes_declarees(&source);
+        assert!(
+            !noms.is_empty(),
+            "aucune méthode lue dans {chemin} — la lecture est à revoir"
+        );
+        declarees.insert(nom, noms);
+    }
+
+    let mut sources = Vec::new();
+    for dossier in ["Weave", "WeaveActivity", "WeaveWatchWidgets"] {
+        empiler_les_fichiers_swift(&ios.join(dossier), &mut sources);
+    }
+
+    let mut vus = 0usize;
+    let mut absentes = Vec::new();
+    for (fichier, source) in &sources {
+        for (porteur, connues) in &declarees {
+            for appel in appels_sur(source, porteur) {
+                vus += 1;
+                if !connues.contains(&appel) {
+                    absentes.push(format!("{porteur}.{appel}() — appelé dans {fichier}"));
+                }
+            }
+        }
+    }
+
+    assert!(
+        vus > 35,
+        "seulement {vus} appels retrouvés : la lecture est à revoir"
+    );
+    assert!(
+        absentes.is_empty(),
+        "l'application appelle des méthodes que WeaveKit ne déclare pas :\n  {}",
+        absentes.join("\n  ")
+    );
+}
+
+/// Les noms de méthodes déclarées dans une source Swift.
+fn methodes_declarees(source: &str) -> std::collections::BTreeSet<String> {
+    let mut noms = std::collections::BTreeSet::new();
+    for ligne in source.lines() {
+        let Some(reste) = ligne.trim().split("func ").nth(1) else {
+            continue;
+        };
+        let nom: String = reste
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if !nom.is_empty() {
+            noms.insert(nom);
+        }
+    }
+    noms
+}
+
+/// Les méthodes appelées sur `porteur` dans une source Swift.
+fn appels_sur(source: &str, porteur: &str) -> std::collections::BTreeSet<String> {
+    let marque = format!("{porteur}.");
+    let mut appels = std::collections::BTreeSet::new();
+    for (position, _) in source.match_indices(&marque) {
+        // Le porteur doit ouvrir le mot : « monModele. » n'est pas « modele. ».
+        //
+        // Le point, lui, est accepté : l'application atteint le client réseau
+        // par `modele.api.`, et c'est la forme la plus fréquente. L'écarter
+        // revenait à ne rien voir — dix-sept appels au lieu de quarante-quatre.
+        if position > 0 {
+            let avant = source[..position].chars().next_back().unwrap_or(' ');
+            if avant.is_alphanumeric() || avant == '_' {
+                continue;
+            }
+        }
+        let reste = &source[position + marque.len()..];
+        let nom: String = reste
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        // Seuls les appels comptent : une propriété n'a pas de parenthèse.
+        if !nom.is_empty() && reste[nom.len()..].trim_start().starts_with('(') {
+            appels.insert(nom);
+        }
+    }
+    appels
+}
+
+/// Empile les sources Swift d'un répertoire, avec leur nom de fichier.
+fn empiler_les_fichiers_swift(repertoire: &std::path::Path, sortie: &mut Vec<(String, String)>) {
+    let Ok(entrees) = std::fs::read_dir(repertoire) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.is_dir() {
+            empiler_les_fichiers_swift(&chemin, sortie);
+        } else if chemin.extension().is_some_and(|e| e == "swift")
+            && let Ok(source) = std::fs::read_to_string(&chemin)
+        {
+            let nom = chemin
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?")
+                .to_string();
+            sortie.push((nom, source));
+        }
+    }
+}
