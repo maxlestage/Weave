@@ -70,5 +70,39 @@ jobs:
       - name: Compiler l'API
         run: cargo build --release --manifest-path apps/api-rs/Cargo.toml
 
+      # ----------------------------------------------------------------
+      # WeaveKit, en Swift
+      #
+      # Six mille lignes de Swift n'avaient jamais rencontré de compilateur :
+      # Xcode était le seul endroit où ce code se construisait, et le dépôt n'a
+      # pas de Mac. Deux erreurs y dormaient — un `deinit` non isolé dans une
+      # classe `@MainActor`, deux formateurs de date partagés que le mode
+      # Swift 6 refuse. Ni l'une ni l'autre ne tenait à iOS : ce sont des règles
+      # du langage, et Linux les applique pareil.
+      #
+      # Ce qui dépend d'UIKit, de SwiftUI, d'ActivityKit ou de StoreKit porte
+      # déjà sa propre garde et se vide ici. Reste le cœur : modèles, client
+      # d'API, magasins d'état — la part que le serveur doit satisfaire, et
+      # celle que les tests de WeaveKit exercent.
+      # ----------------------------------------------------------------
+      - name: Installer Swift
+        # La version est celle que `WeaveKit/Package.swift` déclare
+        # (swift-tools-version). Le mode Swift 6 y est demandé explicitement :
+        # compiler avec une version plus ancienne ne dirait pas la même chose.
+        run: |
+          set -euo pipefail
+          version=6.2.3
+          . /etc/os-release           # VERSION_ID, p. ex. « 24.04 »
+          compact="${VERSION_ID//./}" # l'adresse porte les deux écritures
+          base="https://download.swift.org/swift-${version}-release"
+          sudo mkdir -p /opt/swift
+          curl -sSL --retry 3 \
+            "${base}/ubuntu${compact}/swift-${version}-RELEASE/swift-${version}-RELEASE-ubuntu${VERSION_ID}.tar.gz" \
+            | sudo tar -xz --strip-components=1 -C /opt/swift
+          echo /opt/swift/usr/bin >> "$GITHUB_PATH"
+
+      - name: Compiler et tester WeaveKit
+        run: ./apps/ios/verification-linux/verifier.sh
+
       - name: Formatage
         run: bunx --bun prettier --check .
