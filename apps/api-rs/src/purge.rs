@@ -461,6 +461,119 @@ pub(super) mod tests {
         );
     }
 
+    /// Un message ne part qu'une fois son échéance venue.
+    ///
+    /// `purgeAfter` est posé à la clôture d'une conversation, jamais à
+    /// l'envoi : un échange ouvert n'expire pas. Le filtre sur la date n'était
+    /// éprouvé par rien — le retirer effaçait TOUS les messages portant une
+    /// échéance, quelle qu'elle soit. Une conversation close la veille
+    /// perdait ses messages sur-le-champ, alors que la politique de
+    /// confidentialité annonce un délai.
+    #[tokio::test]
+    async fn un_message_ne_part_qu_a_son_echeance() {
+        use crate::entities::{conversations, join_requests, messages, plans};
+
+        let db = base_de_test().await;
+        compte(&db, "correspondant", None).await;
+
+        // La conversation tient à un plan et à une demande : les clés
+        // étrangères sont actives, il faut la chaîne entière.
+        plans::ActiveModel {
+            id: Set("plan".to_string()),
+            author_id: Set("correspondant".to_string()),
+            title: Set("Un plan".to_string()),
+            note: Set(String::new()),
+            category: Set("sortie".to_string()),
+            starts_at: Set(Utc::now().naive_utc()),
+            city: Set("Lyon".to_string()),
+            lat_rounded: Set(45.75),
+            lon_rounded: Set(4.85),
+            capacity: Set(1),
+            state: Set("complet".to_string()),
+            cancelled_at: Set(None),
+            created_at: Set(Utc::now().naive_utc()),
+            updated_at: Set(Utc::now().naive_utc()),
+        }
+        .insert(&db)
+        .await
+        .expect("plan inséré");
+
+        join_requests::ActiveModel {
+            id: Set("dem".to_string()),
+            plan_id: Set("plan".to_string()),
+            author_id: Set("correspondant".to_string()),
+            message: Set("Je viendrais volontiers, ce plan me tente.".to_string()),
+            state: Set("acceptee".to_string()),
+            sent_at: Set(Utc::now().naive_utc()),
+            decided_at: Set(Some(Utc::now().naive_utc())),
+        }
+        .insert(&db)
+        .await
+        .expect("demande insérée");
+
+        conversations::ActiveModel {
+            id: Set("conv".to_string()),
+            plan_id: Set("plan".to_string()),
+            request_id: Set("dem".to_string()),
+            host_id: Set("correspondant".to_string()),
+            guest_id: Set("correspondant".to_string()),
+            opened_at: Set(Utc::now().naive_utc()),
+            last_message_at: Set(None),
+            closed_at: Set(Some(Utc::now().naive_utc())),
+            closed_by: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("conversation insérée");
+
+        // Trois messages : un échu, un qui court encore, un sans échéance —
+        // celui d'une conversation toujours ouverte.
+        for (id, echeance) in [
+            ("echu", Some(Utc::now().naive_utc() - Duration::days(1))),
+            (
+                "en_cours",
+                Some(Utc::now().naive_utc() + Duration::days(10)),
+            ),
+            ("ouvert", None),
+        ] {
+            messages::ActiveModel {
+                id: Set(id.to_string()),
+                conversation_id: Set("conv".to_string()),
+                author_id: Set("correspondant".to_string()),
+                body: Set("Bonjour.".to_string()),
+                sent_at: Set(Utc::now().naive_utc()),
+                read_at: Set(None),
+                purge_after: Set(echeance),
+            }
+            .insert(&db)
+            .await
+            .expect("message inséré");
+        }
+
+        let bilan = executer(&db).await.expect("purge");
+        assert_eq!(bilan.messages_effaces, 1, "seul le message échu part");
+
+        let restants: Vec<String> = messages::Entity::find()
+            .all(&db)
+            .await
+            .expect("lecture")
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert!(
+            !restants.contains(&"echu".to_string()),
+            "un message au-delà de sa durée de conservation est resté"
+        );
+        assert!(
+            restants.contains(&"en_cours".to_string()),
+            "un message encore dans son délai a été effacé : la date ne compte pas"
+        );
+        assert!(
+            restants.contains(&"ouvert".to_string()),
+            "un message de conversation ouverte a été effacé : il n'a pas d'échéance"
+        );
+    }
+
     #[tokio::test]
     async fn un_compte_echu_est_efface_un_compte_actif_ne_l_est_pas() {
         let db = base_de_test().await;
