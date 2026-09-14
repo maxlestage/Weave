@@ -179,6 +179,14 @@ struct ConversationView: View {
                     TextField("Écrire…", text: $brouillon, axis: .vertical)
                         .lineLimit(1...4)
                         .textFieldStyle(.roundedBorder)
+                        // Le serveur refuse au-delà. Sans cette borne ici, on
+                        // écrivait sans fin et l'on perdait son texte à
+                        // l'envoi, pour une règle que rien n'annonçait.
+                        .onChange(of: brouillon) { _, texte in
+                            if texte.count > conversationMaxChars {
+                                brouillon = String(texte.prefix(conversationMaxChars))
+                            }
+                        }
                     Button {
                         Task { await envoyer() }
                     } label: {
