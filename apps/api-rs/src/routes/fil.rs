@@ -445,10 +445,24 @@ async fn composer(
         let places = (ligne.capacity - acceptees).max(0);
         let deja_demande = demandes.iter().any(|d| d.author_id == compte.id);
 
-        // Un plan complet reste visible à qui y a déjà demandé sa place — le
-        // masquer donnerait l'impression qu'il ne se passe rien, alors qu'il
-        // s'y passe justement quelque chose.
-        if places == 0 && !deja_demande {
+        // Un plan sans place sort du fil.
+        //
+        // Cette garde portait une exemption — « reste visible à qui y a déjà
+        // demandé sa place » — que rien ne pouvait atteindre. La requête plus
+        // haut ne retient que les plans « ouvert », et un plan devient
+        // « complet » à l'instant où sa dernière place est prise : il ne
+        // parvient donc jamais jusqu'ici sans place. L'exemption était morte,
+        // et son commentaire décrivait un comportement que le produit n'a pas.
+        //
+        // Elle reste possible — il suffirait d'élargir la requête à
+        // « complet » pour qui a déjà demandé — mais c'est un choix de
+        // produit, pas une correction : on n'ajoute pas au fil de quelqu'un
+        // sans l'avoir décidé. En attendant, le code dit ce qu'il fait.
+        //
+        // La garde est conservée malgré tout : elle est le second filet si la
+        // requête venait à s'élargir. Retirer les deux, et le fil rend des
+        // plans sans place — vérifié.
+        if places == 0 {
             continue;
         }
 
