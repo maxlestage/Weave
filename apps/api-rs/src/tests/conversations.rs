@@ -398,9 +398,13 @@ async fn une_conversation_sans_message_figure_dans_la_liste() {
 #[tokio::test]
 async fn un_message_est_borne() {
     let service = Service::monter().await;
-    let conversation = conversation_ouverte(&service, "c_hote_borne_msg", "c_invite_borne_msg").await;
+    let conversation =
+        conversation_ouverte(&service, "c_hote_borne_msg", "c_invite_borne_msg").await;
 
-    let maximum = crate::routes::conversations::MESSAGE_MAX;
+    // Le nombre est écrit ici, pas relu de la constante : un test qui lit ce
+    // qu'il garde monte avec elle. Porter `MESSAGE_MAX` à deux millions ne le
+    // faisait pas tomber. Le contrat partagé tient l'accord des deux.
+    let maximum = 2000;
     let (statut, corps) = service
         .post(
             &format!("/v1/conversations/{conversation}/messages"),
@@ -423,7 +427,11 @@ async fn un_message_est_borne() {
             json!({ "body": "a".repeat(maximum) }),
         )
         .await;
-    assert_eq!(statut, StatusCode::OK, "la borne refuse ce qu'elle permet : {corps}");
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "la borne refuse ce qu'elle permet : {corps}"
+    );
 }
 
 /// La liste des conversations ne dépasse pas sa borne.
