@@ -42,6 +42,9 @@ pub async fn executer(
     let un = arguments.get(1).map(String::as_str);
     let deux = arguments.get(2..).map(|reste| reste.join(" "));
 
+    // Vrai tant qu'aucun geste n'a visé un identifiant inexistant.
+    let mut trouve = true;
+
     match commande {
         "signalements" => signalements(db).await?,
         "photos" => photos(db).await?,
@@ -49,7 +52,7 @@ pub async fn executer(
 
         "clore" => {
             let dossier = exiger(un, "clore <dossier> [note]")?;
-            dire(
+            trouve &= dire(
                 console::clore(db, dossier, deux.as_deref()).await?,
                 "dossier clos",
                 "ce dossier était déjà clos",
@@ -60,7 +63,7 @@ pub async fn executer(
         "suspendre" => {
             let compte = exiger(un, "suspendre <compte> <motif>")?;
             let motif = exiger_motif(deux, "suspendre <compte> <motif>")?;
-            dire(
+            trouve &= dire(
                 console::suspendre(db, compte, &motif).await?,
                 "compte suspendu",
                 "ce compte n'est pas dans un état où la suspension s'applique",
@@ -71,7 +74,7 @@ pub async fn executer(
 
         "retablir" => {
             let compte = exiger(un, "retablir <compte>")?;
-            dire(
+            trouve &= dire(
                 console::retablir(db, compte).await?,
                 "suspension levée",
                 "ce compte n'était pas suspendu",
@@ -83,7 +86,7 @@ pub async fn executer(
         "verifier" => {
             let compte = exiger(un, "verifier <compte> <motif>")?;
             let motif = exiger_motif(deux, "verifier <compte> <motif>")?;
-            dire(
+            trouve &= dire(
                 console::verifier(db, compte, &motif).await?,
                 "badge posé",
                 "ce profil portait déjà le badge",
@@ -95,7 +98,7 @@ pub async fn executer(
         "refuser-verif" => {
             let compte = exiger(un, "refuser-verif <compte> <motif>")?;
             let motif = exiger_motif(deux, "refuser-verif <compte> <motif>")?;
-            dire(
+            trouve &= dire(
                 console::refuser_verification(db, compte, &motif).await?,
                 "demande refusée, motif consigné",
                 "ce compte n'a pas de demande en attente",
@@ -106,7 +109,7 @@ pub async fn executer(
         "deverifier" => {
             let compte = exiger(un, "deverifier <compte> <motif>")?;
             let motif = exiger_motif(deux, "deverifier <compte> <motif>")?;
-            dire(
+            trouve &= dire(
                 console::deverifier(db, compte, &motif).await?,
                 "badge retiré",
                 "ce profil ne portait pas le badge",
@@ -117,7 +120,7 @@ pub async fn executer(
 
         "photo-ok" => {
             let compte = exiger(un, "photo-ok <compte>")?;
-            dire(
+            trouve &= dire(
                 console::photo_valider(db, compte).await?,
                 "photo gardée et marquée examinée",
                 "ce compte n'a pas de photo en attente d'examen",
@@ -127,7 +130,7 @@ pub async fn executer(
 
         "photo-retirer" => {
             let compte = exiger(un, "photo-retirer <compte>")?;
-            dire(
+            trouve &= dire(
                 console::photo_retirer(db, compte).await?,
                 "photo retirée et octets effacés",
                 "ce compte n'a pas de photo",
@@ -136,7 +139,20 @@ pub async fn executer(
             oublier(cache, compte).await;
         }
 
-        _ => println!("{AIDE}"),
+        // `console` tout court demande l'aide : ce n'est pas une erreur.
+        "" => println!("{AIDE}"),
+
+        // Une commande inconnue en est une. Elle affichait l'aide et sortait
+        // avec succès : une faute de frappe dans un script passait pour un
+        // geste accompli.
+        autre => {
+            eprintln!("{AIDE}");
+            anyhow::bail!("commande inconnue : « {autre} »");
+        }
+    }
+
+    if !trouve {
+        anyhow::bail!("le geste n'a rien visé : aucun compte ou dossier ne porte cet identifiant");
     }
     Ok(())
 }
@@ -153,12 +169,24 @@ fn exiger_motif(valeur: Option<String>, usage: &str) -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Il faut un motif : weave-api console {usage}"))
 }
 
-fn dire(issue: Issue, fait: &str, deja: &str, introuvable: &str) {
+/// Annonce l'issue d'un geste, et dit si la cible existait.
+///
+/// Le retour n'est pas décoratif : il devient le code de sortie. Un geste posé
+/// sur un identifiant qui n'existe pas ne fait rien, et le dire seulement à
+/// l'écran laissait la commande réussir — une console de modération se scripte
+/// et s'appelle depuis un téléphone, et « rien ne porte cet identifiant » doit
+/// se distinguer de « c'est fait » autrement que par la lecture.
+///
+/// `Deja` n'est pas un échec : reposer le même geste est sans effet et c'est
+/// voulu. Seule une cible absente l'est.
+#[must_use]
+fn dire(issue: Issue, fait: &str, deja: &str, introuvable: &str) -> bool {
     match issue {
         Issue::Fait => println!("  • {fait}"),
         Issue::Deja => println!("  • rien à faire : {deja}"),
         Issue::Introuvable => println!("  • {introuvable}"),
     }
+    !matches!(issue, Issue::Introuvable)
 }
 
 /// Oublie le résumé d'identité et le fil d'un compte.
@@ -248,4 +276,142 @@ async fn photos(db: &DatabaseConnection) -> anyhow::Result<()> {
         println!();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::Cache;
+    use crate::tests::base_de_test;
+    use sea_orm::{ActiveModelTrait, Set};
+
+    /// Ce module n'avait aucun test — son propre en-tête le disait : « Les
+    /// tests éprouvent les gestes, pas l'affichage. » C'est vrai de la mise en
+    /// forme ; ça ne l'est pas du CODE DE SORTIE, qui n'est pas de l'affichage
+    /// mais ce qu'un script lit.
+    ///
+    /// Une console de modération s'appelle depuis `heroku run`, souvent depuis
+    /// un téléphone, parfois depuis un script. Une commande qui ne fait rien et
+    /// sort avec succès est le pire des retours : on croit avoir suspendu un
+    /// compte.
+    async fn cache_de_test() -> ConnectionManager {
+        crate::cache::connecter(&Cache {
+            url: std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
+            tls_insecure: false,
+        })
+        .await
+        .expect("Redis local requis")
+    }
+
+    async fn compte(db: &DatabaseConnection, id: &str) {
+        crate::entities::accounts::ActiveModel {
+            id: Set(id.to_string()),
+            email: Set(format!("{id}@exemple.test")),
+            email_hash: Set(format!("h-{id}")),
+            handle: Set(id.to_string()),
+            display_name: Set(format!("{id} le prénom")),
+            birth_date: Set(chrono::NaiveDate::from_ymd_opt(1995, 1, 1)
+                .expect("date valide")
+                .and_hms_opt(0, 0, 0)
+                .expect("heure valide")),
+            status: Set("active".to_string()),
+            timezone: Set("Europe/Paris".to_string()),
+            locale: Set("fr".to_string()),
+            verified: Set(false),
+            last_seen_at: Set(None),
+            last_bilan_at: Set(None),
+            deletion_requested_at: Set(None),
+            created_at: Set(chrono::Utc::now().naive_utc()),
+            updated_at: Set(chrono::Utc::now().naive_utc()),
+        }
+        .insert(db)
+        .await
+        .expect("compte inséré");
+    }
+
+    fn args(mots: &[&str]) -> Vec<String> {
+        mots.iter().map(|m| (*m).to_string()).collect()
+    }
+
+    /// Une commande inconnue échoue.
+    ///
+    /// Elle affichait l'aide et sortait avec succès : une faute de frappe dans
+    /// un script passait pour un geste accompli.
+    #[tokio::test]
+    async fn une_commande_inconnue_echoue() {
+        let db = base_de_test().await;
+        let cache = cache_de_test().await;
+
+        assert!(
+            executer(&db, &cache, &args(&["suspendr"])).await.is_err(),
+            "« suspendr » ressemble à « suspendre » : c'est exactement la faute \
+             qu'un code de sortie doit attraper"
+        );
+    }
+
+    /// `console` sans argument demande l'aide : ce n'est pas une erreur.
+    #[tokio::test]
+    async fn l_aide_seule_reussit() {
+        let db = base_de_test().await;
+        let cache = cache_de_test().await;
+        assert!(executer(&db, &cache, &[]).await.is_ok());
+    }
+
+    /// Un geste posé sur un identifiant qui n'existe pas échoue.
+    ///
+    /// Il n'écrit rien — c'est correct — mais il sortait avec succès. Un
+    /// modérateur qui suspend le mauvais identifiant croyait avoir agi.
+    #[tokio::test]
+    async fn un_geste_sur_un_compte_inexistant_echoue() {
+        let db = base_de_test().await;
+        let cache = cache_de_test().await;
+
+        for commande in [
+            args(&["suspendre", "personne", "un", "motif"]),
+            args(&["retablir", "personne"]),
+            args(&["verifier", "personne", "un", "motif"]),
+            args(&["photo-ok", "personne"]),
+        ] {
+            assert!(
+                executer(&db, &cache, &commande).await.is_err(),
+                "« {} » a réussi alors qu'elle n'a rien visé",
+                commande.join(" ")
+            );
+        }
+    }
+
+    /// Et un geste sur un compte qui existe réussit.
+    ///
+    /// Sans ce test, faire échouer tout le reste passerait aussi.
+    #[tokio::test]
+    async fn un_geste_sur_un_compte_reel_reussit() {
+        let db = base_de_test().await;
+        let cache = cache_de_test().await;
+        compte(&db, "c_console").await;
+
+        executer(
+            &db,
+            &cache,
+            &args(&["suspendre", "c_console", "un", "motif"]),
+        )
+        .await
+        .expect("la suspension d'un compte existant doit réussir");
+
+        // Reposer le même geste ne change rien, et n'est pas une erreur.
+        executer(
+            &db,
+            &cache,
+            &args(&["suspendre", "c_console", "un", "motif"]),
+        )
+        .await
+        .expect("reposer un geste sans effet n'est pas un échec");
+
+        // Et les listes, qui ne visent personne, réussissent toujours.
+        for liste in ["signalements", "verifications", "photos"] {
+            executer(&db, &cache, &args(&[liste]))
+                .await
+                .unwrap_or_else(|e| panic!("« {liste} » a échoué : {e}"));
+        }
+    }
 }
