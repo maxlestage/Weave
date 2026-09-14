@@ -1781,3 +1781,104 @@ fn empiler_le_rust(repertoire: &std::path::Path, sortie: &mut String) {
         }
     }
 }
+
+/// Ce que le serveur pousse sur l'écran verrouillé est ce que l'appareil sait
+/// lire.
+///
+/// Trois accords tiennent une Live Activity, et aucun n'était gardé.
+///
+///  • `attributes-type` est repris **tel quel** par ActivityKit pour retrouver
+///    le type à instancier. Le commentaire de `WeaveActivityAttributes` le dit
+///    déjà — « le renommer casse le démarrage à distance » — mais rien ne
+///    l'empêchait.
+///  • `attributes` doit porter les propriétés stockées de ce type. Il n'y en a
+///    qu'une, et une clé absente fait échouer le démarrage.
+///  • `content-state` doit porter celles de `ContentState`. C'est le même
+///    piège que le fil : une énumération `Codable` non facultative, ou un champ
+///    manquant, et rien ne s'affiche — sur un écran verrouillé, où personne ne
+///    verra jamais l'erreur.
+#[test]
+fn la_live_activity_pousse_ce_que_l_appareil_sait_lire() {
+    let modeles = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../ios/WeaveKit/Sources/WeaveKit/Models/WeaveActivityAttributes.swift");
+    if !modeles.is_file() {
+        eprintln!(
+            "modèle iOS absent en {} — accord non vérifié",
+            modeles.display()
+        );
+        return;
+    }
+    let swift = std::fs::read_to_string(&modeles).expect("modèle lisible");
+    let rust = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/live_activity.rs"),
+    )
+    .expect("live_activity.rs lisible");
+
+    // 1. Le nom du type, tel qu'ActivityKit le cherche.
+    let annonce = rust
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("const TYPE_ATTRIBUTS: &str = \""))
+        .and_then(|l| l.split('"').next())
+        .expect("« TYPE_ATTRIBUTS » a disparu du serveur");
+    assert!(
+        swift.contains(&format!("public struct {annonce}:")),
+        "le serveur annonce « {annonce} », que les modèles iOS ne déclarent pas"
+    );
+
+    // 2. Les attributs du démarrage.
+    //
+    // `proprietes_swift` s'arrête au premier « \n} », ce qui, ici, tombe sur la
+    // fin de `ContentState`. On repart donc de la fin de ce type imbriqué.
+    let apres_content_state = swift
+        .find("    public let accountHandle")
+        .expect("« accountHandle » a disparu");
+    let attributs_swift: Vec<String> = proprietes_swift(
+        &swift[apres_content_state..],
+        "    public let accountHandle",
+    )
+    .into_iter()
+    .map(|(nom, _)| nom)
+    .collect();
+    assert_eq!(
+        attributs_swift,
+        vec!["accountHandle".to_string()],
+        "les attributs du type ont changé sans que le serveur suive"
+    );
+    for attribut in &attributs_swift {
+        assert!(
+            rust.contains(&format!("\"{attribut}\"")),
+            "le serveur n'envoie pas « {attribut} » dans « attributes » : \
+             le démarrage à distance échouera"
+        );
+    }
+
+    // 3. L'état dynamique.
+    // Lues à la main plutôt qu'avec `proprietes_swift` : ce helper s'arrête au
+    // premier « \n} », qui ferme ici le type ENGLOBANT et non le type imbriqué.
+    // Le corps de `ContentState` s'arrête juste avant `accountHandle`.
+    let debut_etat = swift
+        .find("public struct ContentState")
+        .expect("« ContentState » a disparu");
+    let attendues: std::collections::BTreeSet<String> = swift[debut_etat..apres_content_state]
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("public let "))
+        .filter_map(|l| l.split_once(':'))
+        // Une propriété calculée n'est pas décodée.
+        .filter(|(_, reste)| !reste.contains('{'))
+        .map(|(nom, _)| nom.trim().to_string())
+        .collect();
+    assert!(
+        attendues.len() >= 5,
+        "lecture de « ContentState » suspecte : {attendues:?}"
+    );
+
+    let envoyees = champs_serialises(&rust, "Etat");
+    let manquantes: Vec<&String> = attendues.difference(&envoyees).collect();
+    assert!(
+        manquantes.is_empty(),
+        "« content-state » n'a pas {manquantes:?} — l'appareil ne décodera rien, \
+         et l'écran verrouillé restera sur l'état d'avant.\n\
+         envoyées : {envoyees:?}"
+    );
+}
