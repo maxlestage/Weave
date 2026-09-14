@@ -46,6 +46,7 @@ await ecrireLesAccueils(resultat);
 await ecrirePagesJuridiques(resultat);
 await ecrireFichiersDeReferencement();
 await verifierQu_AucuneAdresseN_EstEcriteEnDur();
+await verifierQueLesFilsSeLisent();
 avertirDesMentionsIncompletes();
 
 /*
@@ -487,6 +488,68 @@ async function ecrireFichiersDeReferencement() {
  * qu'un gabarit oublié se publie tout seul — et qu'une mention légale
  * incomplète est pénalement sanctionnée.
  */
+/*
+ * Les six fils doivent pouvoir servir de TEXTE.
+ *
+ * Ils le font partout : titres de cartes, prix à l'unité, libellés d'étapes.
+ * Deux d'entre eux ne le pouvaient pas — mandarine donnait 3,50 de contraste
+ * sur une carte blanche et safran 3,25, là où un texte de cette taille en
+ * réclame 4,5. Le site paraissait normal : une couleur un peu pâle ne
+ * ressemble pas à un défaut, et rien ne la distingue des quatre autres tant
+ * qu'on ne la mesure pas.
+ *
+ * Le contrôle porte sur le thème CLAIR seul. Le thème sombre pose les fils sur
+ * de l'encre, où ils sont largement au-dessus du seuil — et ses valeurs sont
+ * d'ailleurs des variantes distinctes.
+ */
+async function verifierQueLesFilsSeLisent() {
+  const css = await Bun.file(`${racine}src/styles.css`).text();
+
+  const couleur = (nom: string) => {
+    const trouve = css.match(new RegExp(`--color-${nom}:\\s*(#[0-9a-fA-F]{6})`));
+    if (!trouve) throw new Error(`La couleur « ${nom} » a disparu de la feuille de style.`);
+    return trouve[1]!;
+  };
+
+  // Le fond le plus clair sur lequel un fil sert de texte : la carte.
+  const carte = css.match(/--carte:\s*(#[0-9a-fA-F]{6})/)?.[1];
+  if (!carte) throw new Error("La couleur des cartes a disparu de la feuille de style.");
+
+  const canal = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (hex: string) => {
+    const n = Number.parseInt(hex.slice(1), 16);
+    return (
+      0.2126 * canal((n >> 16) & 255) + 0.7152 * canal((n >> 8) & 255) + 0.0722 * canal(n & 255)
+    );
+  };
+  const contraste = (a: string, b: string) => {
+    const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p) as [number, number];
+    return (x + 0.05) / (y + 0.05);
+  };
+
+  // 4,5 : le seuil d'un texte ordinaire. Les fils servent aussi à du texte de
+  // 14 px, qui ne bénéficie d'aucun assouplissement.
+  const SEUIL = 4.5;
+  const fils = ["framboise", "mandarine", "safran", "menthe", "ocean", "iris"];
+
+  const trop_pales = fils
+    .map((nom) => ({ nom, valeur: couleur(nom), mesure: contraste(couleur(nom), carte) }))
+    .filter(({ mesure }) => mesure < SEUIL);
+
+  if (trop_pales.length > 0) {
+    console.error("");
+    console.error("  ✗ Ces fils ne se lisent pas en texte sur une carte :");
+    for (const { nom, valeur, mesure } of trop_pales) {
+      console.error(`      ${nom.padEnd(10)} ${valeur}  ${mesure.toFixed(2)} < ${SEUIL}`);
+    }
+    console.error("    Un fil sert de titre et de prix : il doit se lire, pas seulement se voir.");
+    process.exit(1);
+  }
+}
+
 /*
  * Refuse la construction si une page nomme notre propre adresse en dur.
  *
