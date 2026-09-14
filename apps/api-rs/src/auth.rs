@@ -250,10 +250,58 @@ mod tests {
         assert!(lire_jeton(SECRET, &franchement_expire).is_none());
     }
 
-    /// Un jeton « alg: none » ne doit jamais être accepté : c'est la faille
-    /// classique des bibliothèques JWT mal configurées.
+    /// Un jeton qu'on n'a pas signé est refusé, quelle qu'en soit la forme.
+    ///
+    /// Le test qui gardait ce terrain interrogeait `Validation::default()` —
+    /// le réglage par défaut de la BIBLIOTHÈQUE, pas le nôtre. Il serait resté
+    /// vert si `lire_jeton` s'était mis à employer d'autres règles : il
+    /// décrivait une dépendance, il ne gardait pas un chemin.
+    ///
+    /// Celui-ci forge trois jetons — signature vide, absente, quelconque — et
+    /// les passe à `lire_jeton`, qui est ce qu'un attaquant atteindrait.
+    ///
+    /// Ce qu'il prouve exactement : c'est la VÉRIFICATION DE SIGNATURE qui les
+    /// refuse. Vérifié en la retirant — les trois formes passaient alors.
+    /// L'en-tête « alg: none » n'y est pour rien : `jsonwebtoken` n'a pas de
+    /// variante `None` dans son énumération d'algorithmes, et ne pourrait donc
+    /// pas l'accepter même mal réglé. Le dire évite de croire ce test plus
+    /// large qu'il n'est.
     #[test]
-    fn l_algorithme_est_verrouille_sur_hs256() {
+    fn un_jeton_sans_signature_est_refuse() {
+        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let entete = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
+        let charge = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&Claims {
+                sub: "cmp_001".to_string(),
+                exp: (Utc::now() + chrono::Duration::seconds(900)).timestamp(),
+                iat: Utc::now().timestamp(),
+                iss: EMETTEUR.to_string(),
+                aud: AUDIENCE.to_string(),
+            })
+            .expect("charge sérialisable"),
+        );
+
+        // Trois formes de la même attaque : signature vide, signature absente,
+        // et une signature quelconque.
+        for forge in [
+            format!("{entete}.{charge}."),
+            format!("{entete}.{charge}"),
+            format!("{entete}.{charge}.nimportequoi"),
+        ] {
+            assert!(
+                lire_jeton(SECRET, &forge).is_none(),
+                "un jeton « alg: none » a été accepté : {forge}"
+            );
+        }
+    }
+
+    /// Et les règles employées sont bien celles qu'on croit.
+    ///
+    /// Complément du test ci-dessus, pas son remplaçant : celui-là dit
+    /// POURQUOI la forgerie échoue, celui-ci dit QU'ELLE échoue.
+    #[test]
+    fn les_regles_exigent_hs256_et_une_expiration() {
         let regles = Validation::default();
         assert_eq!(regles.algorithms, vec![jsonwebtoken::Algorithm::HS256]);
         assert!(regles.required_spec_claims.contains("exp"));
