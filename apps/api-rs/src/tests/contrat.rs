@@ -1193,3 +1193,168 @@ fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
         }
     }
 }
+
+/// La position est arrondie SUR L'APPAREIL, comme la politique le promet.
+///
+/// La politique de confidentialité le dit en toutes lettres, et en gras : « La
+/// position est arrondie sur votre appareil avant l'envoi […] Nos serveurs ne
+/// disposent à aucun moment de vos coordonnées exactes : ce n'est pas une
+/// politique de rétention, c'est une donnée que nous n'avons pas. »
+///
+/// L'application envoyait les coordonnées exactes, et le serveur les
+/// arrondissait au dépôt. L'affirmation était donc fausse : les coordonnées
+/// exactes traversaient le réseau, entraient dans le corps de la requête, et
+/// passaient par tout ce qui journalise une requête.
+///
+/// Rien ne l'aurait signalé. Les deux bouts fonctionnaient, la base ne
+/// contenait bien que des positions arrondies, et seul le trajet mentait.
+#[test]
+fn la_position_est_arrondie_avant_de_quitter_l_appareil() {
+    let client = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/ios/WeaveKit/Sources/WeaveKit/Networking/WeaveAPI.swift");
+    let swift = std::fs::read_to_string(&client)
+        .unwrap_or_else(|e| panic!("WeaveAPI.swift illisible en {} : {e}", client.display()));
+
+    for champ in ["latitude", "longitude"] {
+        let attendu = format!("{champ}: Self.arrondirPosition({champ})");
+        assert!(
+            swift.contains(&attendu),
+            "« {champ} » part sans être arrondie : la politique promet le contraire"
+        );
+    }
+
+    // La grille du client est celle du serveur.
+    //
+    // Arrondir sur l'appareil à un pas plus fin laisserait le serveur
+    // ré-arrondir et déplacer le point : l'arrondi de l'appareil ne
+    // garantirait plus rien de ce qui est stocké.
+    let pas_client: f64 = swift
+        .split("static let pasDeLaGrillePosition = ")
+        .nth(1)
+        .and_then(|reste| reste.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
+        .expect("le pas de la grille a disparu du client");
+
+    let serveur = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/me.rs"),
+    )
+    .expect("me.rs lisible");
+    let facteur: f64 = serveur
+        .split("let lat = (corps.latitude * ")
+        .nth(1)
+        .and_then(|reste| reste.split(')').next())
+        .and_then(|v| v.trim().parse().ok())
+        .expect("l'arrondi du serveur a changé de forme");
+
+    assert!(
+        (pas_client - 1.0 / facteur).abs() < f64::EPSILON,
+        "l'appareil arrondit au {pas_client}° et le serveur au {}° : le serveur déplacerait le point",
+        1.0 / facteur
+    );
+}
+
+/// Chaque autorisation déclarée correspond à une API réellement appelée.
+///
+/// Un texte d'autorisation n'est pas une intention. C'est ce qu'iOS affiche à
+/// l'utilisateur au moment de la demande, et c'est ce dont se nourrit
+/// l'étiquette de confidentialité de la fiche App Store. En déclarer une que
+/// le code n'emploie jamais fait annoncer une collecte qui n'a pas lieu.
+///
+/// L'application en portait deux :
+///
+/// - la POSITION, avec un texte promettant une valeur « arrondie au kilomètre
+///   avant d'être enregistrée » — alors qu'aucune autorisation de localisation
+///   n'est demandée nulle part. La ville est saisie, puis géocodée sur
+///   l'appareil ;
+/// - le MICROPHONE, pour « un fragment vocal de huit secondes » qui n'existe
+///   pas : rien n'importe AVFoundation.
+///
+/// Rien ne l'aurait signalé. Une autorisation déclarée et jamais demandée ne
+/// casse aucune compilation et ne fait échouer aucun écran — elle se voit sur
+/// la fiche App Store, c'est-à-dire trop tard.
+#[test]
+fn chaque_autorisation_declaree_est_vraiment_employee() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
+    let plist = std::fs::read_to_string(ios.join("Weave/Info.plist")).expect("Info.plist lisible");
+
+    let mut sources = String::new();
+    empiler_le_swift(&ios, &mut sources);
+    assert!(sources.len() > 10_000, "le parcours du Swift a dérivé");
+
+    // Pour chaque autorisation, ce qu'il faudrait appeler pour la déclencher.
+    // Une autorisation absente de cette table et présente dans le `plist`
+    // arrête le test : c'est le cas qu'on n'a pas su juger.
+    let attendus: [(&str, &[&str]); 5] = [
+        (
+            "NSLocationWhenInUseUsageDescription",
+            &["CLLocationManager"],
+        ),
+        (
+            "NSLocationAlwaysAndWhenInUseUsageDescription",
+            &["CLLocationManager"],
+        ),
+        (
+            "NSMicrophoneUsageDescription",
+            &["AVAudioRecorder", "AVAudioSession", "AVCaptureDevice"],
+        ),
+        (
+            "NSCameraUsageDescription",
+            &["UIImagePickerController", "AVCaptureSession"],
+        ),
+        (
+            "NSPhotoLibraryUsageDescription",
+            &[
+                "PhotosPicker",
+                "PHPicker",
+                "PHPhotoLibrary",
+                "UIImagePickerController",
+            ],
+        ),
+    ];
+
+    for cle in plist
+        .lines()
+        .filter_map(|ligne| ligne.trim().strip_prefix("<key>"))
+        .filter_map(|ligne| ligne.strip_suffix("</key>"))
+        .filter(|cle| cle.ends_with("UsageDescription"))
+    {
+        let Some((_, marqueurs)) = attendus.iter().find(|(nom, _)| *nom == cle) else {
+            panic!("« {cle} » est déclarée, et ce test ne sait pas à quelle API la rapporter");
+        };
+        assert!(
+            marqueurs.iter().any(|m| sources.contains(m)),
+            "« {cle} » est déclarée mais aucune de ses API n'est appelée : \
+             l'étiquette App Store annoncera une collecte qui n'a pas lieu"
+        );
+    }
+}
+
+/// Et la réciproque : une API employée sans autorisation déclarée.
+///
+/// C'est l'erreur inverse, et elle ne se voit qu'à l'exécution : iOS TUE
+/// l'application au moment de la demande quand le texte manque. Pas une
+/// erreur de compilation, pas un avertissement — un plantage, sur l'appareil
+/// d'un utilisateur, à l'écran précis où l'on demandait l'autorisation.
+#[test]
+fn aucune_api_sensible_n_est_employee_sans_autorisation() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
+    let plist = std::fs::read_to_string(ios.join("Weave/Info.plist")).expect("Info.plist lisible");
+
+    let mut sources = String::new();
+    empiler_le_swift(&ios, &mut sources);
+
+    for (marqueur, cle) in [
+        ("CLLocationManager", "NSLocationWhenInUseUsageDescription"),
+        ("AVAudioRecorder", "NSMicrophoneUsageDescription"),
+        ("AVCaptureSession", "NSCameraUsageDescription"),
+        ("PHPhotoLibrary", "NSPhotoLibraryUsageDescription"),
+    ] {
+        if sources.contains(marqueur) {
+            assert!(
+                plist.contains(cle),
+                "« {marqueur} » est appelée sans « {cle} » : iOS tuera l'application \
+                 au moment de la demande"
+            );
+        }
+    }
+}

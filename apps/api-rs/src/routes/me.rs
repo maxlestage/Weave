@@ -293,9 +293,15 @@ async fn deposer_fiche(
         }
     }
 
-    // Les coordonnées sont arrondies au dépôt : Weave ne conserve jamais une
-    // position plus précise que le kilomètre. L'arrondi est fait ici, pas à la
-    // lecture — ce qui n'est pas enregistré ne peut pas fuir.
+    // Les coordonnées sont arrondies au dépôt, et non à la lecture : ce qui
+    // n'est pas enregistré ne peut pas fuir.
+    //
+    // C'est le SECOND arrondi. L'application arrondit déjà sur l'appareil, sur
+    // la même grille, parce que la politique de confidentialité le promet :
+    // « une donnée que nous n'avons pas ». Celui-ci ne la contredit pas — il
+    // ne déplace rien d'une valeur déjà sur la grille — et couvre ce que le
+    // client ne garantit jamais : une version ancienne, un client réécrit, un
+    // appel fait à la main.
     let lat = (corps.latitude * 100.0).round() / 100.0;
     let lon = (corps.longitude * 100.0).round() / 100.0;
 

@@ -118,6 +118,20 @@ pub fn poser_l_origine(dist: Option<&str>, origine: &str) {
         }
     }
 
+    // Les adresses effectivement présentes — c'est le plan du site.
+    //
+    // Elles sont relevées ICI plutôt que déduites d'une liste écrite ailleurs :
+    // un plan doit n'énumérer que ce qui répond. Une page annoncée mais
+    // absente rend 404, et une 404 dans un plan fait désindexer le reste.
+    let adresses: Vec<String> = pages
+        .iter()
+        .filter(|(chemin, _)| chemin.is_file())
+        .map(|(_, page)| match page {
+            Page::Accueil(langue) => chemin_de_langue(langue),
+            Page::Juridique(slug) => format!("/{slug}"),
+        })
+        .collect();
+
     for (chemin, page) in pages {
         match poser_sur(&chemin, origine, &page) {
             Ok(true) => posees += 1,
@@ -135,6 +149,71 @@ pub fn poser_l_origine(dist: Option<&str>, origine: &str) {
             "adresse publique posée sur les pages (SITE.origine absente à la construction)"
         );
     }
+
+    poser_le_plan_du_site(racine, origine, &adresses);
+}
+
+/// Écrit `sitemap.xml`, et complète `robots.txt`, quand la construction n'a
+/// pas pu le faire.
+///
+/// Une balise `<loc>` n'accepte que des URL absolues, et la ligne `Sitemap:`
+/// de `robots.txt` non plus. Faute d'origine, la construction OMET donc le
+/// plan entièrement — à juste titre : un plan qui n'énumère que des adresses
+/// mortes ne fait pas indexer les pages, il les fait retirer.
+///
+/// Sur Heroku, l'origine manque toujours à la construction. Le site partait
+/// donc sans aucun plan, et son `robots.txt` sans la ligne qui le désigne.
+/// C'est le même raisonnement que pour `canonical` et `og:url` : l'origine est
+/// un fait de déploiement, et c'est ici qu'elle se connaît.
+///
+/// Cela compte d'autant plus depuis qu'il y a trois accueils : ils n'ont aucun
+/// lien entrant, et le plan est ce qui les fait découvrir.
+///
+/// Rien n'est écrasé : un plan déjà produit par la construction vient d'une
+/// origine renseignée à la main, et elle fait foi.
+fn poser_le_plan_du_site(racine: &Path, origine: &str, adresses: &[String]) {
+    let plan = racine.join("sitemap.xml");
+    if plan.exists() {
+        return;
+    }
+
+    let mut lignes = vec![
+        r#"<?xml version="1.0" encoding="UTF-8"?>"#.to_string(),
+        r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">"#.to_string(),
+    ];
+    for adresse in adresses {
+        lignes.push("  <url>".to_string());
+        lignes.push(format!("    <loc>{origine}{adresse}</loc>"));
+        lignes.push("  </url>".to_string());
+    }
+    lignes.push("</urlset>".to_string());
+    lignes.push(String::new());
+
+    if let Err(erreur) = std::fs::write(&plan, lignes.join("\n")) {
+        tracing::warn!(erreur = %erreur, "plan du site non écrit");
+        return;
+    }
+
+    // `robots.txt` est écrit par la construction, mais sans la ligne
+    // `Sitemap:` — elle exige une adresse absolue. Un moteur cherche le plan à
+    // la racine de lui-même ; la ligne le lui dit, et coûte un octet.
+    let robots = racine.join("robots.txt");
+    match std::fs::read_to_string(&robots) {
+        Ok(contenu) if !contenu.contains("Sitemap:") => {
+            let complete = format!("{}\nSitemap: {origine}/sitemap.xml\n", contenu.trim_end());
+            if let Err(erreur) = std::fs::write(&robots, complete) {
+                tracing::warn!(erreur = %erreur, "robots.txt non complété");
+            }
+        }
+        Ok(_) => {}
+        Err(erreur) => tracing::warn!(erreur = %erreur, "robots.txt illisible"),
+    }
+
+    tracing::info!(
+        adresses = adresses.len(),
+        origine,
+        "plan du site écrit au démarrage (SITE.origine absente à la construction)"
+    );
 }
 
 /// Ce qu'une page est, et donc l'adresse qu'elle porte.
@@ -446,6 +525,75 @@ mod tests {
             "la langue par défaut du site n'est pas « {} »",
             LANGUES[0]
         );
+    }
+
+    /// Faute de plan à la construction, le démarrage en écrit un.
+    ///
+    /// Sur Heroku, `SITE.origine` manque toujours à la construction : le site
+    /// partait donc SANS AUCUN plan, et son `robots.txt` sans la ligne qui le
+    /// désigne. Trois accueils sans lien entrant n'avaient plus rien pour se
+    /// faire découvrir.
+    #[test]
+    fn le_plan_du_site_est_ecrit_au_demarrage_quand_il_manque() {
+        let dist = dist_de_test("plan");
+        std::fs::write(dist.join("robots.txt"), "User-agent: *\nAllow: /\n").expect("robots");
+
+        poser_l_origine(Some(&dist.display().to_string()), "https://weave.example");
+
+        let plan = std::fs::read_to_string(dist.join("sitemap.xml")).expect("plan écrit");
+
+        // Les trois accueils et la page juridique, en adresses absolues.
+        for attendue in [
+            "https://weave.example/",
+            "https://weave.example/en/",
+            "https://weave.example/es/",
+            "https://weave.example/cgu",
+        ] {
+            assert!(
+                plan.contains(&format!("<loc>{attendue}</loc>")),
+                "« {attendue} » manque au plan : {plan}"
+            );
+        }
+
+        let robots = std::fs::read_to_string(dist.join("robots.txt")).expect("robots relu");
+        assert!(
+            robots.contains("Sitemap: https://weave.example/sitemap.xml"),
+            "robots.txt ne désigne pas le plan : {robots}"
+        );
+    }
+
+    /// Le plan n'énumère que ce qui répond.
+    ///
+    /// Une adresse annoncée mais absente rend 404, et une 404 dans un plan ne
+    /// coûte pas que cette page : elle fait douter du reste. Le plan se relève
+    /// donc sur le disque plutôt que sur une liste écrite ailleurs.
+    #[test]
+    fn le_plan_n_annonce_pas_une_page_absente() {
+        let dist = dist_de_test("plan-partiel");
+        // Pas d'espagnol dans cette construction.
+        std::fs::remove_dir_all(dist.join("es")).expect("retrait de l'espagnol");
+
+        poser_l_origine(Some(&dist.display().to_string()), "https://weave.example");
+
+        let plan = std::fs::read_to_string(dist.join("sitemap.xml")).expect("plan écrit");
+        assert!(plan.contains("<loc>https://weave.example/en/</loc>"));
+        assert!(
+            !plan.contains("/es/"),
+            "le plan annonce une page qui n'existe pas : {plan}"
+        );
+    }
+
+    /// Un plan déjà produit par la construction fait foi : on ne repasse pas.
+    #[test]
+    fn un_plan_deja_ecrit_n_est_pas_touche() {
+        let dist = dist_de_test("plan-deja");
+        let deja = "<?xml version=\"1.0\"?><urlset>écrit à la construction</urlset>";
+        std::fs::write(dist.join("sitemap.xml"), deja).expect("plan");
+
+        poser_l_origine(Some(&dist.display().to_string()), "https://weave.example");
+
+        let relu = std::fs::read_to_string(dist.join("sitemap.xml")).expect("plan relu");
+        assert_eq!(relu, deja, "la construction fait foi quand elle a parlé");
     }
 
     /// Un site absent n'empêche pas le service de démarrer.

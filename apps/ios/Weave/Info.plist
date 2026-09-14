@@ -47,13 +47,27 @@
   </array>
 
   <!--
-    Weave ne demande la localisation qu'au moment de composer les fils, et
-    n'en conserve qu'une valeur arrondie au kilomètre.
+    Il n'y a ICI que les autorisations que l'application demande vraiment.
+    Un texte d'autorisation n'est pas une intention : c'est ce qu'Apple affiche
+    à l'utilisateur, et ce dont l'étiquette de confidentialité de la fiche App
+    Store se nourrit. En déclarer une que le code n'emploie jamais fait
+    annoncer une collecte qui n'a pas lieu — et se fait remarquer en revue.
+
+    Deux ont été retirées :
+
+    - LA POSITION. Weave ne demande aucune autorisation de localisation. La
+      ville est SAISIE, puis convertie en coordonnées par le géocodeur du
+      système (voir `FicheView` : « Aucune autorisation, aucune position
+      exacte »). Le texte promettait une position « arrondie au kilomètre
+      avant d'être enregistrée » pour une autorisation qui n'est jamais
+      demandée.
+
+    - LE MICROPHONE. Il annonçait « un fragment vocal de huit secondes » ;
+      l'application n'enregistre aucun son, et rien dans le code n'importe
+      AVFoundation.
+
+    Un test de contrat garde désormais la correspondance dans les deux sens.
   -->
-  <key>NSLocationWhenInUseUsageDescription</key>
-  <string>Weave utilise votre position pour ne vous proposer que des personnes proches. Elle est arrondie au kilomètre avant d'être enregistrée, et jamais partagée.</string>
-  <key>NSMicrophoneUsageDescription</key>
-  <string>Pour enregistrer un fragment vocal de huit secondes, si vous le souhaitez.</string>
   <key>NSPhotoLibraryUsageDescription</key>
   <string>Pour choisir la photo de votre profil.</string>
 
