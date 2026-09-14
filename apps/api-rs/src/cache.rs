@@ -93,9 +93,18 @@ const NS: &str = "weave:v2";
 pub mod cles {
     use super::NS;
 
-    /// Fil composé pour un compte.
+    /// Le fil en cache, avec la VERSION de sa forme.
+    ///
+    /// Le contenu mis en cache est le tableau de plans déjà sérialisé. Changer
+    /// la forme d'un plan sans changer la clé ferait resservir l'ancienne
+    /// forme pendant toute la durée de vie du cache, à chaque compte qui en
+    /// avait un — et l'application n'aurait pas su la décoder.
+    ///
+    /// Cinq minutes de fil vide après une publication, ce n'est pas grave ;
+    /// mais c'est invisible depuis le serveur, et on le chercherait ailleurs.
+    /// Incrémenter ce nombre à chaque changement de forme coûte un caractère.
     pub fn fil(compte: &str) -> String {
-        format!("{NS}:feed:{compte}")
+        format!("{NS}:feed:v2:{compte}")
     }
     /// Demandes déjà envoyées aujourd'hui. Expire à minuit, heure locale.
     pub fn demandes_utilisees(compte: &str, jour: &str) -> String {
@@ -154,7 +163,7 @@ pub async fn ecrire_json<T: serde::Serialize>(
         tracing::error!(erreur = %erreur, cle, "valeur non sérialisable pour le cache");
         crate::error::AppError::new(
             crate::error::Code::Internal,
-            "Une erreur interne est survenue.",
+            crate::messages::Msg::ErreurInterne.t(),
         )
     })?;
     redis::cmd("SET")
