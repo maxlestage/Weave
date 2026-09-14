@@ -193,41 +193,48 @@ fn les_categories_de_plan_sont_les_memes_des_deux_cotes() {
 /// échouait d'un bloc, et l'écran entier tombait, pour un état qu'aucun des
 /// deux autres côtés ne connaissait.
 #[test]
-fn les_etats_de_plan_ecrits_par_l_api_sont_declares_au_contrat() {
+fn les_etats_ecrits_par_l_api_sont_declares_au_contrat() {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../packages/contracts/src/domain.ts");
     let source = std::fs::read_to_string(&chemin)
         .unwrap_or_else(|e| panic!("contrat illisible en {} : {e}", chemin.display()));
 
-    let debut = source
-        .find("export type PlanState =")
-        .expect("les états de plan ont disparu du contrat");
-    let fin = source[debut..].find(';').expect("déclaration fermée") + debut;
-    let declaration = &source[debut..fin];
-
     // Ce que l'API écrit réellement en base, relu dans ses propres sources
     // plutôt que recopié ici : une liste tenue à la main dériverait comme le
     // reste, et c'est précisément ce que ce fichier existe pour empêcher.
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut ecrits = std::collections::BTreeSet::new();
-    for etat in ETATS_CONNUS {
-        if sources_contiennent(&racine, &format!("\"{etat}\"")) {
-            ecrits.insert(*etat);
+
+    for (type_du_contrat, connus, ecran) in [
+        ("PlanState", ETATS_DE_PLAN_CONNUS, "« Mes plans »"),
+        ("RequestState", ETATS_DE_DEMANDE_CONNUS, "« Mes demandes »"),
+    ] {
+        let debut = source
+            .find(&format!("export type {type_du_contrat} ="))
+            .unwrap_or_else(|| panic!("« {type_du_contrat} » a disparu du contrat"));
+        let fin = source[debut..].find(';').expect("déclaration fermée") + debut;
+        let declaration = &source[debut..fin];
+
+        let mut ecrits = std::collections::BTreeSet::new();
+        for etat in connus {
+            if sources_contiennent(&racine, &format!("\"{etat}\"")) {
+                ecrits.insert(*etat);
+            }
         }
+
+        let absents: Vec<&str> = ecrits
+            .iter()
+            .copied()
+            .filter(|etat| !declaration.contains(&format!("\"{etat}\"")))
+            .collect();
+
+        assert!(
+            absents.is_empty(),
+            "l'API écrit des états que le contrat ne déclare pas en \
+             « {type_du_contrat} » : {absents:?}\n\
+             Le modèle iOS le décode sans repli : un état inconnu fait échouer \
+             {ecran} en entier."
+        );
     }
-
-    let absents: Vec<&str> = ecrits
-        .iter()
-        .copied()
-        .filter(|etat| !declaration.contains(&format!("\"{etat}\"")))
-        .collect();
-
-    assert!(
-        absents.is_empty(),
-        "l'API écrit des états que le contrat ne déclare pas : {absents:?}\n\
-         Le modèle iOS décode `PlanState` sans repli : un état inconnu fait \
-         échouer l'écran entier."
-    );
 }
 
 /// Les états qu'un plan peut prendre, tous côtés confondus.
@@ -235,7 +242,15 @@ fn les_etats_de_plan_ecrits_par_l_api_sont_declares_au_contrat() {
 /// Écrite ici parce qu'il faut bien un point de départ pour chercher. Le test
 /// ne vérifie pas cette liste : il vérifie que ceux qu'il retrouve dans les
 /// sources de l'API figurent au contrat.
-const ETATS_CONNUS: &[&str] = &["ouvert", "complet", "passe", "annule", "suspendu"];
+const ETATS_DE_PLAN_CONNUS: &[&str] = &["ouvert", "complet", "passe", "annule", "suspendu"];
+
+/// Les états qu'une demande peut prendre, au même titre.
+///
+/// Une demande se lit dans un tableau — « Mes demandes » les décode toutes ou
+/// aucune. Le risque est donc celui du fil, pas celui d'une ligne fautive.
+const ETATS_DE_DEMANDE_CONNUS: &[&str] = &[
+    "envoyee", "acceptee", "refusee", "expiree", "retiree", "annulee",
+];
 
 fn sources_contiennent(racine: &std::path::Path, aiguille: &str) -> bool {
     let Ok(entrees) = std::fs::read_dir(racine) else {
@@ -926,6 +941,34 @@ fn les_vocabulaires_de_l_application_ios_sont_ceux_du_contrat() {
             "Consentement.swift",
             "ConsentKind",
             liste_du_contrat(&contrat, "CONSENT_KINDS"),
+        ),
+        // Les quatre suivants tiennent les champs que le lancement traverse.
+        //
+        // `Me` porte `status` et `tier`, et l'application lit `/v1/me` avant
+        // tout le reste : un palier ou un statut que Swift ignore ne fait pas
+        // tomber un écran, il fait tomber l'ouverture. Les deux autres
+        // décodent des tableaux — une demande dans un état inconnu emporte
+        // « Mes demandes », un message d'un auteur inconnu emporte le fil de
+        // la conversation.
+        (
+            "Account.swift",
+            "AccountStatus",
+            liste_du_type(&domaine, "AccountStatus"),
+        ),
+        (
+            "Account.swift",
+            "PlanTier",
+            liste_du_contrat(&catalogue(), "PLAN_TIERS"),
+        ),
+        (
+            "Plan.swift",
+            "RequestState",
+            liste_du_type(&domaine, "RequestState"),
+        ),
+        (
+            "Plan.swift",
+            "MessageAuthor",
+            liste_du_type(&domaine, "MessageAuthor"),
         ),
     ] {
         let source = std::fs::read_to_string(racine.join(fichier))
