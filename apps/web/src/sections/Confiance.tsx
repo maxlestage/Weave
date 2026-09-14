@@ -155,10 +155,10 @@ export function Confiance() {
           </dt>
           <dd className="mt-1 text-2xl font-semibold tabular-nums">
             {t.jours(MESSAGE_RETENTION_DAYS)}
+            <span className="mt-1 block text-sm font-normal" style={{ color: "var(--texte-doux)" }}>
+              {t.apresCloture}
+            </span>
           </dd>
-          <p className="mt-1 text-sm" style={{ color: "var(--texte-doux)" }}>
-            {t.apresCloture}
-          </p>
         </div>
         <div>
           <dt className="text-sm" style={{ color: "var(--texte-doux)" }}>
@@ -166,10 +166,10 @@ export function Confiance() {
           </dt>
           <dd className="mt-1 text-2xl font-semibold tabular-nums">
             {t.jours(ACCOUNT_PURGE_DAYS)}
+            <span className="mt-1 block text-sm font-normal" style={{ color: "var(--texte-doux)" }}>
+              {t.avantPurge}
+            </span>
           </dd>
-          <p className="mt-1 text-sm" style={{ color: "var(--texte-doux)" }}>
-            {t.avantPurge}
-          </p>
         </div>
       </dl>
     </Section>

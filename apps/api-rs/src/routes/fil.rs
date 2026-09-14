@@ -13,6 +13,7 @@ use crate::{
     AppState,
     auth::{Authentifie, CompteAuthentifie},
     cache,
+    crypto::signer_url_media,
     droits::{
         Critere, demandes_restantes, droits_pour, filtre_autorise, quota_journalier, rayon_effectif,
     },
@@ -51,21 +52,54 @@ pub fn routes() -> Router<AppState> {
     Router::new().route("/v1/plans", get(lire_fil))
 }
 
+/// L'auteur d'un plan, tel que le fil le rend.
+///
+/// Imbriqué, et non aplati en `authorName` / `authorAge`. C'est la forme que
+/// l'application décode — `Author` dans `Models/Plan.swift` — et celle que
+/// rendent déjà les demandes et « Mes plans ».
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct AuteurDuFil {
+    id: String,
+    display_name: String,
+    age: i32,
+    /// Lien signé et expirable, jamais une adresse devinable.
+    photo_url: Option<String>,
+    verified: bool,
+}
+
+/// Un plan du fil, dans la forme que l'application sait décoder.
+///
+/// Elle ne la savait pas. Six clés que `Plan` déclare OBLIGATOIRES manquaient —
+/// `author`, `capacity`, `seatsLeft`, `state`, `requested`, `createdAt` — et
+/// deux autres partaient sous un nom que personne ne lisait (`placesLeft`,
+/// `alreadyRequested`).
+///
+/// `Codable` synthétise le décodage d'après les propriétés déclarées : une
+/// clé manquante pour une propriété non facultative lève `keyNotFound`, et ce
+/// n'est pas le plan qui tombe mais le tableau entier. Le fil — l'écran
+/// central du produit — n'aurait rien affiché du tout.
+///
+/// Rien ne le signalait : cette structure sérialise sans savoir qui la lit, et
+/// le modèle Swift compile seul. Les deux moitiés étaient correctes et ne
+/// s'emboîtaient pas. Un test de contrat les rapproche désormais.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct PlanDuFil {
     id: String,
+    author: AuteurDuFil,
     title: String,
     note: String,
     category: String,
     starts_at: String,
     city: String,
     distance_km: f64,
-    places_left: i32,
-    author_name: String,
-    author_age: i32,
-    author_verified: bool,
-    already_requested: bool,
+    capacity: i32,
+    seats_left: i32,
+    state: String,
+    /// Vrai si l'on a déjà demandé à venir. On ne redemande pas deux fois.
+    requested: bool,
+    created_at: String,
 }
 
 async fn lire_fil(
@@ -301,6 +335,32 @@ async fn composer(
         .map(|a| (a.id.clone(), a))
         .collect();
 
+    // Les photos des auteurs, en une requête pour tout le fil.
+    //
+    // Une par plan aurait rendu soixante allers-retours à chaque ouverture de
+    // l'application ; c'est le même lot d'identifiants que les comptes
+    // ci-dessus. Chaque adresse est signée et expire : une photo de profil ne
+    // se sert jamais depuis une adresse devinable.
+    let photos: std::collections::HashMap<String, String> = profiles::Entity::find()
+        .filter(profiles::Column::AccountId.is_in(auteurs_ids.clone()))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .filter_map(|p| {
+            let cle = p.photo_key?;
+            Some((
+                p.account_id,
+                signer_url_media(
+                    &state.config.media.base_url,
+                    &state.config.media.signing_secret,
+                    &cle,
+                    state.config.media.ttl_url_signee_secondes,
+                    0,
+                ),
+            ))
+        })
+        .collect();
+
     // Les fiches ne servent qu'au filtre par genre : ne les charger que
     // lorsqu'il est posé évite une requête à qui ne s'en sert pas.
     let genres: std::collections::HashMap<String, String> = if contexte.recherche.is_empty() {
@@ -398,17 +458,24 @@ async fn composer(
             distance,
             PlanDuFil {
                 id: ligne.id,
+                author: AuteurDuFil {
+                    id: auteur.id.clone(),
+                    display_name: auteur.display_name.clone(),
+                    age,
+                    photo_url: photos.get(&auteur.id).cloned(),
+                    verified: auteur.verified,
+                },
                 title: ligne.title,
                 note: ligne.note,
                 category: ligne.category,
                 starts_at: iso8601(ligne.starts_at.and_utc()),
                 city: ligne.city,
                 distance_km: distance,
-                places_left: places,
-                author_name: auteur.display_name.clone(),
-                author_age: age,
-                author_verified: auteur.verified,
-                already_requested: deja_demande,
+                capacity: ligne.capacity,
+                seats_left: places,
+                state: ligne.state,
+                requested: deja_demande,
+                created_at: iso8601(ligne.created_at.and_utc()),
             },
         ));
     }

@@ -49,6 +49,7 @@ const ARTICLES: readonly Article[] = [
           des critères, l'horizon de publication et les plans de groupe.
         </p>
         <Tableau
+          titre="Les paliers payants, leur prix mensuel et ce qu'ils ajoutent"
           entetes={["Palier", "Par mois", "Ce qu'il ajoute"]}
           lignes={PAYANTS.map((tier) => [
             <strong>{tier.name}</strong>,
@@ -79,6 +80,7 @@ const ARTICLES: readonly Article[] = [
           à vingt ans.
         </p>
         <Tableau
+          titre="Les achats à l'unité, leur prix et ce qu'ils donnent"
           entetes={["Achat", "Prix", "Ce qu'il donne"]}
           lignes={UNIT_SKUS.map((sku) => {
             const produit = UNIT_PRODUCTS[sku];
