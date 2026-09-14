@@ -98,6 +98,55 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ----------------------------------------------------------------
+      # Les variables qui n'ont rien à faire là
+      #
+      # Une variable de configuration est lisible par TOUT code tournant dans
+      # le dyno, et par quiconque ouvre le tableau de bord. Y poser une clé
+      # d'API Heroku transforme donc n'importe quelle exécution de code dans
+      # le dyno en contrôle de l'ensemble du compte — toutes les applications,
+      # leurs bases, leurs variables. Le déploiement n'en a aucun besoin : il
+      # lit la clé depuis les secrets du dépôt, où elle ne quitte jamais
+      # l'exécuteur GitHub.
+      #
+      # Ce contrôle ne lit aucune valeur. Il n'a besoin que des noms, et c'est
+      # tout ce qu'il regarde.
+      # ----------------------------------------------------------------
+      - name: Variables dangereuses
+        run: |
+          interdites="HEROKU_API_KEY HEROKU_OAUTH_TOKEN GITHUB_TOKEN NPM_TOKEN AWS_SECRET_ACCESS_KEY"
+          trouvees=""
+          for nom in $interdites; do
+            grep -qx "$nom" noms-config.txt && trouvees="${trouvees:+$trouvees, }$nom"
+          done
+
+          if [ -z "$trouvees" ]; then
+            echo "Aucune variable dangereuse posée sur l'application."
+            exit 0
+          fi
+
+          {
+            echo "## ⚠️ Variables à retirer"
+            echo ""
+            echo "Posées sur l'application : **$trouvees**"
+            echo ""
+            echo "Une variable de configuration est lisible par tout code tournant dans le"
+            echo "dyno, et par quiconque ouvre le tableau de bord. Une clé d'API Heroku"
+            echo "posée là donne le contrôle de **toutes** les applications du compte, pas"
+            echo "seulement de celle-ci."
+            echo ""
+            echo "### Correction"
+            echo ""
+            echo "1. Tableau de bord → **Settings → Config Vars** → retirer la variable."
+            echo "2. **Régénérer la clé** — account settings → API Key → Regenerate. Une"
+            echo "   clé qui a été exposée reste exposée tant qu'elle est valable."
+            echo "3. Recoller la nouvelle valeur dans le secret de dépôt GitHub"
+            echo "   \`HEROKU_API_KEY\`, et nulle part ailleurs."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::Variables dangereuses posées sur l'application : $trouvees — voir le récapitulatif."
+          exit 1
+
+      # ----------------------------------------------------------------
       # Les constructions
       # ----------------------------------------------------------------
       - name: Dernières constructions
