@@ -410,3 +410,106 @@ async fn le_nombre_de_plans_ouverts_est_borne() {
         maximum + 1
     );
 }
+
+/// On n'annule pas le plan de quelqu'un d'autre.
+///
+/// Le contrôle existait ; rien ne le tenait. Le retirer laissait les trois
+/// cent dix-huit tests au vert, et n'importe quel compte connecté pouvait
+/// alors annuler n'importe quel plan — et, avec lui, faire expirer toutes les
+/// demandes qui l'attendaient.
+#[tokio::test]
+async fn on_n_annule_pas_le_plan_d_un_autre() {
+    let service = Service::monter().await;
+    service.compte("c_auteur_plan", "depart").await;
+    service.compte("c_intrus", "depart").await;
+
+    plan_de(&service, "c_auteur_plan", "Un ciné-club le jeudi soir").await;
+    let plan = dernier_plan(&service, "c_auteur_plan").await;
+
+    let (statut, corps) = service
+        .delete(
+            &format!("/v1/plans/{plan}"),
+            Some(&service.jeton("c_intrus")),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::FORBIDDEN,
+        "un compte étranger a annulé ce plan : {corps}"
+    );
+
+    // Et le plan est toujours là, pour son auteur comme pour le fil.
+    assert!(
+        titres_du_fil(&service, "c_intrus")
+            .await
+            .contains(&"Un ciné-club le jeudi soir".to_string()),
+        "le plan a disparu du fil malgré le refus"
+    );
+
+    // Son auteur, lui, peut.
+    let (statut, corps) = service
+        .delete(
+            &format!("/v1/plans/{plan}"),
+            Some(&service.jeton("c_auteur_plan")),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "l'auteur ne peut plus annuler : {corps}"
+    );
+}
+
+/// On n'accepte pas une demande adressée à quelqu'un d'autre.
+///
+/// Refuser était gardé ; accepter ne l'était pas. Un compte étranger pouvait
+/// donc donner une place sur le plan d'autrui — et ouvrir la conversation qui
+/// va avec, entre deux personnes dont aucune ne l'a voulu.
+#[tokio::test]
+async fn on_n_accepte_pas_une_demande_adressee_a_un_autre() {
+    let service = Service::monter().await;
+    service.compte("c_hote_accept", "depart").await;
+    service.compte("c_invite_accept", "depart").await;
+    service.compte("c_intrus_accept", "depart").await;
+
+    plan_de(&service, "c_hote_accept", "Un atelier de poterie").await;
+    let plan = dernier_plan(&service, "c_hote_accept").await;
+    let demande = demander(&service, "c_invite_accept", &plan).await;
+
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/accept"),
+            Some(&service.jeton("c_intrus_accept")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::FORBIDDEN,
+        "un compte étranger a accepté cette demande : {corps}"
+    );
+
+    // Aucune conversation n'a été ouverte.
+    let (_, conversations) = service
+        .get("/v1/conversations", Some(&service.jeton("c_invite_accept")))
+        .await;
+    let vide = conversations
+        .as_array()
+        .map(|c| c.is_empty())
+        .unwrap_or(true);
+    assert!(vide, "une conversation a été ouverte : {conversations}");
+
+    // L'hôte, lui, peut.
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/accept"),
+            Some(&service.jeton("c_hote_accept")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "l'hôte ne peut plus accepter : {corps}"
+    );
+}
