@@ -108,6 +108,11 @@ private struct MonPlanCarte: View {
         case .complet: "Complet"
         case .passe: "Passé"
         case .annule: "Annulé"
+        // Ajouté à `PlanState` pour que « Mes plans » cesse d'échouer au
+        // décodage ; l'écran, lui, n'avait pas suivi. Seul un vrai
+        // compilateur pouvait le dire — un `switch` incomplet ne se voit
+        // qu'à la compilation de la cible, hors de portée de Linux.
+        case .suspendu: "En pause"
         }
     }
 }
