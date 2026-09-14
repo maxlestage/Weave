@@ -1,3 +1,4 @@
+import MapKit
 import CoreLocation
 import PhotosUI
 import SwiftUI
@@ -81,23 +82,32 @@ struct FicheView: View {
                 }
 
                 Section {
-                    PhotosPicker(selection: $choixPhoto, matching: .images) {
-                        HStack(spacing: 14) {
-                            if let photo {
-                                Image(uiImage: photo)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 56, height: 56)
-                                    .clipShape(.circle)
-                            } else {
-                                Image(systemName: "person.crop.circle.badge.plus")
-                                    .font(.largeTitle)
-                                    .foregroundStyle(.tint)
-                            }
-                            Text(photo == nil ? "Ajouter une photo" : "Changer de photo")
-                            Spacer()
-                            if photoEnCours { ProgressView() }
+                    // L'aperçu et l'indicateur vivent HORS du sélecteur.
+                    //
+                    // L'étiquette de `PhotosPicker` est une fermeture
+                    // `@Sendable` : elle n'hérite pas de l'isolation au fil
+                    // principal, et aucune lecture de `@State` ne peut y
+                    // figurer. Les trois qui s'y trouvaient empêchaient la
+                    // compilation de l'écran entier.
+                    HStack(spacing: 14) {
+                        if let photo {
+                            Image(uiImage: photo)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 56, height: 56)
+                                .clipShape(.circle)
+                        } else {
+                            Image(systemName: "person.crop.circle.badge.plus")
+                                .font(.largeTitle)
+                                .foregroundStyle(.tint)
                         }
+                        PhotosPicker(
+                            photo == nil ? "Ajouter une photo" : "Changer de photo",
+                            selection: $choixPhoto,
+                            matching: .images
+                        )
+                        Spacer()
+                        if photoEnCours { ProgressView() }
                     }
                     .disabled(photoEnCours)
                 } header: {
@@ -262,9 +272,16 @@ struct FicheView: View {
     ///
     /// Le géocodeur du système, plutôt qu'un service tiers : rien ne sort de
     /// l'appareil vers nous, et il n'y a pas de clé d'API à porter.
+    ///
+    /// `CLGeocoder` est retiré depuis iOS 26 au profit de `MKGeocodingRequest`.
+    /// Le dépôt compilant avec `SWIFT_TREAT_WARNINGS_AS_ERRORS`, l'obsolescence
+    /// n'était pas un avertissement : l'application ne se construisait pas.
     private static func situer(_ ville: String) async throws -> CLLocationCoordinate2D {
-        let trouvees = try await CLGeocoder().geocodeAddressString(ville)
-        guard let position = trouvees.first?.location?.coordinate else {
+        guard let requete = MKGeocodingRequest(addressString: ville) else {
+            throw VilleIntrouvable()
+        }
+        let trouvees = try await requete.mapItems
+        guard let position = trouvees.first?.location.coordinate else {
             throw VilleIntrouvable()
         }
         return position
