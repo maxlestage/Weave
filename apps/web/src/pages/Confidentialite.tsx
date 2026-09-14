@@ -86,6 +86,7 @@ const ARTICLES: readonly Article[] = [
           l'impose, l'intérêt légitime pour la sécurité du service.
         </p>
         <Tableau
+          titre="Les données collectées, leur finalité, leur base légale et leur durée de conservation"
           entetes={["Données", "Pourquoi", "Base légale", "Conservation"]}
           lignes={[
             [
@@ -364,6 +365,7 @@ const ARTICLES: readonly Article[] = [
           gratuitement.
         </p>
         <Tableau
+          titre="Vos droits, ce qu'ils permettent et où les exercer"
           entetes={["Droit", "Ce que vous pouvez faire", "Où"]}
           lignes={[
             [
