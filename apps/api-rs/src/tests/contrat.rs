@@ -1452,3 +1452,128 @@ fn le_manifeste_ne_nomme_pas_une_pile_abandonnee() {
         );
     }
 }
+
+/// Le fil rend exactement ce que l'application sait décoder.
+///
+/// C'est le contrat le plus coûteux à rompre, et le seul qui ne se voie
+/// nulle part avant l'exécution. `Codable` synthétise le décodage d'après les
+/// propriétés déclarées : une clé manquante pour une propriété NON FACULTATIVE
+/// fait lever `keyNotFound`, et ce n'est pas le plan qui tombe — c'est le
+/// tableau entier, donc l'écran entier.
+///
+/// Côté Rust rien ne le signale : `PlanDuFil` sérialise sans savoir qui la
+/// lit. Côté Swift rien non plus : le modèle compile seul. Les deux moitiés
+/// sont correctes, et ne s'emboîtent pas.
+#[test]
+fn le_fil_rend_ce_que_l_application_sait_decoder() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
+    let swift = std::fs::read_to_string(ios.join("WeaveKit/Sources/WeaveKit/Models/Plan.swift"))
+        .expect("Plan.swift lisible");
+
+    let rust = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes/fil.rs"),
+    )
+    .expect("fil.rs lisible");
+
+    let envoyees = champs_serialises(&rust, "PlanDuFil");
+    assert!(
+        envoyees.len() >= 8,
+        "seulement {} champs lus dans PlanDuFil : l'analyse a dérivé",
+        envoyees.len()
+    );
+
+    let attendues = proprietes_swift(&swift, "public struct Plan: Codable");
+    assert!(
+        attendues.len() >= 8,
+        "seulement {} propriétés lues dans Plan : l'analyse a dérivé",
+        attendues.len()
+    );
+
+    let manquantes: Vec<&String> = attendues
+        .iter()
+        .filter(|(_, facultative)| !facultative)
+        .map(|(nom, _)| nom)
+        .filter(|nom| !envoyees.contains(*nom))
+        .collect();
+
+    assert!(
+        manquantes.is_empty(),
+        "le fil n'envoie pas {manquantes:?}, que `Plan` déclare obligatoires : \
+         le décodage lèvera `keyNotFound` et l'écran du fil sera vide"
+    );
+}
+
+/// Les clés JSON d'une structure Rust `#[serde(rename_all = "camelCase")]`.
+fn champs_serialises(source: &str, nom: &str) -> std::collections::BTreeSet<String> {
+    let debut = source
+        .find(&format!("struct {nom} {{"))
+        .unwrap_or_else(|| panic!("la structure « {nom} » a disparu"));
+    let fin = source[debut..]
+        .find("\n}")
+        .unwrap_or_else(|| panic!("« {nom} » sans fin"))
+        + debut;
+
+    source[debut..fin]
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .filter(|l| !l.starts_with("//") && !l.starts_with("#["))
+        .filter_map(|l| l.split(':').next())
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+        .map(en_camel)
+        .collect()
+}
+
+/// `starts_at` → `startsAt`, comme le fait serde.
+fn en_camel(serpent: &str) -> String {
+    let mut sortie = String::with_capacity(serpent.len());
+    let mut majuscule = false;
+    for c in serpent.chars() {
+        if c == '_' {
+            majuscule = true;
+        } else if majuscule {
+            sortie.extend(c.to_uppercase());
+            majuscule = false;
+        } else {
+            sortie.push(c);
+        }
+    }
+    sortie
+}
+
+/// Les propriétés stockées d'une structure Swift, et leur caractère facultatif.
+///
+/// Une `CodingKeys` renomme : la clé JSON est alors celle qu'elle donne, pas
+/// le nom de la propriété.
+fn proprietes_swift(source: &str, entete: &str) -> Vec<(String, bool)> {
+    let debut = source
+        .find(entete)
+        .unwrap_or_else(|| panic!("« {entete} » a disparu"));
+    let fin = source[debut..].find("\n}").expect("structure sans fin") + debut;
+    let corps = &source[debut..fin];
+
+    corps
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("public let "))
+        .filter_map(|l| {
+            let (nom, reste) = l.split_once(':')?;
+            let nom = nom.trim();
+            // Une propriété calculée n'est pas décodée.
+            if reste.contains('{') {
+                return None;
+            }
+            let renommee = corps
+                .lines()
+                .map(str::trim)
+                .find_map(|c| c.strip_prefix(&format!("case {nom} = \"")))
+                .and_then(|c| c.split('"').next())
+                .map(str::to_string);
+            Some((
+                renommee.unwrap_or_else(|| nom.to_string()),
+                reste.trim().ends_with('?'),
+            ))
+        })
+        .collect()
+}

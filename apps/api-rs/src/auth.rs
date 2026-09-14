@@ -66,10 +66,7 @@ pub fn emettre_jeton(secret: &str, compte_id: &str, ttl_secondes: i64) -> Result
     )
     .map_err(|erreur| {
         tracing::error!(erreur = %erreur, "émission du jeton impossible");
-        AppError::new(
-            crate::error::Code::Internal,
-            "Une erreur interne est survenue.",
-        )
+        AppError::new(crate::error::Code::Internal, Msg::ErreurInterne.t())
     })
 }
 
