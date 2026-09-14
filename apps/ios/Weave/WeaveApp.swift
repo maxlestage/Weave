@@ -19,7 +19,7 @@ final class DelegueApplication: NSObject, UIApplicationDelegate {
 
     func application(
         _ application: UIApplication,
-        didFailToRegisterForRemoteNotificationsWithError error: Error
+        didFailToRegisterForRemoteNotificationsWithError error: any Error
     ) {
         // Sans jeton, pas d'alerte — mais tout le reste continue de marcher.
         // Échouer bruyamment ici empêcherait d'utiliser l'application pour un

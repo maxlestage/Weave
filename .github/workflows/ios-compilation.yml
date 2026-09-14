@@ -1,0 +1,126 @@
+name: iOS — compiler
+
+# Compile l'application, la Live Activity, l'application montre et sa
+# complication sur un exécuteur macOS.
+#
+# ## Pourquoi ce workflow existe
+#
+# Six mille lignes de Swift n'avaient jamais rencontré de compilateur. La
+# vérification sous Linux (`apps/ios/verification-linux/`) en couvre le cœur —
+# modèles, client réseau, magasins d'état — mais s'arrête net devant SwiftUI,
+# WidgetKit, ActivityKit et StoreKit, qui n'existent pas hors des plateformes
+# d'Apple. Trois mille quatre cents lignes d'écrans restaient donc hors de
+# portée, avec pour seul filet une analyse syntaxique.
+#
+# Un exécuteur macOS les compile pour de bon. `project.yml` demande
+# `SWIFT_STRICT_CONCURRENCY: complete` et `SWIFT_TREAT_WARNINGS_AS_ERRORS: YES` :
+# ce qui passe ici passe dans Xcode.
+#
+# ## Aucun secret n'est nécessaire
+#
+# La signature est désactivée. Ce workflow ne publie rien et ne touche à aucun
+# certificat — il compile, c'est tout. L'envoi à TestFlight reste le travail de
+# `ios-testflight.yml`, qui, lui, demande un compte Apple Developer.
+#
+# ## Le coût
+#
+# Une minute d'exécuteur macOS est facturée dix fois une minute de Linux. Le
+# déclenchement est donc limité aux poussées qui touchent réellement à l'iOS,
+# et à la demande.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, "claude/**"]
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios-compilation.yml"
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios-compilation.yml"
+
+concurrency:
+  group: ios-compilation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compiler:
+    name: Compiler l'application
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # L'application vise iOS 26. Si l'exécuteur n'a pas le SDK qui va avec,
+      # la construction échoue sur une cible de déploiement, et le message ne
+      # dit pas d'où cela vient. Autant l'écrire d'abord.
+      - name: Ce que l'exécuteur propose
+        run: |
+          echo "## Outils disponibles" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          sw_vers | tee -a "$GITHUB_STEP_SUMMARY"
+          ls /Applications | grep -i '^Xcode' | tee -a "$GITHUB_STEP_SUMMARY"
+          xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
+          xcodebuild -showsdks | grep -iE 'ios|watchos' | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Choisir la version de Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Installer XcodeGen
+        run: brew install xcodegen
+
+      - name: Engendrer le projet
+        working-directory: apps/ios
+        # Le .xcodeproj n'est pas versionné : `project.yml` en fait foi.
+        run: xcodegen generate
+
+      - name: Compiler
+        working-directory: apps/ios
+        # `generic/platform=iOS Simulator` évite d'allumer un simulateur : on
+        # veut le typage, pas l'exécution. La signature est désactivée — rien
+        # ici n'est destiné à tourner sur un appareil.
+        #
+        # La cible `Weave` embarque la Live Activity et l'application montre,
+        # qui embarque à son tour sa complication : compiler ce seul schéma
+        # compile les quatre.
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Weave.xcodeproj \
+            -scheme Weave \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            2>&1 | tee /tmp/xcodebuild.log
+
+      - name: Ce qui a échoué
+        if: failure()
+        run: |
+          {
+            echo "## Erreurs de compilation"
+            echo ""
+            echo '```'
+            grep -E "error:|warning:" /tmp/xcodebuild.log | sort -u | head -60 || echo "(aucune ligne « error: » — voir le journal complet)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Conserver le journal
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-xcodebuild
+          path: /tmp/xcodebuild.log
+          retention-days: 7

@@ -80,7 +80,13 @@ public actor WeaveAPI {
     /// juridiques s'atteignent donc depuis l'application sans coder de domaine
     /// en dur — un domaine écrit en dur serait faux en développement, et faux
     /// le jour où il change.
-    public func pagePublique(_ chemin: String) -> URL {
+    ///
+    /// `nonisolated` : cette méthode ne lit qu'une constante. L'isoler à
+    /// l'acteur obligeait ses appelants à l'attendre, et un écran SwiftUI ne
+    /// peut pas attendre dans une propriété calculée — la construction
+    /// échouait là-dessus. Construire une adresse à partir d'une base
+    /// immuable ne demande aucune isolation.
+    public nonisolated func pagePublique(_ chemin: String) -> URL {
         baseURL.appending(path: chemin)
     }
     private let session: URLSession
