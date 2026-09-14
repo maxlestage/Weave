@@ -5,7 +5,7 @@
 //! main ; il n'existe aucun moyen d'en ouvrir une autrement, ni d'écrire à
 //! quelqu'un qui n'a pas dit oui.
 
-use super::Service;
+use super::{Service, refuse};
 use axum::http::StatusCode;
 use serde_json::json;
 
@@ -386,4 +386,127 @@ async fn une_conversation_sans_message_figure_dans_la_liste() {
         .unwrap_or_else(|| panic!("la conversation muette a disparu : {liste}"));
     assert_eq!(ligne["unread"], 0, "{ligne}");
     assert!(ligne["lastMessage"].is_null(), "{ligne}");
+}
+
+/// Un message est borné, et la liste des conversations aussi.
+///
+/// Les deux bornes existaient sans que rien ne les tienne. Porter
+/// `MESSAGE_MAX` à deux millions laissait toute la suite au vert : une seule
+/// requête aurait pu écrire un mégaoctet en base, et l'application aurait eu à
+/// l'afficher. Même chose pour le nombre de conversations rendues — la réponse
+/// n'avait plus de taille maximale.
+#[tokio::test]
+async fn un_message_est_borne() {
+    let service = Service::monter().await;
+    let conversation =
+        conversation_ouverte(&service, "c_hote_borne_msg", "c_invite_borne_msg").await;
+
+    // Le nombre est écrit ici, pas relu de la constante : un test qui lit ce
+    // qu'il garde monte avec elle. Porter `MESSAGE_MAX` à deux millions ne le
+    // faisait pas tomber. Le contrat partagé tient l'accord des deux.
+    let maximum = 2000;
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/conversations/{conversation}/messages"),
+            Some(&service.jeton("c_invite_borne_msg")),
+            json!({ "body": "a".repeat(maximum + 1) }),
+        )
+        .await;
+    refuse(
+        statut,
+        &corps,
+        "validation",
+        &format!("un message de {} caractères est passé", maximum + 1),
+    );
+
+    // Et la longueur permise passe : une borne qui refuse tout ne vaut rien.
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/conversations/{conversation}/messages"),
+            Some(&service.jeton("c_invite_borne_msg")),
+            json!({ "body": "a".repeat(maximum) }),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "la borne refuse ce qu'elle permet : {corps}"
+    );
+}
+
+/// La liste des conversations ne dépasse pas sa borne.
+///
+/// Les lignes sont insérées directement : passer par l'API demanderait cent
+/// plans, cent demandes et cent acceptations pour éprouver un `LIMIT`.
+#[tokio::test]
+async fn la_liste_des_conversations_est_bornee() {
+    use crate::entities::{conversations, join_requests, plans};
+    use sea_orm::{ActiveModelTrait, Set};
+
+    let service = Service::monter().await;
+    let hote = service.compte("c_hote_borne", "depart").await;
+    let invite = service.compte("c_invite_borne", "depart").await;
+
+    let maximum = crate::routes::conversations::CONVERSATIONS_RENDUES_MAX as usize;
+    let maintenant = chrono::Utc::now().naive_utc();
+
+    for numero in 0..maximum + 5 {
+        plans::ActiveModel {
+            id: Set(format!("plan{numero}")),
+            author_id: Set(hote.clone()),
+            title: Set(format!("Plan {numero}")),
+            note: Set(String::new()),
+            category: Set("sortie".to_string()),
+            starts_at: Set(maintenant),
+            city: Set("Lyon".to_string()),
+            lat_rounded: Set(45.75),
+            lon_rounded: Set(4.85),
+            capacity: Set(1),
+            state: Set("complet".to_string()),
+            cancelled_at: Set(None),
+            created_at: Set(maintenant),
+            updated_at: Set(maintenant),
+        }
+        .insert(&service.db)
+        .await
+        .expect("plan inséré");
+
+        join_requests::ActiveModel {
+            id: Set(format!("dem{numero}")),
+            plan_id: Set(format!("plan{numero}")),
+            author_id: Set(invite.clone()),
+            message: Set("Ce plan me tente beaucoup, je viendrais volontiers.".to_string()),
+            state: Set("acceptee".to_string()),
+            sent_at: Set(maintenant),
+            decided_at: Set(Some(maintenant)),
+        }
+        .insert(&service.db)
+        .await
+        .expect("demande insérée");
+
+        conversations::ActiveModel {
+            id: Set(format!("conv{numero}")),
+            plan_id: Set(format!("plan{numero}")),
+            request_id: Set(format!("dem{numero}")),
+            host_id: Set(hote.clone()),
+            guest_id: Set(invite.clone()),
+            opened_at: Set(maintenant),
+            last_message_at: Set(None),
+            closed_at: Set(None),
+            closed_by: Set(None),
+        }
+        .insert(&service.db)
+        .await
+        .expect("conversation insérée");
+    }
+
+    let (statut, corps) = service
+        .get("/v1/conversations", Some(&service.jeton("c_invite_borne")))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let rendues = corps.as_array().map(Vec::len).unwrap_or(0);
+    assert_eq!(
+        rendues, maximum,
+        "la réponse rend {rendues} conversations : la borne ne s'applique pas"
+    );
 }

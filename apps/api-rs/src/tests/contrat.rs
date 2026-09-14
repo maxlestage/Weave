@@ -57,7 +57,7 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
 
     // Chaque ligne : le nom dans le contrat, la constante Rust qui doit lui
     // répondre. La liste ne couvre que ce que l'API réécrit de son côté.
-    let accords: [(&str, i64); 16] = [
+    let accords: [(&str, i64); 17] = [
         // L'âge minimum d'abord : c'est la seule de ces valeurs qui décide
         // qui a le droit d'être là. Les CGU l'annoncent en lisant le contrat,
         // l'API le refuse en lisant sa propre constante — et rien ne les
@@ -115,6 +115,10 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
         (
             "BIO_MAX_CHARS",
             crate::routes::me::BIO_MAX_CARACTERES as i64,
+        ),
+        (
+            "CONVERSATION_MAX_CHARS",
+            crate::routes::conversations::MESSAGE_MAX as i64,
         ),
     ];
 
@@ -315,6 +319,7 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
     for (cote_swift, cote_contrat) in [
         ("accountPurgeDays", "ACCOUNT_PURGE_DAYS"),
         ("bioMaxChars", "BIO_MAX_CHARS"),
+        ("conversationMaxChars", "CONVERSATION_MAX_CHARS"),
     ] {
         let prefixe = format!("public let {cote_swift} = ");
         let ligne = source
