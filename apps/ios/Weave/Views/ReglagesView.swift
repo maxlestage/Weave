@@ -153,15 +153,6 @@ struct ReglagesView: View {
                     }
                 }
 
-                .onChange(of: ageMin) { _, _ in
-                    guard criteresLus else { return }
-                    Task { await appliquerAges() }
-                }
-                .onChange(of: ageMax) { _, _ in
-                    guard criteresLus else { return }
-                    Task { await appliquerAges() }
-                }
-
                 if let moi = modele.moi {
                     Section("Crédits") {
                         ForEach(UnitSku.allCases, id: \.self) { sku in
@@ -301,6 +292,21 @@ struct ReglagesView: View {
                 Button("D'accord") { erreur = nil }
             } message: {
                 Text(erreur ?? "")
+            }
+            // Les deux bornes d'âge s'appliquent au relâchement du curseur.
+            //
+            // Ces deux modificateurs vivaient à l'intérieur du `Form`, séparés
+            // de ce qui les précédait par une ligne vide : ils ne se
+            // rattachaient donc à rien, et Swift les lisait comme un accès
+            // statique sur le type `View`. L'écran des réglages ne compilait
+            // pas. Leur place est ici, sur le formulaire, avec les autres.
+            .onChange(of: ageMin) { _, _ in
+                guard criteresLus else { return }
+                Task { await appliquerAges() }
+            }
+            .onChange(of: ageMax) { _, _ in
+                guard criteresLus else { return }
+                Task { await appliquerAges() }
             }
             .task { await chargerCriteres() }
             .sheet(item: $bilan) { rapport in
