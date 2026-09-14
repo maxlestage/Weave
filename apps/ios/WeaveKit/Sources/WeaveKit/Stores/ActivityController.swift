@@ -31,7 +31,14 @@ public final class ActivityController {
         self.vendorID = vendorID
     }
 
-    deinit {
+    /// `isolated deinit` — sans quoi la classe ne compile pas.
+    ///
+    /// La classe est `@MainActor` : ses propriétés stockées sont isolées.
+    /// Un `deinit` ordinaire, lui, ne l'est jamais — il s'exécute sur le fil
+    /// qui relâche la dernière référence, quel qu'il soit. Lire
+    /// `observationTasks` depuis là est refusé par le mode Swift 6, que ce
+    /// paquet demande explicitement.
+    isolated deinit {
         for task in observationTasks { task.cancel() }
     }
 
