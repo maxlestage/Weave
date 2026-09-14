@@ -2088,18 +2088,25 @@ fn nom_entre_guillemets(ligne: &str) -> Option<String> {
     Some(nom.to_string())
 }
 
-/// Chaque méthode que l'application appelle existe dans WeaveKit.
+/// Chaque méthode que l'application appelle existe dans WeaveKit, avec ses
+/// étiquettes.
 ///
-/// C'est le seul accord qu'aucun compilateur ne tient ici. WeaveKit se
-/// compile sous Linux — `apps/ios/verification-linux/` s'en charge — mais les
-/// écrans, eux, dépendent de SwiftUI, et rien hors d'un Mac ne les type. Une
-/// méthode renommée dans le client réseau laisse donc ses appelants intacts
-/// et muets jusqu'à la prochaine ouverture d'Xcode.
+/// C'est le seul accord qu'aucun compilateur ne tient ici. WeaveKit se compile
+/// sous Linux — `apps/ios/verification-linux/` s'en charge — mais les écrans
+/// dépendent de SwiftUI, et rien hors d'un Mac ne les type. Une méthode
+/// renommée, ou un paramètre re-étiqueté, laisse donc ses appelants intacts et
+/// muets jusqu'à la prochaine ouverture d'Xcode.
 ///
-/// Ce que ce test NE vérifie PAS, et il faut le dire : ni les étiquettes
-/// d'arguments, ni les types, ni les valeurs de retour. Seulement qu'un nom
-/// appelé existe. C'est étroit — mais jamais faux, et cela couvre la faute la
-/// plus probable : renommer d'un côté sans suivre de l'autre.
+/// Ce que ce test NE vérifie PAS, et il faut le dire : ni les types, ni les
+/// valeurs de retour, ni rien de ce qui touche SwiftUI. Les noms et les
+/// étiquettes, seulement. C'est étroit, mais jamais faux.
+///
+/// Les porteurs sont listés à la main, et c'est le point faible : la première
+/// version en oubliait deux — `plans` et `sessionStore` —, si bien que tout
+/// `modele.plans.join(...)` passait sans être regardé, et qu'une étiquette
+/// renommée là ne faisait rien échouer. Un nom absent de cette table n'est pas
+/// signalé, il est ignoré. L'assertion sur le nombre d'appels retrouvés est là
+/// pour ça : si elle tombe, c'est qu'un porteur manque.
 #[test]
 fn chaque_methode_appelee_par_l_application_existe_dans_weavekit() {
     let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
@@ -2111,11 +2118,16 @@ fn chaque_methode_appelee_par_l_application_existe_dans_weavekit() {
         return;
     }
 
-    // Le nom sous lequel l'application tient chaque objet, et le fichier qui
-    // le déclare. `WeaveApp.swift` porte `ModeleApplication`, qui donne accès
-    // aux autres.
+    // Le nom sous lequel l'application tient chaque objet, et le fichier qui le
+    // déclare. `ModeleApplication` porte les autres : `modele.plans.join(...)`
+    // se lit donc sous « plans ».
     let porteurs = [
         ("api", "WeaveKit/Sources/WeaveKit/Networking/WeaveAPI.swift"),
+        ("plans", "WeaveKit/Sources/WeaveKit/Stores/PlansStore.swift"),
+        (
+            "sessionStore",
+            "WeaveKit/Sources/WeaveKit/Stores/SessionStore.swift",
+        ),
         (
             "boutique",
             "WeaveKit/Sources/WeaveKit/Stores/BoutiqueController.swift",
@@ -2131,17 +2143,17 @@ fn chaque_methode_appelee_par_l_application_existe_dans_weavekit() {
         ("modele", "Weave/WeaveApp.swift"),
     ];
 
-    let mut declarees: std::collections::BTreeMap<&str, std::collections::BTreeSet<String>> =
+    let mut declarees: std::collections::BTreeMap<&str, Declarations> =
         std::collections::BTreeMap::new();
     for (nom, chemin) in porteurs {
         let source = std::fs::read_to_string(ios.join(chemin))
             .unwrap_or_else(|e| panic!("{chemin} illisible : {e}"));
-        let noms = methodes_declarees(&source);
+        let methodes = methodes_declarees(&source);
         assert!(
-            !noms.is_empty(),
+            !methodes.is_empty(),
             "aucune méthode lue dans {chemin} — la lecture est à revoir"
         );
-        declarees.insert(nom, noms);
+        declarees.insert(nom, methodes);
     }
 
     let mut sources = Vec::new();
@@ -2150,57 +2162,190 @@ fn chaque_methode_appelee_par_l_application_existe_dans_weavekit() {
     }
 
     let mut vus = 0usize;
-    let mut absentes = Vec::new();
+    let mut ecarts = Vec::new();
     for (fichier, source) in &sources {
         for (porteur, connues) in &declarees {
-            for appel in appels_sur(source, porteur) {
+            for (methode, etiquettes) in appels_sur(source, porteur) {
                 vus += 1;
-                if !connues.contains(&appel) {
-                    absentes.push(format!("{porteur}.{appel}() — appelé dans {fichier}"));
+                let Some(signatures) = connues.get(&methode) else {
+                    ecarts.push(format!(
+                        "{porteur}.{methode}() — appelé dans {fichier}, jamais déclaré"
+                    ));
+                    continue;
+                };
+                // Une valeur par défaut autorise à omettre son argument : les
+                // étiquettes de l'appel doivent former une sous-suite ORDONNÉE
+                // de celles d'une des signatures.
+                if !signatures.iter().any(|sig| sous_suite(&etiquettes, sig)) {
+                    ecarts.push(format!(
+                        "{porteur}.{methode}({}) dans {fichier} — déclaré {signatures:?}",
+                        etiquettes.join(", ")
+                    ));
                 }
             }
         }
     }
 
     assert!(
-        vus > 35,
-        "seulement {vus} appels retrouvés : la lecture est à revoir"
+        vus > 70,
+        "seulement {vus} appels retrouvés : un porteur manque à la table"
     );
     assert!(
-        absentes.is_empty(),
-        "l'application appelle des méthodes que WeaveKit ne déclare pas :\n  {}",
-        absentes.join("\n  ")
+        ecarts.is_empty(),
+        "l'application n'appelle pas WeaveKit comme WeaveKit se déclare :\n  {}",
+        ecarts.join("\n  ")
     );
 }
 
-/// Les noms de méthodes déclarées dans une source Swift.
-fn methodes_declarees(source: &str) -> std::collections::BTreeSet<String> {
-    let mut noms = std::collections::BTreeSet::new();
-    for ligne in source.lines() {
-        let Some(reste) = ligne.trim().split("func ").nth(1) else {
+/// Les signatures déclarées, par nom de méthode : une entrée par surcharge.
+type Declarations = std::collections::BTreeMap<String, Vec<Vec<String>>>;
+
+/// `petite` est-elle une sous-suite ordonnée de `grande` ?
+fn sous_suite(petite: &[String], grande: &[String]) -> bool {
+    let mut reste = grande.iter();
+    petite
+        .iter()
+        .all(|attendu| reste.any(|candidat| candidat == attendu))
+}
+
+/// Le texte entre la parenthèse ouvrante en `ouvrante` et sa fermante.
+fn entre_parentheses(source: &str, ouvrante: usize) -> Option<&str> {
+    let octets = source.as_bytes();
+    let mut profondeur = 0usize;
+    let mut dans_chaine = false;
+    let mut echappe = false;
+    for (position, octet) in octets.iter().enumerate().skip(ouvrante) {
+        let c = *octet as char;
+        if dans_chaine {
+            if echappe {
+                echappe = false;
+            } else if c == '\\' {
+                echappe = true;
+            } else if c == '"' {
+                dans_chaine = false;
+            }
             continue;
-        };
+        }
+        match c {
+            '"' => dans_chaine = true,
+            '(' => profondeur += 1,
+            ')' => {
+                profondeur -= 1;
+                if profondeur == 0 {
+                    return source.get(ouvrante + 1..position);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Découpe une liste d'arguments aux virgules de premier niveau.
+fn arguments(texte: &str) -> Vec<String> {
+    let mut morceaux = Vec::new();
+    let mut courant = String::new();
+    let mut profondeur = 0i32;
+    let mut dans_chaine = false;
+    let mut echappe = false;
+    for c in texte.chars() {
+        if dans_chaine {
+            courant.push(c);
+            if echappe {
+                echappe = false;
+            } else if c == '\\' {
+                echappe = true;
+            } else if c == '"' {
+                dans_chaine = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => dans_chaine = true,
+            '(' | '[' | '{' | '<' => profondeur += 1,
+            ')' | ']' | '}' | '>' => profondeur -= 1,
+            _ => {}
+        }
+        if c == ',' && profondeur == 0 {
+            morceaux.push(std::mem::take(&mut courant));
+        } else {
+            courant.push(c);
+        }
+    }
+    if !courant.trim().is_empty() {
+        morceaux.push(courant);
+    }
+    morceaux
+}
+
+/// L'étiquette d'un argument au site d'APPEL : « nom: valeur », ou « _ ».
+fn etiquette_d_appel(argument: &str) -> String {
+    let argument = argument.trim();
+    let Some((avant, apres)) = argument.split_once(':') else {
+        return "_".to_string();
+    };
+    // « Plan.self » ou « a ? b : c » ne sont pas des étiquettes.
+    if apres.starts_with(':') || avant.contains(' ') || avant.contains('?') {
+        return "_".to_string();
+    }
+    if !avant.is_empty() && avant.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        avant.to_string()
+    } else {
+        "_".to_string()
+    }
+}
+
+/// L'étiquette d'un paramètre DÉCLARÉ : « étiquette nom: Type », ou « nom: Type ».
+fn etiquette_declaree(parametre: &str) -> String {
+    let parametre = parametre.trim();
+    let Some((avant, _)) = parametre.split_once(':') else {
+        return "_".to_string();
+    };
+    let mots: Vec<&str> = avant.split_whitespace().collect();
+    match mots.first() {
+        Some(&"_") | None => "_".to_string(),
+        Some(premier) => (*premier).to_string(),
+    }
+}
+
+/// Les signatures déclarées dans une source Swift.
+fn methodes_declarees(source: &str) -> Declarations {
+    let mut declarations: Declarations = std::collections::BTreeMap::new();
+    for (position, _) in source.match_indices("func ") {
+        let reste = &source[position + 5..];
         let nom: String = reste
             .chars()
             .take_while(|c| c.is_alphanumeric() || *c == '_')
             .collect();
-        if !nom.is_empty() {
-            noms.insert(nom);
+        if nom.is_empty() {
+            continue;
         }
+        let Some(decalage) = reste[nom.len()..].find('(') else {
+            continue;
+        };
+        let ouvrante = position + 5 + nom.len() + decalage;
+        let Some(parametres) = entre_parentheses(source, ouvrante) else {
+            continue;
+        };
+        declarations.entry(nom).or_default().push(
+            arguments(parametres)
+                .iter()
+                .map(|p| etiquette_declaree(p))
+                .collect(),
+        );
     }
-    noms
+    declarations
 }
 
-/// Les méthodes appelées sur `porteur` dans une source Swift.
-fn appels_sur(source: &str, porteur: &str) -> std::collections::BTreeSet<String> {
+/// Les appels sur `porteur`, avec les étiquettes passées.
+fn appels_sur(source: &str, porteur: &str) -> Vec<(String, Vec<String>)> {
     let marque = format!("{porteur}.");
-    let mut appels = std::collections::BTreeSet::new();
+    let mut appels = Vec::new();
     for (position, _) in source.match_indices(&marque) {
         // Le porteur doit ouvrir le mot : « monModele. » n'est pas « modele. ».
         //
         // Le point, lui, est accepté : l'application atteint le client réseau
-        // par `modele.api.`, et c'est la forme la plus fréquente. L'écarter
-        // revenait à ne rien voir — dix-sept appels au lieu de quarante-quatre.
+        // par `modele.api.`, et c'est la forme la plus fréquente.
         if position > 0 {
             let avant = source[..position].chars().next_back().unwrap_or(' ');
             if avant.is_alphanumeric() || avant == '_' {
@@ -2212,10 +2357,26 @@ fn appels_sur(source: &str, porteur: &str) -> std::collections::BTreeSet<String>
             .chars()
             .take_while(|c| c.is_alphanumeric() || *c == '_')
             .collect();
-        // Seuls les appels comptent : une propriété n'a pas de parenthèse.
-        if !nom.is_empty() && reste[nom.len()..].trim_start().starts_with('(') {
-            appels.insert(nom);
+        if nom.is_empty() {
+            continue;
         }
+        // Seuls les appels comptent : une propriété n'a pas de parenthèse.
+        let apres = reste[nom.len()..].trim_start();
+        if !apres.starts_with('(') {
+            continue;
+        }
+        let ouvrante =
+            position + marque.len() + nom.len() + (reste[nom.len()..].len() - apres.len());
+        let Some(arguments_bruts) = entre_parentheses(source, ouvrante) else {
+            continue;
+        };
+        appels.push((
+            nom,
+            arguments(arguments_bruts)
+                .iter()
+                .map(|a| etiquette_d_appel(a))
+                .collect(),
+        ));
     }
     appels
 }
