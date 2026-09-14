@@ -897,3 +897,86 @@ async fn un_fichier_qui_n_est_pas_une_image_est_refuse() {
         &format!("un fichier arbitraire a été stocké : {corps}"),
     );
 }
+
+/// Un plan du fil porte toutes les clés que l'application décode.
+///
+/// Le test de contrat lit les deux sources et les rapproche ; celui-ci
+/// éprouve la SÉRIALISATION RÉELLE, qui est ce que l'application reçoit.
+/// L'un garde l'autre : un renommage de champ passerait le premier si mon
+/// analyse du source dérivait, jamais celui-ci.
+///
+/// Ce qui manquait — `author`, `capacity`, `seatsLeft`, `state`, `requested`,
+/// `createdAt` — est déclaré NON FACULTATIF dans `Plan.swift`. `Codable` lève
+/// alors `keyNotFound`, et ce n'est pas le plan qui tombe mais le tableau
+/// entier : l'écran du fil restait vide, sans erreur visible côté serveur.
+///
+/// Rien ne l'avait relevé : la seule vérification de bout en bout du fil
+/// portait sur le titre.
+#[tokio::test]
+async fn un_plan_du_fil_porte_les_cles_que_l_application_decode() {
+    let service = Service::monter().await;
+    service.compte("c_lecteur", "depart").await;
+    service.compte("c_auteur", "viree").await;
+
+    let demain = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
+    let (statut, _) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_auteur")),
+            json!({
+                "title": "Un plan qui doit se decoder",
+                "category": "sortie",
+                "startsAt": demain,
+                "capacity": 2,
+            }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    let (statut, corps) = service
+        .get("/v1/plans", Some(&service.jeton("c_lecteur")))
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    let plan = corps["plans"]
+        .as_array()
+        .and_then(|p| p.first())
+        .unwrap_or_else(|| panic!("le fil devait contenir un plan : {corps}"));
+
+    // Les propriétés non facultatives de `Plan` dans `Models/Plan.swift`.
+    for cle in [
+        "id",
+        "author",
+        "title",
+        "note",
+        "category",
+        "startsAt",
+        "city",
+        "distanceKm",
+        "capacity",
+        "seatsLeft",
+        "state",
+        "requested",
+        "createdAt",
+    ] {
+        assert!(
+            plan.get(cle).is_some(),
+            "« {cle} » manque : `Plan` la déclare obligatoire, le décodage lèvera \
+             keyNotFound et le fil entier sera vide. Reçu : {plan}"
+        );
+    }
+
+    // Et celles d'`Author`, imbriqué. `photoUrl` est facultative des deux
+    // côtés : un compte sans photo n'est pas une anomalie.
+    for cle in ["id", "displayName", "age", "verified"] {
+        assert!(
+            plan["author"].get(cle).is_some(),
+            "« author.{cle} » manque : {plan}"
+        );
+    }
+
+    assert_eq!(plan["capacity"], 2, "{plan}");
+    assert_eq!(plan["seatsLeft"], 2, "{plan}");
+    assert_eq!(plan["requested"], false, "{plan}");
+    assert_eq!(plan["state"], "ouvert", "{plan}");
+}
