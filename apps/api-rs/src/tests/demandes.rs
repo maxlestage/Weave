@@ -530,3 +530,77 @@ async fn plan_de_groupe(service: &Service, titre: &str) -> String {
     assert_eq!(statut, StatusCode::OK, "{corps}");
     corps["id"].as_str().expect("un identifiant").to_string()
 }
+
+/// Le plafond journalier refuse la demande de trop.
+///
+/// C'est l'invariant central du produit — celui qui distingue les paliers, et
+/// donc ce qui se paie. Les tests suivaient bien le compteur qui descend, mais
+/// aucun n'allait jusqu'au bout : retirer la ligne qui compare aux plafond
+/// laissait les trois cent onze tests au vert. On peut lever le plafond de
+/// tout le monde sans que rien ne le dise.
+#[tokio::test]
+async fn le_plafond_journalier_refuse_la_demande_de_trop() {
+    let service = Service::monter().await;
+    service.compte("c_plafond", "depart").await;
+    let jeton = service.jeton("c_plafond");
+
+    // Le palier de départ en accorde cinq par jour. Il faut donc au moins six
+    // plans à demander — un par demande, on ne redemande pas deux fois.
+    let quota = crate::droits::droits_pour("depart").demandes_par_jour as usize;
+    let mut plans = Vec::new();
+    for numero in 0..quota + 1 {
+        let hote = format!("c_hote_plafond_{numero}");
+        service.compte(&hote, "depart").await;
+        let (statut, corps) = service
+            .post(
+                "/v1/plans",
+                Some(&service.jeton(&hote)),
+                json!({
+                    "title": format!("Un plan de plus, le numero {numero}"),
+                    "category": "sortie",
+                    "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+                }),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::OK, "{corps}");
+        plans.push(corps["id"].as_str().expect("identifiant").to_string());
+    }
+
+    // Les cinq premières passent, et le compteur descend jusqu'à zéro.
+    for (numero, plan) in plans.iter().take(quota).enumerate() {
+        let (statut, corps) = service
+            .post(
+                "/v1/requests",
+                Some(&jeton),
+                json!({ "planId": plan, "message": "Ce plan me tente beaucoup, je viendrais volontiers." }),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::OK, "demande {numero} refusée : {corps}");
+        assert_eq!(
+            corps["requestsLeftToday"],
+            json!(quota - numero - 1),
+            "le compteur ne descend pas comme annoncé : {corps}"
+        );
+    }
+
+    // La sixième est refusée, et le plafond tient.
+    let (statut, corps) = service
+        .post(
+            "/v1/requests",
+            Some(&jeton),
+            json!({ "planId": plans[quota], "message": "Ce plan me tente beaucoup, je viendrais volontiers." }),
+        )
+        .await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "la demande au-delà du plafond est passée : {corps}"
+    );
+
+    // Et le compte n'a toujours rien de plus à dépenser.
+    let (_, fiche) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(
+        fiche["requestsLeftToday"], 0,
+        "un refus a rendu une demande : {fiche}"
+    );
+}
