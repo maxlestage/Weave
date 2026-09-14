@@ -223,14 +223,38 @@ mod tests {
         assert!(url.contains("&blur=12&sig="));
     }
 
+    /// Une URL périmée est refusée, même signée pour de bon.
+    ///
+    /// Ce test passait une signature calculée pour une AUTRE échéance : il
+    /// échouait donc sur la comparaison, pas sur la péremption. Retirer le
+    /// contrôle de date ne le faisait pas tomber — vérifié. La signature est
+    /// maintenant calculée pour l'échéance passée qu'on éprouve, si bien que
+    /// seule la date peut encore la refuser.
     #[test]
     fn une_signature_expiree_est_refusee() {
-        assert!(!verifier_signature_media(
+        let passe = chrono::Utc::now().timestamp() - 60;
+        let bonne_mais_perimee = signer(SECRET_MEDIA, &charge("photos/abc def.jpg", passe, 12));
+
+        assert!(
+            !verifier_signature_media(
+                SECRET_MEDIA,
+                "photos/abc def.jpg",
+                passe,
+                12,
+                &bonne_mais_perimee
+            ),
+            "une URL périmée est acceptée : la photo reste lisible indéfiniment"
+        );
+
+        // La même, encore valable : c'est bien la date qui a tranché.
+        let futur = chrono::Utc::now().timestamp() + 60;
+        let bonne = signer(SECRET_MEDIA, &charge("photos/abc def.jpg", futur, 12));
+        assert!(verifier_signature_media(
             SECRET_MEDIA,
             "photos/abc def.jpg",
-            1,
+            futur,
             12,
-            SIGNATURE_ATTENDUE
+            &bonne
         ));
     }
 
