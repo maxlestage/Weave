@@ -1882,3 +1882,57 @@ fn la_live_activity_pousse_ce_que_l_appareil_sait_lire() {
          envoyées : {envoyees:?}"
     );
 }
+
+/// Rien de ce que Redis écrit ne doit pouvoir entrer dans le dépôt.
+///
+/// `dump.rdb` y était suivi. `redis-server` écrit son instantané dans son
+/// répertoire courant — la racine du dépôt dès qu'on le lance à la main — et
+/// le cache contient le résumé d'identité de chaque personne connectée : nom
+/// affiché, pseudonyme, palier, fuseau, puis la composition de son fil, avec
+/// les titres de plans, les prénoms, les âges et les adresses de photos. Un
+/// fichier suivi posé exactement là où Redis écrit finit par être committé
+/// avec tout cela dedans.
+///
+/// Deux choses l'empêchent, et ce test les tient l'une et l'autre : le fichier
+/// est ignoré, et le crochet de session lance Redis sans instantané du tout.
+#[test]
+fn aucun_instantane_du_cache_ne_peut_entrer_dans_le_depot() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ignores = std::fs::read_to_string(racine.join(".gitignore")).expect(".gitignore lisible");
+    for motif in ["dump.rdb", "*.rdb"] {
+        assert!(
+            ignores.lines().any(|l| l.trim() == motif),
+            "« {motif} » ne figure plus dans .gitignore : un instantané du cache \
+             peut à nouveau être committé"
+        );
+    }
+
+    assert!(
+        !racine.join("dump.rdb").exists(),
+        "un instantané du cache traîne à la racine du dépôt"
+    );
+
+    // Le crochet de session lance Redis lui-même : c'est le seul endroit du
+    // dépôt qui le fait, et `--save ''` est ce qui garantit qu'aucun instantané
+    // n'est écrit, ignoré ou non.
+    let crochets = racine.join(".claude/hooks");
+    if !crochets.is_dir() {
+        return;
+    }
+    for entree in std::fs::read_dir(&crochets)
+        .expect("crochets lisibles")
+        .flatten()
+    {
+        let source = std::fs::read_to_string(entree.path()).unwrap_or_default();
+        if !source.contains("redis-server") {
+            continue;
+        }
+        assert!(
+            source.contains("--save ''") || source.contains("--save \"\""),
+            "{} lance Redis sans « --save '' » : il écrira un instantané du \
+             cache à la racine du dépôt",
+            entree.path().display()
+        );
+    }
+}
