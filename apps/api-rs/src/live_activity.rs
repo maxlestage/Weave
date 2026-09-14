@@ -254,6 +254,10 @@ pub async fn publier(state: &AppState, compte_id: &str) -> Result<Etat, AppError
                         5
                     },
                     collapse_id: (!termine).then(|| format!("plan-{compte_id}")),
+                    // La même date que « stale-date » : une mise à jour gardée
+                    // au-delà de sa propre péremption rallumerait la bannière
+                    // sur un état que l'appareil sait déjà périmé.
+                    peremption,
                     charge: json!({
                         "aps": {
                             "timestamp": Utc::now().timestamp(),
@@ -337,6 +341,7 @@ pub async fn demarrer_pour(state: &AppState, compte_id: &str) -> Result<u32, App
                     suffixe_sujet: Some(SUFFIXE_SUJET),
                     priorite: 10,
                     collapse_id: None,
+                    peremption,
                     charge: json!({
                         "aps": {
                             "timestamp": Utc::now().timestamp(),
