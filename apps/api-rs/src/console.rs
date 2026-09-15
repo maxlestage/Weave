@@ -786,6 +786,40 @@ mod tests {
         assert_eq!(statut(&db, "partant").await, "deleting");
     }
 
+    /// Suspendre ne touche pas non plus un compte marqué pour la purge.
+    ///
+    /// Le miroir du test précédent, et il manquait. `retablir` refusait bien
+    /// de ramener un compte `deleting` ; `suspendre`, lui, l'aurait fait
+    /// passer à `suspended` — et de là, `retablir` l'aurait rendu `active`.
+    /// Le compte redevenait joignable en restant promis à l'effacement, ce que
+    /// le commentaire de `retablir` dit précisément vouloir empêcher.
+    ///
+    /// La purge, elle, ne s'y trompait pas : elle compte les jours depuis
+    /// `deletionRequestedAt`, pas depuis le statut. Le compte aurait donc été
+    /// effacé à l'heure dite, après avoir resservi entre-temps.
+    #[tokio::test]
+    async fn suspendre_ne_reprend_pas_un_compte_en_cours_de_suppression() {
+        let db = base_de_test().await;
+        compte(&db, "partant_sus", "deleting").await;
+
+        assert_eq!(
+            suspendre(&db, "partant_sus", "signalement")
+                .await
+                .expect("suspension"),
+            Issue::Deja,
+            "un compte en suppression a changé de statut"
+        );
+        assert_eq!(statut(&db, "partant_sus").await, "deleting");
+
+        // Et le chemin complet reste fermé : suspendre puis rétablir ne le
+        // remet pas en service.
+        assert_eq!(
+            retablir(&db, "partant_sus").await.expect("levée"),
+            Issue::Deja
+        );
+        assert_eq!(statut(&db, "partant_sus").await, "deleting");
+    }
+
     #[tokio::test]
     async fn suspendre_met_hors_circulation_et_laisse_une_trace() {
         let db = base_de_test().await;

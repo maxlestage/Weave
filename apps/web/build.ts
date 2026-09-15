@@ -47,6 +47,7 @@ await ecrirePagesJuridiques(resultat);
 await ecrireFichiersDeReferencement();
 await verifierQu_AucuneAdresseN_EstEcriteEnDur();
 await verifierQueLesFilsSeLisent();
+verifierQueLOrigineEstHabitable();
 avertirDesMentionsIncompletes();
 
 /*
@@ -596,6 +597,46 @@ async function verifierQu_AucuneAdresseN_EstEcriteEnDur() {
     for (const faute of fautes) console.error(`      ${faute}`);
     console.error("    Une adresse partagée se déduit de l'origine, elle ne s'écrit pas.");
     process.exit(1);
+  }
+}
+
+/**
+ * Une origine posée doit mener quelque part.
+ *
+ * Ne rien poser est permis : les adresses absolues sont alors omises, les
+ * liens partagés sortent nus, et un avertissement le dit. Poser une adresse
+ * FAUSSE est autre chose — les pages se déclarent canoniques à un endroit qui
+ * ne répond pas, et le plan du site n'énumère que des adresses injoignables.
+ * Un moteur qui suit ces indications retire les pages de son index plutôt que
+ * de les y mettre : c'est pire que de n'avoir rien dit.
+ *
+ * `weave.app` est le domaine de remplacement de ce dépôt, et il ne répond pas.
+ * L'envoi à TestFlight le refuse déjà pour `WEAVE_API_URL` ; la construction du
+ * site ne refusait rien, et l'on pouvait remettre la valeur qui avait
+ * précisément causé le défaut.
+ *
+ * Si ce domaine devient un jour le vôtre, c'est cette fonction qu'il faut
+ * changer — ainsi que la garde correspondante dans `ios-testflight.yml`.
+ */
+function verifierQueLOrigineEstHabitable() {
+  if (!ORIGINE) return;
+
+  const refuser = (raison: string) => {
+    console.error("");
+    console.error(`  ✗ SITE.origine vaut « ${ORIGINE} ».`);
+    console.error(`    ${raison}`);
+    console.error("");
+    console.error("    Les pages se déclareraient canoniques à cette adresse, et le plan");
+    console.error("    du site n'énumérerait qu'elle. Mieux vaut ne rien poser du tout :");
+    console.error("    les adresses absolues sont alors simplement omises.");
+    process.exit(1);
+  };
+
+  if (!ORIGINE.startsWith("https://")) {
+    refuser("Ce n'est pas une adresse https.");
+  }
+  if (/(^|\.)weave\.app$/.test(new URL(ORIGINE).hostname)) {
+    refuser("C'est le domaine de remplacement du dépôt, et il ne répond pas.");
   }
 }
 
