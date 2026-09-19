@@ -786,6 +786,39 @@ mod tests {
         assert_eq!(statut(&db, "partant").await, "deleting");
     }
 
+    /// Clore un dossier ne sanctionne personne.
+    ///
+    /// Le commentaire de `clore` le dit : confondre « dossier instruit » et
+    /// « compte sanctionné » ferait d'un classement sans suite une sanction
+    /// silencieuse. Rien ne le tenait — ajouter une suspension à la clôture
+    /// laissait les trois cent vingt-sept tests au vert.
+    ///
+    /// La plupart des signalements se classent sans suite : c'est le cas
+    /// ordinaire, pas le cas limite.
+    #[tokio::test]
+    async fn clore_un_dossier_ne_sanctionne_pas_le_compte_vise() {
+        let db = base_de_test().await;
+        compte(&db, "plaignant", "active").await;
+        compte(&db, "vise", "active").await;
+        signalement(&db, "d1", "plaignant", "vise", 1).await;
+
+        assert_eq!(
+            clore(&db, "d1", Some("sans suite")).await.expect("clôture"),
+            Issue::Fait
+        );
+
+        assert_eq!(
+            statut(&db, "vise").await,
+            "active",
+            "un classement sans suite a sanctionné le compte visé"
+        );
+        assert_eq!(
+            statut(&db, "plaignant").await,
+            "active",
+            "la clôture a touché le compte qui a signalé"
+        );
+    }
+
     /// Suspendre ne touche pas non plus un compte marqué pour la purge.
     ///
     /// Le miroir du test précédent, et il manquait. `retablir` refusait bien

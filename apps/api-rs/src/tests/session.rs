@@ -618,3 +618,55 @@ async fn supprimer_son_compte_clot_les_conversations_et_fait_taire_les_appareils
         "le refus doit se lire dans l'application : {corps}"
     );
 }
+
+/// Un jeton de renouvellement périmé ne renouvelle rien.
+///
+/// La borne existait dans la requête — `expiresAt > maintenant` — sans qu'un
+/// seul test ne la tienne. La retirer laissait renouveler indéfiniment : la
+/// session n'avait plus de durée de vie, et une copie prise il y a un an
+/// rouvrait l'accès aussi bien qu'un jeton d'hier.
+///
+/// Le jeton n'est pas seulement refusé : il est refusé POUR CETTE RAISON-LÀ.
+/// On le vieillit en base sans y toucher autrement, si bien que seule la date
+/// peut le faire tomber.
+#[tokio::test]
+async fn un_jeton_de_renouvellement_perime_ne_renouvelle_rien() {
+    use sea_orm::ConnectionTrait;
+
+    let service = Service::monter().await;
+    let (_, renouvellement) = session(&service, "c_perime").await;
+
+    // Il marche, tant qu'il est dans sa durée.
+    let (statut, corps) = service
+        .post(
+            "/v1/auth/refresh",
+            None,
+            json!({ "refreshToken": renouvellement }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let suivant = corps["session"]["refreshToken"]
+        .as_str()
+        .expect("jeton suivant")
+        .to_string();
+
+    // On le fait vieillir d'un jour de trop. Rien d'autre ne change : ni
+    // révocation, ni rotation.
+    service
+        .db
+        .execute_unprepared(
+            "UPDATE refresh_tokens SET expiresAt = '2020-01-01 00:00:00' \
+             WHERE revokedAt IS NULL",
+        )
+        .await
+        .unwrap();
+
+    let (statut, corps) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": suivant }))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "un jeton périmé a renouvelé la session : elle n'a plus de durée de vie ({corps})"
+    );
+}
