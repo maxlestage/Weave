@@ -23,11 +23,136 @@ use tower::ServiceExt;
 const SECRET: &str = "un-secret-de-test-assez-long-pour-passer-la-validation";
 const SECRET_MEDIA: &str = "un-autre-secret-de-test-assez-long-pour-les-medias";
 
+/// Efface les bases de test des passages précédents, une fois par processus.
+///
+/// Les fichiers survivaient à la suite. C'est le prix du choix expliqué plus
+/// bas — une base sur disque plutôt qu'en mémoire — mais rien ne le payait :
+/// chaque passage laissait une base par test dans le dossier temporaire, et
+/// SQLite y ajoute ses deux annexes `-wal` et `-shm`. Une seule session de
+/// travail, où la suite tourne des dizaines de fois, y a déposé cinquante-
+/// quatre mille fichiers et dix-huit gigaoctets. Sur une machine de
+/// développement le disque finit par se remplir sans qu'on sache de quoi, et
+/// l'écriture qui échoue alors n'a plus aucun rapport avec sa cause.
+///
+/// Un `Drop` sur la connexion serait le geste naturel, mais il ne tient pas :
+/// `DatabaseConnection` traverse des bornes génériques (`C: ConnectionTrait`)
+/// qu'aucune déréférence ne franchit, et il faudrait toucher les trente sites
+/// d'appel. Surtout, il ne nettoierait rien d'un passage interrompu — or c'est
+/// exactement ce qui laisse le plus de fichiers derrière lui.
+///
+/// Le balayage, lui, ramasse aussi ceux-là. Il ne tourne qu'au premier appel :
+/// il ne voit donc que des fichiers antérieurs au passage en cours, jamais les
+/// siens. La borne d'une heure et l'exclusion du processus courant ne
+/// protègent qu'un second passage lancé en parallèle.
+fn balayer_les_passages_precedents() {
+    static UNE_FOIS: std::sync::Once = std::sync::Once::new();
+    UNE_FOIS.call_once(|| {
+        balayer(&std::env::temp_dir(), std::process::id(), UNE_HEURE);
+    });
+}
+
+/// L'âge au-delà duquel un fichier de test n'appartient plus à personne.
+///
+/// Un test dure des secondes. Une heure ne protège donc rien du passage en
+/// cours — le balayage ne tourne qu'à son premier appel, et ne peut voir que
+/// des fichiers antérieurs. Elle protège un SECOND passage lancé en parallèle,
+/// dont les fichiers sont, eux aussi, tout frais.
+const UNE_HEURE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Le balayage proprement dit, sur un dossier et un âge donnés.
+///
+/// Séparé de son appelant pour qu'un test puisse le lancer sur son propre
+/// dossier : le viser sur le dossier temporaire réel effacerait les bases des
+/// autres tests en train de tourner à côté.
+fn balayer(dossier: &std::path::Path, notre_processus: u32, age_minimum: std::time::Duration) {
+    let notre = format!("-{notre_processus}-");
+    let Ok(entrees) = std::fs::read_dir(dossier) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let nom = entree.file_name();
+        let Some(nom) = nom.to_str() else { continue };
+        let notre_forme = ["weave-test-", "weave-dist-", "weave-partage-"]
+            .iter()
+            .any(|prefixe| nom.starts_with(prefixe));
+        if !notre_forme || nom.contains(&notre) {
+            continue;
+        }
+        let assez_vieux = entree
+            .metadata()
+            .and_then(|m| m.modified())
+            .and_then(|t| t.elapsed().map_err(std::io::Error::other))
+            .is_ok_and(|age| age >= age_minimum);
+        if !assez_vieux {
+            continue;
+        }
+        let chemin = entree.path();
+        // `weave-dist-*` est un dossier, les deux autres des fichiers.
+        let _ = if chemin.is_dir() {
+            std::fs::remove_dir_all(&chemin)
+        } else {
+            std::fs::remove_file(&chemin)
+        };
+    }
+}
+
+#[test]
+fn le_balayage_n_emporte_que_les_restes_des_passages_precedents() {
+    // Un dossier à nous : viser le dossier temporaire réel effacerait les
+    // bases des tests qui tournent en parallèle de celui-ci.
+    let dossier = std::env::temp_dir().join(format!("weave-balayage-{}", std::process::id()));
+    std::fs::create_dir_all(&dossier).expect("dossier d'épreuve");
+
+    let poser = |nom: &str| {
+        let chemin = dossier.join(nom);
+        std::fs::write(&chemin, b"x").expect("fichier d'épreuve");
+        chemin
+    };
+
+    // Les restes d'un passage mort : la base, ses deux annexes, un partage.
+    let base = poser("weave-test-424242-7.sqlite");
+    let wal = poser("weave-test-424242-7.sqlite-wal");
+    let shm = poser("weave-test-424242-7.sqlite-shm");
+    let partage = poser("weave-partage-424242-plan");
+    // Le site rendu est un DOSSIER, pas un fichier : `remove_file` ne suffit
+    // pas, et c'est lui qui pèse le plus lourd.
+    let dist = dossier.join("weave-dist-424242-3");
+    std::fs::create_dir_all(dist.join("fr")).expect("dossier rendu");
+    std::fs::write(dist.join("fr/index.html"), b"<!doctype html>").expect("page rendue");
+
+    // Ce que le balayage doit épargner : un fichier qui n'est pas à nous, et
+    // les nôtres tant qu'ils sont frais.
+    let etranger = poser("autre-outil-424242-0.tmp");
+    let a_nous = poser(&format!("weave-test-{}-0.sqlite", std::process::id()));
+
+    // Un âge nul rend tout fichier « assez vieux » : le tri ne se joue plus
+    // que sur le nom, et l'on éprouve les deux règles séparément.
+    balayer(&dossier, std::process::id(), std::time::Duration::ZERO);
+
+    for reste in [&base, &wal, &shm, &partage] {
+        assert!(!reste.exists(), "{} aurait dû être balayé", reste.display());
+    }
+    assert!(!dist.exists(), "le rendu du site aurait dû être balayé");
+    assert!(etranger.exists(), "un fichier qui n'est pas à nous reste");
+    assert!(a_nous.exists(), "le passage en cours garde ses fichiers");
+
+    // Et maintenant la règle d'âge, seule. Le fichier est posé ICI et non
+    // plus haut : le premier balayage, d'âge nul, l'aurait emporté comme les
+    // autres — ma première version du test l'avait posé avec eux, et c'est
+    // ce test-ci qui me l'a appris.
+    let frais = poser("weave-test-424243-0.sqlite");
+    balayer(&dossier, std::process::id(), UNE_HEURE);
+    assert!(frais.exists(), "un fichier récent d'un autre passage reste");
+
+    std::fs::remove_dir_all(&dossier).expect("dossier d'épreuve effacé");
+}
+
 pub async fn base_de_test() -> DatabaseConnection {
     // Ni `sqlite::memory:` ni une base nommée en cache partagé ne conviennent :
     // la première donne une base DISTINCTE par connexion du pool, la seconde
     // s'évapore dès que le pool ferme sa dernière connexion. Un fichier tient
     // aussi longtemps que le test, sans ambiguïté.
+    balayer_les_passages_precedents();
     static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let n = COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let chemin = std::env::temp_dir().join(format!("weave-test-{}-{n}.sqlite", std::process::id()));
