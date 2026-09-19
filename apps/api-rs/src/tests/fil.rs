@@ -663,3 +663,87 @@ async fn un_plan_de_groupe_se_paie() {
         "un palier qui comprend les plans de groupe en redemande le crédit : {corps}"
     );
 }
+
+/// Un abonnement qui expire emporte les critères qu'il payait.
+///
+/// C'est écrit dans `si_autorise`, mot pour mot : « il aurait suffi de
+/// s'abonner un mois pour garder le bénéfice indéfiniment ». La règle
+/// `filtre_autorise` était éprouvée ; son application au fil ne l'était pas.
+/// Neutraliser `si_autorise` laissait toute la suite au vert, et les critères
+/// posés du temps où l'abonnement courait restaient en vigueur.
+#[tokio::test]
+async fn les_criteres_vendus_tombent_avec_l_abonnement() {
+    let service = Service::monter().await;
+    let lecteur = service.compte("c_abonne", "escapade").await;
+    service.compte("c_femme", "depart").await;
+    let homme = service.compte("c_homme", "depart").await;
+
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE profiles SET gender='femme' WHERE accountId='{}'",
+            service.id("c_femme")
+        ))
+        .await
+        .unwrap();
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE profiles SET gender='homme' WHERE accountId='{homme}'"
+        ))
+        .await
+        .unwrap();
+
+    // Le filtre par genre relève de l'article 9 : il demande un accord.
+    service.consentir(&service.jeton("c_abonne")).await;
+    let (statut, corps) = service
+        .patch(
+            "/v1/me/preferences",
+            Some(&service.jeton("c_abonne")),
+            json!({ "seeking": ["femme"] }),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "le palier Escapade refuse le critère : {corps}"
+    );
+
+    let par_une_femme = plan_de(&service, "c_femme", "Un atelier de céramique").await;
+    let par_un_homme = plan_de(&service, "c_homme", "Un tournoi de babyfoot").await;
+
+    // Tant que l'abonnement court, le critère s'applique.
+    let abonne = titres_du_fil(&service, "c_abonne").await;
+    assert!(abonne.contains(&par_une_femme), "{abonne:?}");
+    assert!(
+        !abonne.contains(&par_un_homme),
+        "le critère de genre ne s'applique pas alors qu'il est payé : {abonne:?}"
+    );
+
+    // L'abonnement retombe — le critère, lui, reste écrit en base.
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE subscriptions SET tier='depart' WHERE accountId='{lecteur}'"
+        ))
+        .await
+        .unwrap();
+    crate::auth::oublier_compte(&service.etat, &lecteur).await;
+
+    let (_, criteres) = service
+        .get("/v1/me/preferences", Some(&service.jeton("c_abonne")))
+        .await;
+    assert_eq!(
+        criteres["seeking"],
+        json!(["femme"]),
+        "le critère a été effacé de la base : ce n'est pas ce qu'on éprouve ici"
+    );
+
+    // Et pourtant le fil ne filtre plus dessus.
+    let retombe = titres_du_fil(&service, "c_abonne").await;
+    assert!(
+        retombe.contains(&par_un_homme),
+        "le critère de genre s'applique encore sur un palier qui ne l'achète plus : \
+         il aurait suffi de s'abonner un mois ({retombe:?})"
+    );
+}
