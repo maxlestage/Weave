@@ -171,6 +171,72 @@ struct SessionTests {
     }
 }
 
+// MARK: - Retouches locales du fil
+
+@Suite("Retouches locales du fil")
+struct FeedEditTests {
+    private func fil(_ plans: [Plan], restantes: Int = 5) -> Feed {
+        Feed(
+            plans: plans,
+            requestsLeftToday: restantes,
+            fromCache: false,
+            generatedAt: Date(timeIntervalSince1970: 1_789_000_000)
+        )
+    }
+
+    @Test("Marquer un plan comme demandé ne touche à rien d'autre")
+    func demandeNeChangeQueLaDemande() {
+        // Le magasin rebâtissait le plan champ par champ : treize arguments
+        // recopiés à la main. Le compilateur exige qu'ils soient tous là, mais
+        // rien n'empêche d'en INTERVERTIR deux de même type — `capacity` et
+        // `seatsLeft` sont deux entiers, `title`, `note` et `city` trois
+        // chaînes. Un plan complet se serait affiché avec des places libres.
+        //
+        // `Plan` est `Hashable` : comparer les deux plans compare TOUS les
+        // champs, y compris ceux qu'on ajouterait demain.
+        // Capacité et places libres DIFFÉRENTES, sans quoi les intervertir ne
+        // se verrait pas — c'est ce que ma première version faisait, et la
+        // mutation est passée sans rien faire tomber.
+        let avant = plan(id: "a", distance: 12, places: 2, capacite: 5)
+        let attendu = Plan(
+            id: avant.id,
+            author: avant.author,
+            title: avant.title,
+            note: avant.note,
+            category: avant.category,
+            startsAt: avant.startsAt,
+            city: avant.city,
+            distanceKm: avant.distanceKm,
+            capacity: avant.capacity,
+            seatsLeft: avant.seatsLeft,
+            state: avant.state,
+            requested: true,
+            createdAt: avant.createdAt
+        )
+        #expect(avant.requested == false)
+        #expect(avant.demande() == attendu)
+    }
+
+    @Test("Un fil retouché le dit, et garde son heure de composition")
+    func retoucheHonnete() {
+        // `generatedAt` est l'heure à laquelle le SERVEUR a composé le fil. La
+        // toucher ici ferait croire à une composition qui n'a pas eu lieu, et
+        // c'est cette heure que l'écran affiche.
+        let origine = fil([plan(id: "a"), plan(id: "b")])
+        let retouche = origine.remplacant(plans: [origine.plans[0]])
+
+        #expect(retouche.generatedAt == origine.generatedAt)
+        #expect(retouche.plans.map(\.id) == ["a"])
+        // Ce qu'on tient ne vient plus du serveur : il a été retouché ici.
+        #expect(origine.fromCache == false)
+        #expect(retouche.fromCache == true)
+        // Le compteur de demandes ne bouge pas quand on ne le donne pas.
+        #expect(retouche.requestsLeftToday == origine.requestsLeftToday)
+        // Et il bouge quand on le donne : c'est ce que fait une demande.
+        #expect(origine.remplacant(plans: [], requestsLeftToday: 2).requestsLeftToday == 2)
+    }
+}
+
 // MARK: - Consentement
 
 @Suite("Consentement")
@@ -426,6 +492,10 @@ private func plan(
     debut: Date = .now.addingTimeInterval(3600),
     distance: Int = 5,
     places: Int = 1,
+    // Distincte des places par défaut : les deux étaient à 1, et les
+    // intervertir ne se voyait donc pas. Un plan de quatre dont il reste une
+    // place est aussi le cas ordinaire.
+    capacite: Int = 4,
     demande: Bool = false
 ) -> Plan {
     let json = """
@@ -444,7 +514,7 @@ private func plan(
       "startsAt": "\(DateWeave.avecFractions.format(debut))",
       "city": "Paris",
       "distanceKm": \(distance),
-      "capacity": 1,
+      "capacity": \(capacite),
       "seatsLeft": \(places),
       "state": "ouvert",
       "requested": \(demande),

@@ -177,12 +177,7 @@ public final class PlansStore {
     public func dropPast() {
         let vivants = feed.plans.filter { $0.startsAt > .now }
         guard vivants.count != feed.plans.count else { return }
-        feed = Feed(
-            plans: vivants,
-            requestsLeftToday: feed.requestsLeftToday,
-            fromCache: true,
-            generatedAt: feed.generatedAt
-        )
+        feed = feed.remplacant(plans: vivants)
     }
 
     // MARK: - Interne
@@ -198,38 +193,13 @@ public final class PlansStore {
     }
 
     private func markRequested(_ planID: String, requestsLeft: Int) {
-        let plans = feed.plans.map { plan -> Plan in
-            guard plan.id == planID else { return plan }
-            return Plan(
-                id: plan.id,
-                author: plan.author,
-                title: plan.title,
-                note: plan.note,
-                category: plan.category,
-                startsAt: plan.startsAt,
-                city: plan.city,
-                distanceKm: plan.distanceKm,
-                capacity: plan.capacity,
-                seatsLeft: plan.seatsLeft,
-                state: plan.state,
-                requested: true,
-                createdAt: plan.createdAt
-            )
-        }
-        feed = Feed(
-            plans: plans,
-            requestsLeftToday: requestsLeft,
-            fromCache: true,
-            generatedAt: feed.generatedAt
+        feed = feed.remplacant(
+            plans: feed.plans.map { $0.id == planID ? $0.demande() : $0 },
+            requestsLeftToday: requestsLeft
         )
     }
 
     private func remove(_ planID: String) {
-        feed = Feed(
-            plans: feed.plans.filter { $0.id != planID },
-            requestsLeftToday: feed.requestsLeftToday,
-            fromCache: true,
-            generatedAt: feed.generatedAt
-        )
+        feed = feed.remplacant(plans: feed.plans.filter { $0.id != planID })
     }
 }

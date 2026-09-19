@@ -330,11 +330,26 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
         ("bioMaxChars", "BIO_MAX_CHARS"),
         ("conversationMaxChars", "CONVERSATION_MAX_CHARS"),
         ("photoMaxBytes", "PHOTO_MAX_BYTES"),
+        ("maxOpen", "MAX_OPEN_PLANS"),
     ] {
-        let prefixe = format!("public let {cote_swift} = ");
-        let ligne = source
-            .lines()
-            .find(|l| l.trim_start().starts_with(&prefixe))
+        // Deux formes, parce que les constantes vivent à deux endroits : au
+        // fil du module (`public let`) ou portées par le type qu'elles
+        // concernent (`public static let`, dans `MyPlan`).
+        //
+        // Seule la première était lue. `MyPlan.maxOpen` annonçait donc dans son
+        // commentaire un accord — « identique côté serveur » — que rien ne
+        // tenait : relever le plafond au serveur aurait laissé l'application
+        // griser le bouton de publication au troisième plan, et personne
+        // n'aurait pu se servir de ce qui venait d'être ouvert.
+        let (prefixe, ligne) = ["public let ", "public static let "]
+            .iter()
+            .find_map(|forme| {
+                let prefixe = format!("{forme}{cote_swift} = ");
+                source
+                    .lines()
+                    .find(|l| l.trim_start().starts_with(&prefixe))
+                    .map(|ligne| (prefixe, ligne))
+            })
             .unwrap_or_else(|| panic!("« {cote_swift} » a disparu du modèle iOS"));
         let reste = ligne.trim_start()[prefixe.len()..].trim();
         let brut: String = reste

@@ -95,6 +95,32 @@ public struct Plan: Codable, Identifiable, Hashable, Sendable {
     public var isJoinable: Bool {
         state == .ouvert && seatsLeft > 0 && !requested && startsAt > .now
     }
+
+    /// Le même plan, marqué comme demandé.
+    ///
+    /// Le magasin le rebâtissait champ par champ — treize arguments recopiés à
+    /// la main pour n'en changer qu'un. Le compilateur exige qu'ils soient tous
+    /// là, mais rien n'empêche d'en INTERVERTIR deux de même type : `capacity`
+    /// et `seatsLeft` sont deux entiers, `title`, `note` et `city` trois
+    /// chaînes. Un plan complet se serait affiché avec des places libres, et
+    /// une demande aurait été possible dessus.
+    public func demande() -> Plan {
+        Plan(
+            id: id,
+            author: author,
+            title: title,
+            note: note,
+            category: category,
+            startsAt: startsAt,
+            city: city,
+            distanceKm: distanceKm,
+            capacity: capacity,
+            seatsLeft: seatsLeft,
+            state: state,
+            requested: true,
+            createdAt: createdAt
+        )
+    }
 }
 
 /// Le fil : les plans à venir, autour de soi.
@@ -125,6 +151,22 @@ public struct Feed: Codable, Hashable, Sendable {
     }
 
     public var soonest: Plan? { plans.first }
+
+    /// Le même fil, avec d'autres plans — et le reste conservé.
+    ///
+    /// Trois endroits du magasin rebâtissaient un `Feed` champ par champ pour
+    /// n'en changer qu'un. `fromCache` y devient vrai : ce qu'on tient ne vient
+    /// plus du serveur, il a été retouché ici, et l'écran doit pouvoir le dire.
+    /// `generatedAt` ne bouge pas — c'est l'heure de composition du fil, et la
+    /// retoucher ferait croire à une composition qui n'a pas eu lieu.
+    public func remplacant(plans: [Plan], requestsLeftToday: Int? = nil) -> Feed {
+        Feed(
+            plans: plans,
+            requestsLeftToday: requestsLeftToday ?? self.requestsLeftToday,
+            fromCache: true,
+            generatedAt: generatedAt
+        )
+    }
 }
 
 /// Un de ses propres plans, avec ce qu'il a suscité.
