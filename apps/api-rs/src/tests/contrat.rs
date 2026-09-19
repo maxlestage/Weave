@@ -28,7 +28,12 @@ fn valeur_du_contrat(source: &str, nom: &str) -> i64 {
         .unwrap_or_else(|| panic!("« {nom} » a disparu du contrat partagé"));
 
     let reste = ligne[prefixe.len()..].trim();
-    let brut: String = reste.chars().take_while(|c| c.is_ascii_digit()).collect();
+    // Le tiret bas sépare les milliers en TypeScript comme en Swift : le
+    // refuser obligerait à écrire « 2097152 » là où « 2_097_152 » se lit.
+    let brut: String = reste
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '_')
+        .collect();
     assert!(
         !brut.is_empty(),
         "« {nom} » ne commence pas par un nombre : « {reste} »"
@@ -41,7 +46,7 @@ fn valeur_du_contrat(source: &str, nom: &str) -> i64 {
         "« {nom} » vaut une expression — « {reste} » — que ce test ne sait pas évaluer"
     );
 
-    brut.parse().expect("un entier")
+    brut.replace('_', "").parse().expect("un entier")
 }
 
 fn contrat() -> String {
@@ -57,7 +62,7 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
 
     // Chaque ligne : le nom dans le contrat, la constante Rust qui doit lui
     // répondre. La liste ne couvre que ce que l'API réécrit de son côté.
-    let accords: [(&str, i64); 17] = [
+    let accords: [(&str, i64); 18] = [
         // L'âge minimum d'abord : c'est la seule de ces valeurs qui décide
         // qui a le droit d'être là. Les CGU l'annoncent en lisant le contrat,
         // l'API le refuse en lisant sa propre constante — et rien ne les
@@ -119,6 +124,10 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
         (
             "CONVERSATION_MAX_CHARS",
             crate::routes::conversations::MESSAGE_MAX as i64,
+        ),
+        (
+            "PHOTO_MAX_BYTES",
+            crate::routes::media::PHOTO_MAX_OCTETS as i64,
         ),
     ];
 
@@ -320,17 +329,34 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
         ("accountPurgeDays", "ACCOUNT_PURGE_DAYS"),
         ("bioMaxChars", "BIO_MAX_CHARS"),
         ("conversationMaxChars", "CONVERSATION_MAX_CHARS"),
+        ("photoMaxBytes", "PHOTO_MAX_BYTES"),
     ] {
         let prefixe = format!("public let {cote_swift} = ");
         let ligne = source
             .lines()
             .find(|l| l.trim_start().starts_with(&prefixe))
             .unwrap_or_else(|| panic!("« {cote_swift} » a disparu du modèle iOS"));
-        let brut: String = ligne.trim_start()[prefixe.len()..]
+        let reste = ligne.trim_start()[prefixe.len()..].trim();
+        let brut: String = reste
             .chars()
-            .take_while(|c| c.is_ascii_digit())
+            .take_while(|c| c.is_ascii_digit() || *c == '_')
             .collect();
+
+        // Ce qui suit doit être la fin de la déclaration, pas un calcul.
+        //
+        // Ce lecteur n'en disait rien : il prenait les premiers chiffres et
+        // laissait tomber le reste. `photoMaxBytes` valait `2 * 1024 * 1024`,
+        // et il en lisait DEUX — deux octets, rapprochés sans broncher de
+        // n'importe quoi. Le lecteur du contrat, lui, refuse une expression et
+        // le dit ; celui-ci fait pareil désormais.
+        let suite = reste[brut.len()..].trim();
+        assert!(
+            suite.is_empty() || suite.starts_with("//"),
+            "« {cote_swift} » vaut une expression — « {reste} » — que ce test ne sait pas évaluer"
+        );
+
         let valeur: i64 = brut
+            .replace('_', "")
             .parse()
             .unwrap_or_else(|_| panic!("« {cote_swift} » ne vaut pas un entier : « {ligne} »"));
 

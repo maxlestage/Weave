@@ -171,6 +171,141 @@ struct SessionTests {
     }
 }
 
+// MARK: - Consentement
+
+@Suite("Consentement")
+struct ConsentTests {
+    private func lire(_ json: String) throws -> Consentements {
+        try decodeur.decode(Consentements.self, from: Data(json.utf8))
+    }
+
+    @Test("Un consentement absent n'est pas un consentement donné")
+    func absentVautRefus() throws {
+        // C'est la règle de l'article 9 : le silence ne vaut pas accord. Rien
+        // ne la tenait — `?? true` laissait les quinze tests au vert, et le fil
+        // aurait filtré par genre sans qu'on ait jamais rien demandé.
+        let etat = try lire(#"{"consents":[],"policyVersion":"2026-09-12"}"#)
+        #expect(etat.estActif(.donneesSensibles) == false)
+        #expect(etat.etat(.donneesSensibles) == nil)
+    }
+
+    @Test("Un consentement retiré ne vaut plus")
+    func retireNeVautPlus() throws {
+        // La ligne RESTE en base après un retrait — la politique promet de
+        // consigner les deux dates. Se fier à sa présence plutôt qu'à `active`
+        // rendrait donc un retrait sans effet, et c'est la seule chose qu'un
+        // retrait doit avoir.
+        let etat = try lire(#"""
+        {"consents":[{"kind":"donnees_sensibles","active":false,
+        "version":"2026-09-12","grantedAt":"2026-09-01T10:00:00.000Z",
+        "revokedAt":"2026-09-10T10:00:00.000Z"}],"policyVersion":"2026-09-12"}
+        """#)
+        #expect(etat.etat(.donneesSensibles) != nil)
+        #expect(etat.estActif(.donneesSensibles) == false)
+    }
+
+    @Test("Un consentement en vigueur vaut")
+    func accordeVaut() throws {
+        // Une garde qui refuse tout ne garde rien.
+        let etat = try lire(#"""
+        {"consents":[{"kind":"donnees_sensibles","active":true,
+        "version":"2026-09-12","grantedAt":"2026-09-01T10:00:00.000Z",
+        "revokedAt":null}],"policyVersion":"2026-09-12"}
+        """#)
+        #expect(etat.estActif(.donneesSensibles) == true)
+    }
+
+    @Test("Seule une demande en attente est en attente")
+    func verificationEnAttente() throws {
+        func etat(_ statut: String) throws -> EtatDeVerification {
+            try decodeur.decode(EtatDeVerification.self, from: Data(#"""
+            {"verified":false,"request":{"state":"\#(statut)",
+            "createdAt":"2026-09-01T10:00:00.000Z","handledAt":null,
+            "decision":""}}
+            """#.utf8))
+        }
+        #expect(try etat("en_attente").enAttente == true)
+        // Une demande TRANCHÉE n'attend plus. Confondre les deux laisserait
+        // l'écran annoncer une vérification en cours après un refus, et il n'y
+        // aurait plus aucun moyen d'en déposer une autre.
+        #expect(try etat("acceptee").enAttente == false)
+        #expect(try etat("refusee").enAttente == false)
+
+        let aucune = try decodeur.decode(
+            EtatDeVerification.self, from: Data(#"{"verified":true,"request":null}"#.utf8)
+        )
+        #expect(aucune.enAttente == false)
+    }
+}
+
+// MARK: - Critères du fil
+
+@Suite("Critères du fil")
+struct PreferencesTests {
+    private func lire(escaleUntil: String?, distance: Int = 25, applique: Int = 25) throws
+        -> Preferences
+    {
+        let fin = escaleUntil.map { "\"\($0)\"" } ?? "null"
+        return try decodeur.decode(Preferences.self, from: Data(#"""
+        {"minAge":18,"maxAge":32,"maxDistanceKm":\#(distance),
+        "effectiveDistanceKm":\#(applique),"seeking":["femme"],
+        "categories":["sport"],"days":[],
+        "escaleCity":"Lyon","escaleUntil":\#(fin)}
+        """#.utf8))
+    }
+
+    @Test("Une escale terminée n'est plus en cours")
+    func escaleTerminee() throws {
+        // Le serveur laisse les DEUX colonnes en place après le terme : la
+        // ville reste écrite. S'y fier plutôt qu'à l'échéance composerait le
+        // fil autour de cette ville pour toujours — on rentre chez soi, et le
+        // fil reste en voyage.
+        let finie = try lire(escaleUntil: "2020-01-01T00:00:00.000Z")
+        #expect(finie.escaleCity == "Lyon")
+        #expect(finie.escaleEnCours == false)
+
+        let encours = try lire(escaleUntil: "2099-01-01T00:00:00.000Z")
+        #expect(encours.escaleEnCours == true)
+
+        let jamais = try lire(escaleUntil: nil)
+        #expect(jamais.escaleEnCours == false)
+    }
+
+    @Test("Un rayon rabattu se voit")
+    func distanceRabattue() throws {
+        // Sans « critères précis », le fil rabat le rayon sur un cran. Le
+        // réglage choisi reste affiché — il revient exact dès que l'offre le
+        // permet — mais le fil en retient un autre, et c'est ce décalage seul
+        // qui peut l'expliquer à qui s'étonne de son fil.
+        #expect(try lire(escaleUntil: nil, distance: 27, applique: 25).distanceRabattue)
+        #expect(try !lire(escaleUntil: nil, distance: 25, applique: 25).distanceRabattue)
+    }
+}
+
+// MARK: - Genres
+
+@Suite("Genres")
+struct GenderTests {
+    @Test("Chaque genre porte un libellé écrit pour être lu")
+    func libelles() {
+        // Les valeurs brutes servent à la correspondance, comparée caractère
+        // par caractère, et le test de contrat les tient. Ce sont donc des
+        // clés, pas des mots : montrer « non_binaire » à quelqu'un lui montre
+        // la plomberie. Rien ne l'empêchait.
+        for genre in Gender.allCases {
+            #expect(
+                genre.libelle != genre.rawValue || genre.rawValue.first!.isUppercase,
+                "« \(genre.rawValue) » s'affiche tel quel"
+            )
+            #expect(!genre.libelle.contains("_"), "« \(genre.libelle) » garde un tiret bas")
+            #expect(genre.libelle.first?.isUppercase == true)
+        }
+        // Et les libellés se distinguent les uns des autres : un `switch` qui
+        // rend le même mot deux fois rendrait le choix illisible.
+        #expect(Set(Gender.allCases.map(\.libelle)).count == Gender.allCases.count)
+    }
+}
+
 // MARK: - Ce qui quitte l'appareil
 
 @Suite("La fiche qui part")

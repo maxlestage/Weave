@@ -33,7 +33,14 @@ public let bioMaxChars = 160
 /// L'application recompresse avant d'envoyer : cette borne est ce que le
 /// serveur refuse, pas ce qu'on vise. Mieux vaut le dire pendant la
 /// préparation que rejeter l'envoi une fois la photo choisie.
-public let photoMaxBytes = 2 * 1024 * 1024
+///
+/// « Côté serveur comme ici » le disait déjà, et rien ne le tenait : c'était
+/// deux nombres écrits séparément. Le contrat partagé les rapproche
+/// maintenant, comme il le fait des bornes d'un message.
+///
+/// Deux mébioctets, écrits à plat : `2 * 1024 * 1024` est une expression, et
+/// le test de contrat n'en lisait que le premier nombre — deux octets.
+public let photoMaxBytes = 2_097_152
 
 /// Côté le plus long d'une photo après recompression.
 ///
