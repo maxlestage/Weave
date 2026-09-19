@@ -1256,6 +1256,20 @@ fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
 ///
 /// Rien ne l'aurait signalé. Les deux bouts fonctionnaient, la base ne
 /// contenait bien que des positions arrondies, et seul le trajet mentait.
+///
+/// ## Ce que ce test ne peut pas voir, et qui le voit
+///
+/// Il lit du texte. Il vérifiait donc que l'appel s'ÉCRIVAIT
+/// `Self.arrondirPosition(latitude)` — pas que la fonction ainsi nommée fasse
+/// quoi que ce soit. J'ai vidé son corps pour ne rendre que son argument :
+/// l'identité, aucun arrondi, et ce test est resté au vert. Il s'est en
+/// revanche cassé sur un remaniement qui ne changeait rien au comportement.
+/// C'est le défaut d'un test textuel pris pour un test de comportement.
+///
+/// Le comportement est maintenant éprouvé où il vit, dans les tests Swift :
+/// la grille, le sens de l'arrondi, l'hémisphère sud. Ce test-ci garde ce
+/// qu'aucun test Swift ne peut atteindre — l'accord des DEUX grilles, celle du
+/// client et celle du serveur, qui ne se rencontrent dans aucun programme.
 #[test]
 fn la_position_est_arrondie_avant_de_quitter_l_appareil() {
     let client = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1263,8 +1277,21 @@ fn la_position_est_arrondie_avant_de_quitter_l_appareil() {
     let swift = std::fs::read_to_string(&client)
         .unwrap_or_else(|e| panic!("WeaveAPI.swift illisible en {} : {e}", client.display()));
 
+    // Le dépôt de la fiche passe par la fabrique du corps, et non par un corps
+    // monté sur place qui pourrait oublier l'arrondi. La fabrique, elle, est
+    // éprouvée en Swift.
+    let depot = swift
+        .split("public func submitProfile(")
+        .nth(1)
+        .and_then(|reste| reste.split("\n    }").next())
+        .expect("submitProfile a disparu du client");
+    assert!(
+        depot.contains("corpsDeFiche("),
+        "le dépôt de la fiche ne passe plus par `corpsDeFiche` : \
+         l'arrondi promis par la politique n'est plus sur son chemin"
+    );
     for champ in ["latitude", "longitude"] {
-        let attendu = format!("{champ}: Self.arrondirPosition({champ})");
+        let attendu = format!("{champ}: arrondirPosition({champ})");
         assert!(
             swift.contains(&attendu),
             "« {champ} » part sans être arrondie : la politique promet le contraire"
