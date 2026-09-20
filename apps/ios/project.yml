@@ -44,8 +44,19 @@ packages:
 targets:
   # ------------------------------------------------------------------
   # Application iPhone
+  #
+  # Le nom de la cible porte « ‣ », comme le nom affiché. Il devient donc
+  # aussi celui du SCHÉMA et celui du produit (« Weave ‣.app ») : c'est ce qui
+  # oblige à citer le schéma entre guillemets partout où on l'invoque.
+  #
+  # Le PROJET, lui, reste « Weave » : il contient aussi la montre et ses
+  # extensions, et le renommer les emporterait — or la demande portait sur
+  # l'iPhone seul. `Weave.xcodeproj` ne change donc pas de nom.
+  #
+  # Le répertoire des sources reste « Weave/ » : rien ne bouge sur le disque,
+  # et aucun chemin d'`INFOPLIST_FILE` n'est touché.
   # ------------------------------------------------------------------
-  Weave:
+  "Weave ‣":
     type: application
     platform: iOS
     sources:
@@ -117,10 +128,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: WeaveWatchWidgets/WeaveWatchWidgets.entitlements
 
 schemes:
-  Weave:
+  "Weave ‣":
     build:
       targets:
-        Weave: all
+        "Weave ‣": all
     run:
       config: Debug
     test:

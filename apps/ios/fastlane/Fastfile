@@ -61,7 +61,9 @@ platform :ios do
 
     build_app(
       project: "Weave.xcodeproj",
-      scheme: "Weave",
+      # Le schéma porte le nom de la cible iPhone, « ‣ » compris. Le PROJET,
+      # lui, reste « Weave.xcodeproj » : il contient aussi la montre.
+      scheme: "Weave ‣",
       configuration: "Release",
       export_method: "app-store",
       clean: true,
