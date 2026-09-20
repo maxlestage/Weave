@@ -204,7 +204,6 @@ export const PLAN_CATEGORY_LABELS_PAR_LANGUE: Readonly<
   },
 };
 
-/** Rétention des messages après clôture d'une conversation, en jours. */
 /**
  * Longueur maximale d'un message de conversation.
  *
@@ -215,6 +214,19 @@ export const PLAN_CATEGORY_LABELS_PAR_LANGUE: Readonly<
  */
 export const CONVERSATION_MAX_CHARS = 2000;
 
+/**
+ * Rétention des messages APRÈS CLÔTURE d'une conversation, en jours.
+ *
+ * Après clôture, et non après envoi : un échange ouvert n'expire pas, et
+ * c'est la clôture qui pose l'échéance. Le site l'annonce dans ces termes —
+ * « Messages conservés 90 jours après clôture d'une conversation » — et il
+ * lit cette constante pour le dire.
+ *
+ * En ajoutant `CONVERSATION_MAX_CHARS` au-dessus, j'avais glissé sa
+ * déclaration ENTRE ce commentaire et la constante qu'il décrit. Les deux
+ * valeurs gardaient la bonne, mais la page racontait la rétention à propos
+ * d'une longueur de message.
+ */
 export const MESSAGE_RETENTION_DAYS = 90;
 
 /** Délai de purge d'un compte supprimé, en jours. */

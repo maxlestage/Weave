@@ -515,6 +515,21 @@ public actor WeaveAPI {
         return try Self.decoder.decode(Result.self, from: brut).photoUrl
     }
 
+    /// Retire sa photo de profil.
+    ///
+    /// On pouvait la déposer et la remplacer, jamais la reprendre : une photo
+    /// posée restait, sauf à supprimer tout son compte. C'est pourtant la
+    /// donnée la plus identifiante de la fiche, et la seule qu'on ne pouvait
+    /// pas retirer — la ville, le genre et la phrase s'éditent tous.
+    ///
+    /// Les octets partent avec la référence, pas seulement l'affichage.
+    ///
+    /// Retirer deux fois n'est pas une erreur : une fiche sans photo est déjà
+    /// dans l'état voulu.
+    public func removePhoto() async throws {
+        let _: EmptyResponse = try await request(.delete, "/v1/me/photo")
+    }
+
     // MARK: - Se protéger
 
     /// Bloque quelqu'un.
