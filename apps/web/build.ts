@@ -643,6 +643,40 @@ function verifierQueLOrigineEstHabitable() {
 function avertirDesMentionsIncompletes() {
   const manquantes = valeursManquantes();
   if (manquantes.length === 0) return;
+
+  /*
+   * Une construction POUR UN VRAI DOMAINE s'arrête ; une construction locale
+   * avertit seulement.
+   *
+   * La distinction tient à `SITE_ORIGINE` : on ne le pose que pour mettre en
+   * ligne. Bloquer toute construction obligerait à remplir un SIREN pour
+   * lancer le site en local, ce qui n'a aucun sens — et finirait par faire
+   * poser des valeurs bidon pour avancer, c'est-à-dire exactement ce que ce
+   * fichier existe pour empêcher.
+   *
+   * Mais mettre en ligne SANS elles n'est pas une négligence rattrapable plus
+   * tard : l'article 6-III de la LCEN rend ces mentions obligatoires, et les
+   * pages s'afficheraient avec « [à compléter : SIREN et RCS] » surligné. Un
+   * avertissement dans un journal de construction ne se voit pas ; une page
+   * juridique publiée, si.
+   */
+  const pourLaMiseEnLigne = Boolean(
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+      ?.SITE_ORIGINE,
+  );
+  if (pourLaMiseEnLigne) {
+    console.error("");
+    console.error(
+      `  ✗ ${manquantes.length} mentions légales manquent, et le site part pour un vrai domaine.`,
+    );
+    console.error("    Renseignez-les dans apps/web/src/pages/identite.ts :");
+    for (const champ of manquantes) console.error(`      • ${champ}`);
+    console.error("");
+    console.error("    L'article 6-III de la LCEN les rend obligatoires. Publiées telles");
+    console.error("    quelles, elles s'afficheraient surlignées « [à compléter : … ] ».");
+    process.exit(1);
+  }
+
   console.log("");
   console.log(`  ⚠ ${manquantes.length} valeurs restent à renseigner`);
   console.log("    dans apps/web/src/pages/identite.ts :");
