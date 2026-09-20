@@ -70,13 +70,24 @@ const PLAN_ANNULE: Texte = Texte {
     fil: "plans",
 };
 
+/// Le rendez-vous approche.
+///
+/// Sans dire lequel, ni avec qui, ni où : la règle de cette page ne connaît pas
+/// d'exception, et un titre de plan en dit souvent plus qu'on ne croit sur un
+/// écran verrouillé.
+const RENDEZ_VOUS: Texte = Texte {
+    titre: "C'est bientôt",
+    corps: "Ouvrez Weave pour revoir votre rendez-vous.",
+    fil: "plans",
+};
+
 /// Tous les textes d'alerte, pour que le test les tienne tous.
 #[cfg(test)]
 ///
 /// La liste existe pour une raison précise : le test ne portait que sur
 /// `NOUVEAU_MESSAGE`. En ajouter un second sans l'y inscrire l'aurait laissé
 /// dire n'importe quoi sur un écran verrouillé.
-const TOUS_LES_TEXTES: [Texte; 3] = [NOUVEAU_MESSAGE, PLACE_RENDUE, PLAN_ANNULE];
+const TOUS_LES_TEXTES: [Texte; 4] = [NOUVEAU_MESSAGE, PLACE_RENDUE, PLAN_ANNULE, RENDEZ_VOUS];
 
 /// Prévient quelqu'un qu'un message l'attend.
 ///
@@ -95,6 +106,11 @@ pub async fn prevenir_place_rendue(state: &AppState, destinataire: &str) {
 /// Prévient quelqu'un qu'un plan qu'il avait rejoint est annulé.
 pub async fn prevenir_plan_annule(state: &AppState, destinataire: &str) {
     prevenir(state, destinataire, PLAN_ANNULE).await;
+}
+
+/// Prévient quelqu'un que son rendez-vous approche.
+pub async fn prevenir_rendez_vous(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, RENDEZ_VOUS).await;
 }
 
 async fn prevenir(state: &AppState, destinataire: &str, texte: Texte) {
@@ -198,7 +214,7 @@ mod tests {
         // s'afficherait.
         assert_eq!(
             TOUS_LES_TEXTES.len(),
-            3,
+            4,
             "un texte a été ajouté sans être inscrit dans la liste éprouvée"
         );
 

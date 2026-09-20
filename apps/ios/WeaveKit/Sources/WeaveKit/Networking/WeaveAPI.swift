@@ -934,6 +934,8 @@ public struct PreferencesPatch: Encodable, Sendable {
     public let seeking: [Gender]?
     /// Jours retenus, au sens ISO : 1 lundi, 7 dimanche. Vide = tous.
     public let days: [Int]?
+    /// Le rappel avant le rendez-vous.
+    public let remindersOn: Bool?
 
     public init(
         minAge: Int? = nil,
@@ -941,7 +943,8 @@ public struct PreferencesPatch: Encodable, Sendable {
         maxDistanceKm: Int? = nil,
         categories: [PlanCategory]? = nil,
         seeking: [Gender]? = nil,
-        days: [Int]? = nil
+        days: [Int]? = nil,
+        remindersOn: Bool? = nil
     ) {
         self.minAge = minAge
         self.maxAge = maxAge
@@ -949,6 +952,7 @@ public struct PreferencesPatch: Encodable, Sendable {
         self.seeking = seeking
         self.days = days
         self.categories = categories
+        self.remindersOn = remindersOn
     }
 }
 

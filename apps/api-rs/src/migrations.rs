@@ -34,6 +34,10 @@ const MIGRATIONS_POSTGRES: &[(&str, &str)] = &[
         "4_verifications",
         include_str!("../migrations/4_verifications/migration.sql"),
     ),
+    (
+        "5_rappels",
+        include_str!("../migrations/5_rappels/migration.sql"),
+    ),
 ];
 
 const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
@@ -56,6 +60,10 @@ const MIGRATIONS_SQLITE: &[(&str, &str)] = &[
     (
         "4_verifications",
         include_str!("../migrations-sqlite/4_verifications/migration.sql"),
+    ),
+    (
+        "5_rappels",
+        include_str!("../migrations-sqlite/5_rappels/migration.sql"),
     ),
 ];
 

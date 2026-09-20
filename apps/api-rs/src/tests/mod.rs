@@ -696,6 +696,7 @@ mod export;
 mod fil;
 mod offres;
 mod profil;
+mod rappels;
 mod session;
 mod verification;
 mod vitrine;

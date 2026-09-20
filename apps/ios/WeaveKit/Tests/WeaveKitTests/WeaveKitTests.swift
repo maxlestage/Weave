@@ -387,6 +387,31 @@ struct PreferencesTests {
         #expect(jamais.escaleEnCours == false)
     }
 
+    @Test("Un serveur qui ne parle pas encore du rappel ne fait pas tomber les critères")
+    func rappelAbsent() throws {
+        // Une application à jour peut parler à un serveur qui ne l'est pas
+        // encore — c'est même l'ordre normal d'un déploiement. Un champ
+        // obligatoire aurait fait échouer le décodage ENTIER des critères :
+        // l'écran des réglages serait resté vide, et pas seulement sans son
+        // interrupteur.
+        let criteres = try lire(escaleUntil: nil)
+        #expect(criteres.remindersOn == nil)
+        // Absent vaut actif, comme au serveur : l'interrupteur ne s'affiche
+        // pas éteint chez quelqu'un qui n'a rien coupé.
+        #expect(criteres.rappelsActifs == true)
+    }
+
+    @Test("Le rappel coupé se lit comme coupé")
+    func rappelCoupe() throws {
+        let json = #"""
+        {"minAge":18,"maxAge":32,"maxDistanceKm":25,"effectiveDistanceKm":25,
+        "seeking":[],"categories":[],"days":[],"escaleCity":null,"escaleUntil":null,
+        "remindersOn":false}
+        """#
+        let criteres = try decodeur.decode(Preferences.self, from: Data(json.utf8))
+        #expect(criteres.rappelsActifs == false)
+    }
+
     @Test("Un rayon rabattu se voit")
     func distanceRabattue() throws {
         // Sans « critères précis », le fil rabat le rayon sur un cran. Le
