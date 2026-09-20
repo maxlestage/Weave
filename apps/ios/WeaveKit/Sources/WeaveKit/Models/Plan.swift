@@ -123,6 +123,40 @@ public struct Plan: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// Ce qu'on corrige sur un plan déjà publié.
+///
+/// Tous les champs sont facultatifs : on n'envoie que ce qui change. La
+/// catégorie et la ville n'y figurent pas, et c'est délibéré — les changer ne
+/// corrige pas un plan, cela en fait un autre, auquel des gens ont dit oui
+/// sans le connaître. Un autre plan se publie.
+public struct PlanEdit: Encodable, Sendable {
+    public let title: String?
+    public let note: String?
+    public let startsAt: Date?
+    public let capacity: Int?
+
+    public init(
+        title: String? = nil,
+        note: String? = nil,
+        startsAt: Date? = nil,
+        capacity: Int? = nil
+    ) {
+        self.title = title
+        self.note = note
+        self.startsAt = startsAt
+        self.capacity = capacity
+    }
+
+    /// Y a-t-il seulement quelque chose à envoyer ?
+    ///
+    /// Une requête vide aboutirait — le serveur accepte un ajustement sans
+    /// champ — mais elle ferait croire à une modification qui n'a pas eu lieu,
+    /// et elle invaliderait le cache du fil pour rien.
+    public var vide: Bool {
+        title == nil && note == nil && startsAt == nil && capacity == nil
+    }
+}
+
 /// Le fil : les plans à venir, autour de soi.
 ///
 /// L'ordre vient du serveur et n'est jamais retrié ici : imminence puis
@@ -184,6 +218,15 @@ public struct MyPlan: Codable, Identifiable, Hashable, Sendable {
     public let seatsLeft: Int
     public let state: PlanState
     public let pendingRequests: Int
+
+    /// Les places déjà accordées.
+    ///
+    /// Déduite plutôt que reçue : le serveur rend la capacité et ce qu'il
+    /// reste, et leur différence est exactement ce qui a été donné. L'écran de
+    /// modification s'en sert pour ne pas proposer de reprendre la parole à
+    /// quelqu'un — le serveur refuse de toute façon, mais un bouton qu'on
+    /// presse pour lire un refus est un bouton mal fait.
+    public var seatsAccordees: Int { max(capacity - seatsLeft, 0) }
 }
 
 // MARK: - Demandes

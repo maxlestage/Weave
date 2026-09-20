@@ -81,13 +81,31 @@ const RENDEZ_VOUS: Texte = Texte {
     fil: "plans",
 };
 
+/// L'heure d'un plan qu'on avait rejoint a changé.
+///
+/// Sans dire la nouvelle heure. La tentation est grande — « c'est maintenant à
+/// 19 h » serait plus utile — mais la règle de cette page ne connaît pas
+/// d'exception, et une heure affichée sur un écran verrouillé, avec la date du
+/// jour, dit à qui regarde par-dessus l'épaule où l'on sera ce soir.
+const HEURE_CHANGEE: Texte = Texte {
+    titre: "Une heure a changé",
+    corps: "Ouvrez Weave pour voir laquelle.",
+    fil: "plans",
+};
+
 /// Tous les textes d'alerte, pour que le test les tienne tous.
 #[cfg(test)]
 ///
 /// La liste existe pour une raison précise : le test ne portait que sur
 /// `NOUVEAU_MESSAGE`. En ajouter un second sans l'y inscrire l'aurait laissé
 /// dire n'importe quoi sur un écran verrouillé.
-const TOUS_LES_TEXTES: [Texte; 4] = [NOUVEAU_MESSAGE, PLACE_RENDUE, PLAN_ANNULE, RENDEZ_VOUS];
+const TOUS_LES_TEXTES: [Texte; 5] = [
+    NOUVEAU_MESSAGE,
+    PLACE_RENDUE,
+    PLAN_ANNULE,
+    RENDEZ_VOUS,
+    HEURE_CHANGEE,
+];
 
 /// Prévient quelqu'un qu'un message l'attend.
 ///
@@ -111,6 +129,11 @@ pub async fn prevenir_plan_annule(state: &AppState, destinataire: &str) {
 /// Prévient quelqu'un que son rendez-vous approche.
 pub async fn prevenir_rendez_vous(state: &AppState, destinataire: &str) {
     prevenir(state, destinataire, RENDEZ_VOUS).await;
+}
+
+/// Prévient quelqu'un que l'heure d'un plan qu'il a rejoint a changé.
+pub async fn prevenir_heure_changee(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, HEURE_CHANGEE).await;
 }
 
 async fn prevenir(state: &AppState, destinataire: &str, texte: Texte) {
@@ -214,7 +237,7 @@ mod tests {
         // s'afficherait.
         assert_eq!(
             TOUS_LES_TEXTES.len(),
-            4,
+            5,
             "un texte a été ajouté sans être inscrit dans la liste éprouvée"
         );
 

@@ -160,6 +160,18 @@ public actor WeaveAPI {
         try await request(.get, "/v1/plans/\(planID)/requests")
     }
 
+    /// Corrige un plan déjà publié.
+    ///
+    /// Seuls les champs donnés changent. La catégorie et la ville n'en sont
+    /// pas : les changer ne corrige pas un plan, cela en fait un autre —
+    /// auquel des gens ont dit oui sans le connaître.
+    ///
+    /// Changer l'heure prévient les personnes acceptées et rouvre le rappel.
+    /// Corriger un titre ne réveille personne.
+    public func editPlan(id: String, _ edit: PlanEdit) async throws {
+        let _: EmptyResponse = try await request(.patch, "/v1/plans/\(id)", encodable: edit)
+    }
+
     public func cancelPlan(id: String) async throws {
         let _: EmptyResponse = try await request(.delete, "/v1/plans/\(id)")
     }

@@ -199,6 +199,8 @@ fn aucune_phrase_n_est_identique_dans_deux_langues() {
         Msg::DemandePasLaVotre,
         Msg::DemandeDejaRepondue,
         Msg::DemandeDejaTranchee,
+        Msg::PlanNonModifiable,
+        Msg::CapaciteSousLesPlacesAccordees { accordees: 2 },
         Msg::PlaceNonRendable,
         Msg::RendezVousDejaPasse,
         Msg::DejaDemandeAVenir,

@@ -237,6 +237,70 @@ struct FeedEditTests {
     }
 }
 
+// MARK: - Corriger un plan
+
+@Suite("Corriger un plan")
+struct PlanEditTests {
+    private func mien(capacite: Int, restantes: Int) throws -> MyPlan {
+        let json = #"""
+        {"id":"p1","title":"Un cafe","note":"","category":"repas",
+        "startsAt":"2026-10-01T18:00:00.000Z","city":"Paris",
+        "capacity":\#(capacite),"seatsLeft":\#(restantes),"state":"ouvert",
+        "pendingRequests":0}
+        """#
+        return try decodeur.decode(MyPlan.self, from: Data(json.utf8))
+    }
+
+    @Test("Les places accordées se déduisent de ce qu'il reste")
+    func placesAccordees() throws {
+        // L'écran de modification s'en sert pour ne pas proposer de reprendre
+        // la parole à quelqu'un. Le serveur refuse de toute façon, mais un
+        // bouton qu'on presse pour lire un refus est un bouton mal fait.
+        #expect(try mien(capacite: 4, restantes: 1).seatsAccordees == 3)
+        #expect(try mien(capacite: 1, restantes: 1).seatsAccordees == 0)
+        #expect(try mien(capacite: 3, restantes: 3).seatsAccordees == 0)
+        // Un plan complet rend zéro place restante, jamais un nombre négatif —
+        // mais le serveur borne déjà `seatsLeft` à zéro, et un écart de comptage
+        // ne doit pas produire un nombre de places accordées absurde.
+        #expect(try mien(capacite: 2, restantes: 5).seatsAccordees == 0)
+    }
+
+    @Test("Une correction vide ne part pas")
+    func correctionVide() {
+        // Le serveur accepte un ajustement sans champ. Il ferait croire à une
+        // modification qui n'a pas eu lieu, et invaliderait le cache du fil
+        // pour rien.
+        #expect(PlanEdit().vide)
+        #expect(!PlanEdit(title: "Un autre titre").vide)
+        #expect(!PlanEdit(note: "").vide)
+        #expect(!PlanEdit(startsAt: .now).vide)
+        #expect(!PlanEdit(capacity: 2).vide)
+    }
+
+    @Test("Seuls les champs posés partent sur le réseau")
+    func seulsLesChampsPoses() throws {
+        // Le champ absent vaut « ne change pas » côté serveur. Envoyer les
+        // quatre à chaque fois ferait prévenir les personnes acceptées d'un
+        // changement d'heure à chaque coquille corrigée.
+        let encodeur = JSONEncoder()
+        let brut = try encodeur.encode(PlanEdit(title: "Un titre corrige"))
+        let objet = try #require(
+            try JSONSerialization.jsonObject(with: brut) as? [String: Any]
+        )
+        #expect(objet.keys.sorted() == ["title"])
+
+        // Et la catégorie comme la ville n'y sont jamais : les changer ne
+        // corrige pas un plan, cela en fait un autre.
+        let tout = try encodeur.encode(
+            PlanEdit(title: "t", note: "n", startsAt: .now, capacity: 2)
+        )
+        let complet = try #require(
+            try JSONSerialization.jsonObject(with: tout) as? [String: Any]
+        )
+        #expect(complet.keys.sorted() == ["capacity", "note", "startsAt", "title"])
+    }
+}
+
 // MARK: - États d'une demande
 
 @Suite("États d'une demande")

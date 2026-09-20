@@ -87,6 +87,27 @@ public final class PlansStore {
         }
     }
 
+    /// Corrige un plan publié.
+    ///
+    /// Rien n'est retiré de l'affichage : le plan reste, il change. C'est la
+    /// différence avec l'annulation, et c'est pour cela que la liste est
+    /// relue plutôt que retouchée — la capacité modifiée peut avoir rouvert
+    /// ou refermé le plan, et seul le serveur le sait.
+    public func edit(_ plan: MyPlan, _ modification: PlanEdit) async -> Bool {
+        guard !modification.vide else { return true }
+        do {
+            try await api.editPlan(id: plan.id, modification)
+            myPlans = try await api.myPlans()
+            return true
+        } catch let error as WeaveAPIError {
+            handle(error)
+            return false
+        } catch {
+            alert = .transport(error.localizedDescription)
+            return false
+        }
+    }
+
     public func cancel(_ plan: MyPlan) async {
         myPlans.removeAll { $0.id == plan.id }
         do {
