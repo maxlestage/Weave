@@ -515,6 +515,30 @@ public actor WeaveAPI {
         return try Self.decoder.decode(Result.self, from: brut).photoUrl
     }
 
+    /// Demande un code pour changer d'adresse de connexion.
+    ///
+    /// L'adresse EST le compte : il n'y a ni mot de passe, ni question de
+    /// secours. Rien ne permettait d'en changer, si bien que perdre l'accès à
+    /// sa boîte rendait le compte définitivement injoignable — avec ses
+    /// conversations, son abonnement et ses achats.
+    ///
+    /// Le code part à la NOUVELLE adresse : c'est ce qui prouve qu'on la
+    /// contrôle. Rend le code hors production, comme la connexion.
+    public func requestEmailChange(_ email: String) async throws -> String? {
+        struct Result: Decodable { let devCode: String? }
+        let result: Result = try await request(
+            .post, "/v1/me/email", body: ["email": email]
+        )
+        return result.devCode
+    }
+
+    /// Confirme le changement avec le code reçu à la nouvelle adresse.
+    public func confirmEmailChange(_ email: String, code: String) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/me/email/verify", body: ["email": email, "code": code]
+        )
+    }
+
     /// Retire sa photo de profil.
     ///
     /// On pouvait la déposer et la remplacer, jamais la reprendre : une photo
