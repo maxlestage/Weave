@@ -994,3 +994,50 @@ async fn une_demande_encore_en_attente_ne_fait_prevenir_personne_a_l_annulation(
         "une demande en attente a déclenché une alerte d'annulation"
     );
 }
+
+#[tokio::test]
+async fn un_desistement_rouvre_le_plan_meme_au_dela_du_plafond() {
+    let service = Service::monter().await;
+    service.compte("c_hote_dep", "depart").await;
+    service.compte("c_parti_dep", "depart").await;
+
+    let plein = plan_solo(&service, "c_hote_dep", "Un cafe pres du canal").await;
+    let demande = accepte(&service, "c_hote_dep", "c_parti_dep", &plein).await;
+    assert_eq!(etat_du_plan(&service, &plein).await, "complet");
+
+    // L'auteur remplit son plafond avec trois autres plans. Le quatrième,
+    // complet, n'y compte pas : il n'est plus au fil.
+    for titre in ["Une expo le samedi", "Un concert au parc", "Un marche dimanche"] {
+        plan_solo(&service, "c_hote_dep", titre).await;
+    }
+
+    // Le désistement rouvre quand même. C'est l'inverse du choix fait à la
+    // modification d'un plan, et pour une raison : là, l'auteur AGIT ; ici,
+    // c'est quelqu'un qui rend sa place. Refuser un désistement pour que
+    // l'auteur reste sous une borne reviendrait à retenir une personne sur un
+    // plan pour le confort d'une autre.
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_parti_dep")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(etat_du_plan(&service, &plein).await, "ouvert");
+
+    // La borne se rattrape d'elle-même : l'auteur ne publie plus tant qu'il
+    // est au-dessus. Elle n'est pas abandonnée, seulement dépassée un temps.
+    let (statut, corps) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton("c_hote_dep")),
+            json!({
+                "title": "Un cinquieme plan de trop",
+                "category": "balade",
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
+        .await;
+    assert_ne!(statut, StatusCode::OK, "le plafond a été abandonné : {corps}");
+}

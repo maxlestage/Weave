@@ -545,6 +545,18 @@ async fn se_desister(
     // haut : un plan annulé entre-temps ne doit pas se rouvrir, et un plan
     // déjà ouvert n'a rien à changer.
     //
+    // Le plafond de trois plans ouverts n'est PAS revérifié ici, et c'est
+    // voulu — l'inverse du choix fait à la modification d'un plan.
+    //
+    // Rouvrir un plan complet le remet au fil, et son auteur peut déjà en
+    // avoir trois autres. Mais ce n'est pas lui qui agit : c'est quelqu'un qui
+    // rend sa place. Refuser un désistement pour que l'auteur reste sous une
+    // borne reviendrait à retenir une personne sur un plan pour le confort
+    // d'une autre. La borne se rattrape d'elle-même — l'auteur ne pourra
+    // simplement pas publier tant qu'il est au-dessus.
+    //
+    // À la modification, l'auteur AGIT, et la borne s'applique.
+    //
     // Les demandes que l'acceptation avait closes — celles passées à
     // « expirée » quand la dernière place est partie — ne sont PAS ranimées.
     // Leurs auteurs ont été prévenus que c'était fini ; les faire revenir à
