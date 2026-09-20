@@ -142,6 +142,8 @@ pub enum Msg {
     /// attente, ni une déjà rendue, ni une refusée.
     /// Un plan annulé n'aura pas lieu, un plan passé a déjà eu lieu : ni l'un
     /// ni l'autre ne se corrige.
+    /// Une adresse ne sert qu'à un compte : c'est elle qui l'identifie.
+    AdresseDejaUtilisee,
     PlanNonModifiable,
     /// Réduire la capacité sous les places déjà accordées évincerait quelqu'un
     /// qui a reçu un oui.
@@ -326,6 +328,7 @@ impl Msg {
             DemandePasLaVotre => "Cette demande n'est pas la vôtre.".into(),
             DemandeDejaRepondue => "Cette demande a déjà reçu une réponse.".into(),
             DemandeDejaTranchee => "Cette demande est déjà tranchée.".into(),
+            AdresseDejaUtilisee => "Cette adresse sert déjà à un autre compte.".into(),
             PlanNonModifiable => "Ce plan ne se modifie plus.".into(),
             CapaciteSousLesPlacesAccordees { accordees } => format!(
                 "Vous avez déjà accordé {accordees} place(s) : les reprendre reviendrait à décommander quelqu'un."
@@ -497,6 +500,7 @@ impl Msg {
             DemandePasLaVotre => "That request isn't yours.".into(),
             DemandeDejaRepondue => "That request has already been answered.".into(),
             DemandeDejaTranchee => "That request has already been settled.".into(),
+            AdresseDejaUtilisee => "That address already belongs to another account.".into(),
             PlanNonModifiable => "That plan can't be changed any more.".into(),
             CapaciteSousLesPlacesAccordees { accordees } => format!(
                 "You've already given out {accordees} spot(s): taking them back would mean uninviting someone."
@@ -668,6 +672,7 @@ impl Msg {
             DemandePasLaVotre => "Esa petición no es tuya.".into(),
             DemandeDejaRepondue => "Esa petición ya ha recibido respuesta.".into(),
             DemandeDejaTranchee => "Esa petición ya está resuelta.".into(),
+            AdresseDejaUtilisee => "Esa dirección ya pertenece a otra cuenta.".into(),
             PlanNonModifiable => "Ese plan ya no se puede modificar.".into(),
             CapaciteSousLesPlacesAccordees { accordees } => format!(
                 "Ya has concedido {accordees} sitio(s): retirarlos sería desinvitar a alguien."

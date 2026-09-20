@@ -1007,7 +1007,11 @@ async fn un_desistement_rouvre_le_plan_meme_au_dela_du_plafond() {
 
     // L'auteur remplit son plafond avec trois autres plans. Le quatrième,
     // complet, n'y compte pas : il n'est plus au fil.
-    for titre in ["Une expo le samedi", "Un concert au parc", "Un marche dimanche"] {
+    for titre in [
+        "Une expo le samedi",
+        "Un concert au parc",
+        "Un marche dimanche",
+    ] {
         plan_solo(&service, "c_hote_dep", titre).await;
     }
 
@@ -1039,7 +1043,11 @@ async fn un_desistement_rouvre_le_plan_meme_au_dela_du_plafond() {
             }),
         )
         .await;
-    assert_ne!(statut, StatusCode::OK, "le plafond a été abandonné : {corps}");
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "le plafond a été abandonné : {corps}"
+    );
 }
 
 #[tokio::test]

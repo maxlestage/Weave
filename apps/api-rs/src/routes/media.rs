@@ -52,7 +52,9 @@ const SIGNATURES: [(&[u8], &str); 3] = [
 pub fn routes() -> Router<AppState> {
     Router::new().route("/media/{key}", get(servir)).route(
         "/v1/me/photo",
-        put(deposer_photo).layer(DefaultBodyLimit::max(PHOTO_MAX_OCTETS)),
+        put(deposer_photo)
+            .layer(DefaultBodyLimit::max(PHOTO_MAX_OCTETS))
+            .delete(retirer_photo),
     )
 }
 
@@ -137,6 +139,54 @@ async fn deposer_photo(
             0,
         ),
     })))
+}
+
+/// Retire sa photo de profil.
+///
+/// ## Ce qui manquait
+///
+/// On pouvait déposer une photo, la remplacer, jamais la RETIRER. Une fois
+/// posée, elle restait — sauf à supprimer tout son compte, ce qui est une
+/// réponse démesurée à « je ne veux plus montrer mon visage ».
+///
+/// C'est pourtant la donnée la plus identifiante de la fiche, et la seule
+/// qu'on ne pouvait pas reprendre. Tout le reste s'édite : la ville, le genre,
+/// la phrase de présentation.
+///
+/// ## La machinerie existait, mais pas pour l'intéressé
+///
+/// `console::photo_retirer` la retire depuis la console de modération, efface
+/// ses octets et consigne le geste. Un modérateur pouvait donc retirer votre
+/// photo ; vous, non.
+///
+/// Cette route délègue à cette fonction plutôt que d'en réécrire une seconde.
+/// Deux façons d'effacer une photo finiraient par ne plus effacer la même
+/// chose — c'est déjà la raison pour laquelle `oublier_fil` est partagée.
+///
+/// Le geste est consigné comme celui d'un modérateur, et c'est volontaire :
+/// une photo retirée juste avant sa relecture laisse une trace qui explique sa
+/// disparition. L'entrée s'anonymise à la purge du compte, comme toutes les
+/// autres.
+///
+/// ## Retirer deux fois ne se plaint pas
+///
+/// Une fiche sans photo est déjà dans l'état voulu. Rendre une erreur ferait
+/// dépendre la réponse de ce qu'on ignorait — et l'appel vient souvent d'un
+/// écran qui ne sait pas s'il y en avait une.
+async fn retirer_photo(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+) -> Result<Json<Value>, AppError> {
+    let issue = crate::console::photo_retirer(&state.db, &compte.id).await?;
+
+    // Le fil des autres porte des adresses signées vers cette photo. Elles
+    // pointeraient vers rien jusqu'à l'expiration du cache — quelques minutes
+    // pendant lesquelles une fiche s'afficherait cassée.
+    if issue == crate::console::Issue::Fait {
+        crate::routes::me::oublier_fil(&state, &compte.id).await;
+    }
+
+    Ok(Json(json!({ "ok": true })))
 }
 
 #[derive(Deserialize)]
