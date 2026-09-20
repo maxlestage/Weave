@@ -143,6 +143,11 @@ struct DemandesRecuesView: View {
                     List(demandes) { demande in
                         DemandeLigne(demande: demande) { acceptee in
                             Task { await repondre(demande, accepte: acceptee) }
+                        } apresProtection: {
+                            // Bloquer coupe tout des deux côtés, la demande
+                            // comprise : la retirer de l'écran évite de laisser
+                            // à l'affichage une ligne qui n'existe plus.
+                            demandes.removeAll { $0.id == demande.id }
                         }
                     }
                     .listStyle(.plain)
@@ -175,6 +180,7 @@ struct DemandesRecuesView: View {
 private struct DemandeLigne: View {
     let demande: IncomingRequest
     let repondre: (Bool) -> Void
+    let apresProtection: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -187,6 +193,22 @@ private struct DemandeLigne: View {
                         .foregroundStyle(Color.weaveCuivre)
                         .accessibilityLabel("Profil vérifié")
                 }
+                Spacer()
+                // C'est ICI qu'arrive le premier message d'un inconnu, et
+                // c'était le seul endroit du produit où l'on en lisait un sans
+                // pouvoir rien en faire.
+                //
+                // Il n'y avait que « Accepter » et « Sans suite ». Devant un
+                // message déplacé, cela revenait à choisir entre ouvrir une
+                // conversation avec son auteur, ou l'écarter en silence — et
+                // le laisser recommencer sur le plan suivant. Le signalement
+                // existait partout ailleurs : dans la conversation, et avant
+                // même de demander à venir.
+                MenuDeProtection(
+                    compteID: demande.author.id,
+                    prenom: demande.author.displayName,
+                    apresCoupure: apresProtection
+                )
             }
 
             Text(demande.message)

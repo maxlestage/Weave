@@ -2475,3 +2475,74 @@ fn empiler_les_fichiers_swift(repertoire: &std::path::Path, sortie: &mut Vec<(St
         }
     }
 }
+
+/// Partout où l'on lit les mots d'un inconnu, on peut le signaler.
+///
+/// ## Ce qui manquait
+///
+/// Une demande à venir arrive avec un message écrit par quelqu'un qu'on n'a
+/// jamais vu. L'écran qui les affiche n'offrait que « Accepter » et « Sans
+/// suite ». Devant un message déplacé, cela revenait à choisir entre ouvrir
+/// une conversation avec son auteur, ou l'écarter en silence — et le laisser
+/// recommencer sur le plan suivant.
+///
+/// Le moyen existait pourtant, et partout ailleurs : dans la conversation, et
+/// sur la fiche, avant même de demander à venir. Il manquait au seul endroit
+/// où l'on reçoit sans avoir rien demandé.
+///
+/// ## Pourquoi un test qui lit du SwiftUI
+///
+/// Ces écrans ne se jouent pas sous Linux, et une vue ne s'éprouve pas comme
+/// une fonction. Mais la règle, elle, est vérifiable telle qu'elle est écrite :
+/// un fichier qui affiche des mots d'autrui doit nommer le menu. C'est une
+/// garde textuelle, et je la dis pour ce qu'elle est — elle ne prouve pas que
+/// le menu est ATTEIGNABLE, seulement qu'il n'a pas disparu.
+///
+/// Les mentions légales le promettent, et ce n'est pas qu'une bonne intention :
+/// le règlement européen sur les services numériques impose un moyen de
+/// signaler un contenu et un moyen de bloquer son auteur.
+#[test]
+fn on_peut_signaler_partout_ou_l_on_lit_les_mots_d_un_inconnu() {
+    let vues = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios/Weave/Views");
+    if !vues.is_dir() {
+        eprintln!(
+            "vues iOS absentes en {} — accord non vérifié",
+            vues.display()
+        );
+        return;
+    }
+
+    // Les trois endroits où l'on lit ce qu'un autre a écrit : le message d'une
+    // demande reçue, la conversation, et la fiche qu'on consulte avant de
+    // demander à venir.
+    for (fichier, quoi) in [
+        ("MesPlansView.swift", "le message d'une demande reçue"),
+        ("ConversationsView.swift", "les messages d'une conversation"),
+        ("DemanderView.swift", "la fiche de quelqu'un"),
+    ] {
+        let source = std::fs::read_to_string(vues.join(fichier))
+            .unwrap_or_else(|e| panic!("{fichier} illisible : {e}"));
+        assert!(
+            source.contains("MenuDeProtection("),
+            "« {fichier} » affiche {quoi} sans offrir de quoi signaler son auteur"
+        );
+    }
+
+    // Et le menu offre bien les deux, pas l'un ou l'autre : bloquer sans
+    // pouvoir signaler laisse le comportement continuer ailleurs, signaler
+    // sans pouvoir bloquer laisse la personne joignable en attendant.
+    let menu = std::fs::read_to_string(vues.join("ProtectionView.swift"))
+        .expect("ProtectionView.swift lisible");
+    //
+    // Les LIBELLÉS des boutons, et non les mots quelque part dans le fichier :
+    // ma première version cherchait « Signaler » et « Bloquer » n'importe où,
+    // et les commentaires de cette page les contiennent tous les deux. Renommer
+    // les deux boutons la laissait au vert. C'est la mutation qui me l'a appris.
+    for verbe in ["Signaler", "Bloquer"] {
+        let libelle = format!("Label(\"{verbe} \\(prenom)\"");
+        assert!(
+            menu.contains(&libelle),
+            "le menu de protection n'offre plus de bouton « {verbe} »"
+        );
+    }
+}
