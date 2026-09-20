@@ -11,8 +11,9 @@
 
 use crate::messages::Msg;
 use crate::{
-    AppState,
+    AppState, alerte,
     auth::Authentifie,
+    cache,
     crypto::signer_url_media,
     droits::{HORIZON_CREDIT_JOURS, droits_pour, exiger_credit},
     entities::{accounts, join_requests, plans, profiles},
@@ -65,7 +66,7 @@ pub fn routes() -> Router<AppState> {
         // « mine » avant « {id} » : axum choisit la route littérale, mais
         // l'ordre rend l'intention lisible.
         .route("/v1/plans/mine", get(les_miens))
-        .route("/v1/plans/{id}", delete(annuler))
+        .route("/v1/plans/{id}", delete(annuler).patch(modifier_plan))
         .route("/v1/plans/{id}/requests", get(demandes_recues))
 }
 
@@ -404,6 +405,221 @@ fn trop_de_plans() -> AppError {
     )
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AjustementPlan {
+    title: Option<String>,
+    note: Option<String>,
+    starts_at: Option<String>,
+    capacity: Option<i32>,
+}
+
+/// Modifier un plan déjà publié.
+///
+/// ## Ce qui manquait
+///
+/// On pouvait publier et annuler, rien entre les deux. Une faute dans le
+/// titre, une heure décalée d'une heure, une place de plus à offrir : il
+/// fallait annuler et republier.
+///
+/// Ce contournement a toujours été mauvais — il consomme l'un des trois plans
+/// ouverts, et il perd les personnes déjà acceptées. Depuis que l'annulation
+/// les prévient, il est devenu franchement cruel : corriger une coquille
+/// envoyait à tout le monde « un plan est annulé ».
+///
+/// ## Ce qui ne se modifie pas
+///
+/// La catégorie et la ville. Changer l'une ou l'autre ne corrige pas un plan :
+/// cela en fait un autre, auquel des gens ont dit oui sans le connaître. Un
+/// autre plan se publie.
+///
+/// ## Les trois précautions
+///
+/// **La capacité ne descend pas sous les places déjà accordées.** Ce serait
+/// évincer quelqu'un qui a reçu un oui, et il n'existe aucune bonne façon de
+/// le lui apprendre.
+///
+/// **Changer l'heure rouvre le rappel.** `remindedAt` est remis à zéro : sans
+/// cela, un plan repoussé de deux jours garderait la marque de son rappel et
+/// personne ne serait prévenu de la nouvelle heure.
+///
+/// **Les personnes acceptées sont prévenues d'un changement d'heure.** Elles
+/// ont noté une heure ; la changer sans le dire est une façon de les faire
+/// venir pour rien. Un titre corrigé, lui, ne réveille personne.
+async fn modifier_plan(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Path(id): Path<String>,
+    Json(corps): Json<AjustementPlan>,
+) -> Result<Json<Value>, AppError> {
+    let plan = plans::Entity::find_by_id(id.clone())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable(Msg::PlanIntrouvable))?;
+
+    if plan.author_id != compte.id {
+        return Err(AppError::new(Code::Forbidden, Msg::PlanPasLeVotre.t()));
+    }
+    // Un plan annulé ou passé ne se modifie pas : le premier n'aura pas lieu,
+    // le second a déjà eu lieu.
+    if !matches!(plan.state.as_str(), "ouvert" | "complet") {
+        return Err(invalide(Msg::PlanNonModifiable));
+    }
+    if plan.starts_at <= Utc::now().naive_utc() {
+        return Err(invalide(Msg::PlanNonModifiable));
+    }
+
+    let mut ajuste: plans::ActiveModel = plan.clone().into();
+    let mut heure_changee = None;
+
+    if let Some(titre) = corps.title {
+        let titre = titre.trim().to_string();
+        if titre.chars().count() < TITRE_MIN || titre.chars().count() > TITRE_MAX {
+            return Err(invalide(Msg::TitreLongueur {
+                minimum: TITRE_MIN as i64,
+                maximum: TITRE_MAX as i64,
+            }));
+        }
+        ajuste.title = Set(titre);
+    }
+
+    if let Some(note) = corps.note {
+        let note = note.trim().to_string();
+        if note.chars().count() > NOTE_MAX {
+            return Err(invalide(Msg::NoteTropLongue {
+                maximum: NOTE_MAX as i64,
+            }));
+        }
+        ajuste.note = Set(note);
+    }
+
+    if let Some(brut) = corps.starts_at {
+        let debut = DateTime::parse_from_rfc3339(&brut)
+            .map_err(|_| invalide(Msg::DateDeRendezVousIllisible))?
+            .with_timezone(&Utc);
+
+        // Les mêmes bornes qu'à la publication : le délai minimum, et
+        // l'horizon du palier. Une modification qui les contournerait ferait
+        // de « publier puis modifier » le moyen de ne jamais les respecter.
+        if debut < Utc::now() + Duration::minutes(DELAI_MINIMUM_MINUTES) {
+            return Err(invalide(Msg::DelaiDePublicationTropCourt {
+                minutes: DELAI_MINIMUM_MINUTES,
+            }));
+        }
+        let droits = droits_pour(&compte.tier);
+        let horizon = Utc::now() + Duration::days(droits.jours_a_l_avance);
+        if debut > horizon {
+            return Err(invalide(Msg::HorizonDePublicationDepasse {
+                jours: droits.jours_a_l_avance,
+            }));
+        }
+
+        if debut.naive_utc() != plan.starts_at {
+            ajuste.starts_at = Set(debut.naive_utc());
+            // Le rappel de l'ancienne heure ne vaut plus rien : sans cette
+            // remise à zéro, un plan repoussé garderait sa marque et personne
+            // ne serait prévenu de la nouvelle heure.
+            ajuste.reminded_at = Set(None);
+            heure_changee = Some(debut);
+        }
+    }
+
+    if let Some(capacite) = corps.capacity {
+        if !(CAPACITE_SOLO..=CAPACITE_GROUPE_MAX).contains(&capacite) {
+            return Err(invalide(Msg::CapaciteHorsBornes {
+                minimum: CAPACITE_SOLO.into(),
+                maximum: CAPACITE_GROUPE_MAX.into(),
+            }));
+        }
+        let accordees = join_requests::Entity::find()
+            .filter(join_requests::Column::PlanId.eq(plan.id.as_str()))
+            .filter(join_requests::Column::State.eq("acceptee"))
+            .count(&state.db)
+            .await? as i32;
+        // Descendre sous les places déjà accordées reviendrait à évincer
+        // quelqu'un qui a reçu un oui.
+        if capacite < accordees {
+            return Err(invalide(Msg::CapaciteSousLesPlacesAccordees {
+                accordees: accordees.into(),
+            }));
+        }
+        if capacite > CAPACITE_SOLO && plan.capacity <= CAPACITE_SOLO {
+            let droits = droits_pour(&compte.tier);
+            if !droits.plans_de_groupe {
+                exiger_credit(&state, &compte.id, "tablee", "Tablée").await?;
+            }
+        }
+        ajuste.capacity = Set(capacite);
+        // Une place ajoutée rouvre un plan complet ; la dernière place
+        // accordée le referme.
+        let etat = if capacite > accordees {
+            "ouvert"
+        } else {
+            "complet"
+        };
+
+        // Rouvrir, c'est remettre un plan AU FIL. Le plafond de trois plans
+        // ouverts s'y applique donc, exactement comme à la publication.
+        //
+        // Sans ce contrôle, la route que je venais d'écrire offrait le moyen
+        // de le contourner : trois plans ouverts, un quatrième complet, une
+        // place ajoutée à celui-là — et quatre plans au fil. Un plan complet
+        // ne compte pas dans le plafond puisqu'il n'y figure plus ; le
+        // remettre lui rend son poids.
+        //
+        // Le contrôle ne porte que sur la RÉOUVERTURE : un plan déjà ouvert
+        // qu'on corrige ne revient pas au fil, il y est. Refuser là rendrait
+        // toute correction impossible à qui a trois plans — c'est-à-dire à qui
+        // se sert le plus du produit.
+        if etat == "ouvert"
+            && plan.state != "ouvert"
+            && compter_ouverts(&state.db, &compte.id).await? >= MAX_PLANS_OUVERTS
+        {
+            return Err(trop_de_plans());
+        }
+        ajuste.state = Set(etat.to_string());
+    }
+
+    ajuste.updated_at = Set(Utc::now().naive_utc());
+    ajuste.update(&state.db).await?;
+
+    // Le fil des autres compose à partir de ce plan : le sien, et celui des
+    // personnes concernées, ne valent plus.
+    cache_du_fil(&state, &compte.id).await;
+
+    if let Some(debut) = heure_changee {
+        // Elles ont noté une heure. La changer sans le dire est une façon de
+        // les faire venir pour rien.
+        for attendue in accompagnants(&state, &plan.id).await? {
+            alerte::prevenir_heure_changee(&state, &attendue).await;
+            live_activity::publier_au_mieux(&state, &attendue).await;
+            cache_du_fil(&state, &attendue).await;
+        }
+        tracing::info!(plan = %plan.id, nouvelle_heure = %debut, "heure d'un plan changée");
+    }
+
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Les comptes dont la place est accordée sur ce plan.
+async fn accompagnants(state: &AppState, plan_id: &str) -> Result<Vec<String>, sea_orm::DbErr> {
+    Ok(join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.eq(plan_id))
+        .filter(join_requests::Column::State.eq("acceptee"))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|demande| demande.author_id)
+        .collect())
+}
+
+async fn cache_du_fil(state: &AppState, compte_id: &str) {
+    if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(compte_id)).await {
+        tracing::warn!(erreur = %erreur, "fil non invalidé");
+    }
+}
+
 async fn annuler(
     State(state): State<AppState>,
     Authentifie(compte): Authentifie,
@@ -442,7 +658,34 @@ async fn annuler(
         close.update(&transaction).await?;
     }
 
+    // Les personnes ACCEPTÉES, elles, ne sont pas touchées en base : leur
+    // demande reste « acceptée », et la conversation avec elles reste ouverte
+    // — c'est là qu'on explique une annulation. Mais il faut les prévenir.
+    //
+    // C'est ce qui manquait, et c'était le pire des silences du produit :
+    // l'auteur annulait, et les personnes attendues n'en savaient rien. Elles
+    // seraient venues. Leur bannière annonçait même encore le rendez-vous.
+    let attendues: Vec<String> = join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.eq(id.as_str()))
+        .filter(join_requests::Column::State.eq("acceptee"))
+        .all(&transaction)
+        .await?
+        .into_iter()
+        .map(|demande| demande.author_id)
+        .collect();
+
     transaction.commit().await?;
+
+    // Après la validation, jamais avant : une alerte annonçant une annulation
+    // que la transaction annulerait ensuite serait un mensonge irrattrapable.
+    for attendue in &attendues {
+        alerte::prevenir_plan_annule(&state, attendue).await;
+        // La bannière de chacune annonçait ce plan : elle est recalculée.
+        live_activity::publier_au_mieux(&state, attendue).await;
+        if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(attendue)).await {
+            tracing::warn!(erreur = %erreur, "fil non invalidé");
+        }
+    }
 
     live_activity::publier_au_mieux(&state, &compte.id).await;
 

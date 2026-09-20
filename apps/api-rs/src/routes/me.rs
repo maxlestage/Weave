@@ -386,6 +386,7 @@ async fn lire_criteres(
         "days": jours_json(&pref.days_json),
         "escaleCity": pref.escale_city,
         "escaleUntil": pref.escale_until.map(|d| iso8601(d.and_utc())),
+        "remindersOn": pref.reminders_on,
     })))
 }
 
@@ -407,6 +408,12 @@ struct AjustementCriteres {
     /// Jours de la semaine retenus, au sens ISO : 1 pour lundi, 7 pour
     /// dimanche. Vide ou absent signifie « tous ».
     days: Option<Vec<i32>>,
+    /// Le rappel avant le rendez-vous.
+    ///
+    /// Il ne dépend d'aucun palier : oublier un rendez-vous n'est pas un
+    /// confort qu'on vend, et faire payer pour être prévenu ferait du plancher
+    /// gratuit un produit qui laisse quelqu'un attendre seul.
+    reminders_on: Option<bool>,
 }
 
 /// Ajuster les critères du fil.
@@ -558,6 +565,9 @@ async fn ajuster_criteres(
     }
     if let Some(liste) = corps.days {
         ajuste.days_json = Set(serde_json::to_string(&liste).unwrap_or_else(|_| "[]".into()));
+    }
+    if let Some(rappels) = corps.reminders_on {
+        ajuste.reminders_on = Set(rappels);
     }
     ajuste.updated_at = Set(Utc::now().naive_utc());
     ajuste.update(&state.db).await?;

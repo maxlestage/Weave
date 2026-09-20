@@ -110,7 +110,13 @@ public actor WeaveAPI {
     /// tombait au bout du quart d'heure du jeton d'accès. Aucun compilateur
     /// n'aurait rien dit : les deux décodeurs sont parfaitement valides, ils ne
     /// lisent simplement pas le même format.
-    private static let decoder: JSONDecoder = {
+    ///
+    /// Lisible des tests, et non `private`, pour une raison précise : le test
+    /// des dates s'en fabriquait une COPIE, à l'identique. Il éprouvait donc sa
+    /// propre copie, et remettre `.iso8601` ici le laissait au vert — le défaut
+    /// que ce commentaire raconte pouvait revenir sous le test censé
+    /// l'empêcher. Un seul décodeur, éprouvé là où il sert.
+    static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let text = try decoder.singleValueContainer().decode(String.self)
@@ -154,6 +160,18 @@ public actor WeaveAPI {
         try await request(.get, "/v1/plans/\(planID)/requests")
     }
 
+    /// Corrige un plan déjà publié.
+    ///
+    /// Seuls les champs donnés changent. La catégorie et la ville n'en sont
+    /// pas : les changer ne corrige pas un plan, cela en fait un autre —
+    /// auquel des gens ont dit oui sans le connaître.
+    ///
+    /// Changer l'heure prévient les personnes acceptées et rouvre le rappel.
+    /// Corriger un titre ne réveille personne.
+    public func editPlan(id: String, _ edit: PlanEdit) async throws {
+        let _: EmptyResponse = try await request(.patch, "/v1/plans/\(id)", encodable: edit)
+    }
+
     public func cancelPlan(id: String) async throws {
         let _: EmptyResponse = try await request(.delete, "/v1/plans/\(id)")
     }
@@ -173,6 +191,19 @@ public actor WeaveAPI {
     /// Retire une demande. L'unité de quota est rendue si elle n'a pas été lue.
     public func withdraw(requestID: String) async throws {
         let _: EmptyResponse = try await request(.delete, "/v1/requests/\(requestID)")
+    }
+
+    /// Rend sa place après avoir été accepté.
+    ///
+    /// L'unité de quota n'est PAS rendue — contrairement à `withdraw`, qui
+    /// reprend une demande avant qu'elle ait été lue. Celle-ci a été lue, et il
+    /// y a été répondu.
+    ///
+    /// La conversation reste ouverte : c'est là qu'on dit pourquoi.
+    public func release(requestID: String) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/requests/\(requestID)/release"
+        )
     }
 
     public func accept(requestID: String) async throws -> String {
@@ -416,25 +447,56 @@ public actor WeaveAPI {
         gender: Gender,
         bio: String? = nil
     ) async throws {
-        struct Body: Encodable {
-            let city: String
-            let latitude: Double
-            let longitude: Double
-            let gender: String
-            let bio: String?
-        }
-        let texte = bio?.trimmingCharacters(in: .whitespacesAndNewlines)
         let _: EmptyResponse = try await request(
             .put,
             "/v1/me/profile",
-            encodable: Body(
-                city: city.trimmingCharacters(in: .whitespacesAndNewlines),
-                latitude: Self.arrondirPosition(latitude),
-                longitude: Self.arrondirPosition(longitude),
-                gender: gender.rawValue,
-                bio: (texte?.isEmpty ?? true) ? nil : texte
+            encodable: Self.corpsDeFiche(
+                city: city,
+                latitude: latitude,
+                longitude: longitude,
+                gender: gender,
+                bio: bio
             )
         )
+    }
+
+    /// Ce qui part vraiment sur le réseau quand on dépose sa fiche.
+    ///
+    /// Extrait de `submitProfile` pour qu'un test puisse le lire. L'arrondi de
+    /// la position était appliqué ICI, à l'appel, et rien ne le tenait : je
+    /// l'ai retiré, et les onze tests sont restés au vert. Le pas de la grille,
+    /// lui, était bien gardé — un test de contrat le rapproche de celui du
+    /// serveur. C'est la CONSTANTE qui était éprouvée, pas son emploi ; et
+    /// c'est l'emploi qui tient la promesse.
+    ///
+    /// La promesse est écrite : « arrondie sur votre appareil avant l'envoi
+    /// […] une donnée que nous n'avons pas ». Sans cet arrondi, les
+    /// coordonnées exactes traversent le corps de la requête, la mémoire du
+    /// serveur, et tout ce qui journalise une requête — et le serveur les
+    /// arrondit ensuite, ce qui ne les lui a pas moins fait voir.
+    static func corpsDeFiche(
+        city: String,
+        latitude: Double,
+        longitude: Double,
+        gender: Gender,
+        bio: String?
+    ) -> CorpsDeFiche {
+        let texte = bio?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return CorpsDeFiche(
+            city: city.trimmingCharacters(in: .whitespacesAndNewlines),
+            latitude: arrondirPosition(latitude),
+            longitude: arrondirPosition(longitude),
+            gender: gender.rawValue,
+            bio: (texte?.isEmpty ?? true) ? nil : texte
+        )
+    }
+
+    struct CorpsDeFiche: Encodable {
+        let city: String
+        let latitude: Double
+        let longitude: Double
+        let gender: String
+        let bio: String?
     }
 
     /// Dépose sa photo de profil.
@@ -884,6 +946,8 @@ public struct PreferencesPatch: Encodable, Sendable {
     public let seeking: [Gender]?
     /// Jours retenus, au sens ISO : 1 lundi, 7 dimanche. Vide = tous.
     public let days: [Int]?
+    /// Le rappel avant le rendez-vous.
+    public let remindersOn: Bool?
 
     public init(
         minAge: Int? = nil,
@@ -891,7 +955,8 @@ public struct PreferencesPatch: Encodable, Sendable {
         maxDistanceKm: Int? = nil,
         categories: [PlanCategory]? = nil,
         seeking: [Gender]? = nil,
-        days: [Int]? = nil
+        days: [Int]? = nil,
+        remindersOn: Bool? = nil
     ) {
         self.minAge = minAge
         self.maxAge = maxAge
@@ -899,6 +964,7 @@ public struct PreferencesPatch: Encodable, Sendable {
         self.seeking = seeking
         self.days = days
         self.categories = categories
+        self.remindersOn = remindersOn
     }
 }
 

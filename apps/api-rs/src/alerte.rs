@@ -35,6 +35,7 @@ use chrono::{Duration, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
 /// Une alerte à pousser : ce qui s'affiche, et rien de plus.
+#[derive(Clone, Copy)]
 struct Texte {
     titre: &'static str,
     corps: &'static str,
@@ -48,13 +49,119 @@ const NOUVEAU_MESSAGE: Texte = Texte {
     fil: "messages",
 };
 
+/// Quelqu'un rend sa place sur un plan qu'on a publié.
+///
+/// Sans nommer qui : la règle de cette page vaut ici comme ailleurs. L'auteur
+/// ouvre l'application et voit lequel de ses plans a changé.
+const PLACE_RENDUE: Texte = Texte {
+    titre: "Une place s'est libérée",
+    corps: "Ouvrez Weave pour voir sur quel plan.",
+    fil: "plans",
+};
+
+/// Un plan qu'on avait rejoint n'aura pas lieu.
+///
+/// C'est l'alerte la plus utile des trois, et celle qui manquait le plus :
+/// l'auteur annulait, et les personnes acceptées n'en savaient rien. Elles
+/// seraient venues.
+const PLAN_ANNULE: Texte = Texte {
+    titre: "Un plan est annulé",
+    corps: "Ouvrez Weave pour voir lequel.",
+    fil: "plans",
+};
+
+/// Le rendez-vous approche.
+///
+/// Sans dire lequel, ni avec qui, ni où : la règle de cette page ne connaît pas
+/// d'exception, et un titre de plan en dit souvent plus qu'on ne croit sur un
+/// écran verrouillé.
+const RENDEZ_VOUS: Texte = Texte {
+    titre: "C'est bientôt",
+    corps: "Ouvrez Weave pour revoir votre rendez-vous.",
+    fil: "plans",
+};
+
+/// L'heure d'un plan qu'on avait rejoint a changé.
+///
+/// Sans dire la nouvelle heure. La tentation est grande — « c'est maintenant à
+/// 19 h » serait plus utile — mais la règle de cette page ne connaît pas
+/// d'exception, et une heure affichée sur un écran verrouillé, avec la date du
+/// jour, dit à qui regarde par-dessus l'épaule où l'on sera ce soir.
+const HEURE_CHANGEE: Texte = Texte {
+    titre: "Une heure a changé",
+    corps: "Ouvrez Weave pour voir laquelle.",
+    fil: "plans",
+};
+
+/// Quelqu'un a dit oui.
+///
+/// C'est l'événement qui compte le plus dans ce produit, et il ne reposait que
+/// sur la Live Activity : `accepter` la démarre, et son démarrage fait vibrer
+/// le téléphone. Mais elle a besoin d'un jeton « push to start », qu'un
+/// appareil n'a pas toujours — ActivityKit refusé, iPhone pas encore
+/// enregistré, version trop ancienne. Sans lui, la personne acceptée
+/// n'apprenait rien jusqu'à ce qu'elle rouvre l'application.
+///
+/// Cette alerte est un REPLI, pas un doublon : elle ne part que si aucune
+/// bannière n'a pu démarrer. Deux notifications pour un même oui seraient une
+/// raison de les couper toutes.
+const ACCEPTE: Texte = Texte {
+    titre: "On vous attend",
+    corps: "Ouvrez Weave pour voir quel plan.",
+    fil: "plans",
+};
+
+/// Tous les textes d'alerte, pour que le test les tienne tous.
+#[cfg(test)]
+///
+/// La liste existe pour une raison précise : le test ne portait que sur
+/// `NOUVEAU_MESSAGE`. En ajouter un second sans l'y inscrire l'aurait laissé
+/// dire n'importe quoi sur un écran verrouillé.
+const TOUS_LES_TEXTES: [Texte; 6] = [
+    NOUVEAU_MESSAGE,
+    PLACE_RENDUE,
+    PLAN_ANNULE,
+    RENDEZ_VOUS,
+    HEURE_CHANGEE,
+    ACCEPTE,
+];
+
 /// Prévient quelqu'un qu'un message l'attend.
 ///
 /// N'échoue jamais : une notification perdue ne doit pas faire échouer l'envoi
 /// du message qui l'a déclenchée. Le message est écrit, c'est ce qui compte ;
 /// l'alerte est un confort.
 pub async fn prevenir_message(state: &AppState, destinataire: &str) {
-    if let Err(erreur) = pousser(state, destinataire, NOUVEAU_MESSAGE).await {
+    prevenir(state, destinataire, NOUVEAU_MESSAGE).await;
+}
+
+/// Prévient l'auteur d'un plan qu'une place s'est libérée.
+pub async fn prevenir_place_rendue(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, PLACE_RENDUE).await;
+}
+
+/// Prévient quelqu'un qu'un plan qu'il avait rejoint est annulé.
+pub async fn prevenir_plan_annule(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, PLAN_ANNULE).await;
+}
+
+/// Prévient quelqu'un que son rendez-vous approche.
+pub async fn prevenir_rendez_vous(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, RENDEZ_VOUS).await;
+}
+
+/// Prévient quelqu'un que l'heure d'un plan qu'il a rejoint a changé.
+pub async fn prevenir_heure_changee(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, HEURE_CHANGEE).await;
+}
+
+/// Prévient quelqu'un qu'il est attendu — quand la bannière n'a pas pu partir.
+pub async fn prevenir_accepte(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, ACCEPTE).await;
+}
+
+async fn prevenir(state: &AppState, destinataire: &str, texte: Texte) {
+    if let Err(erreur) = pousser(state, destinataire, texte).await {
         tracing::warn!(erreur = %erreur, compte = destinataire, "alerte non poussée");
     }
 }
@@ -148,14 +255,30 @@ mod tests {
     /// s'affiche sur un écran verrouillé.
     #[test]
     fn une_alerte_ne_nomme_personne_et_ne_cite_rien() {
-        let assemble = format!("{} {}", NOUVEAU_MESSAGE.titre, NOUVEAU_MESSAGE.corps);
-        for interdit in ["de ", "message :", "«", "\""] {
+        // Le test ne portait que sur `NOUVEAU_MESSAGE`. Il parcourt maintenant
+        // la liste entière : un texte ajouté sans y être inscrit passerait
+        // sinon sans contrôle, et c'est sur un écran verrouillé qu'il
+        // s'afficherait.
+        assert_eq!(
+            TOUS_LES_TEXTES.len(),
+            6,
+            "un texte a été ajouté sans être inscrit dans la liste éprouvée"
+        );
+
+        for texte in TOUS_LES_TEXTES {
+            let assemble = format!("{} {}", texte.titre, texte.corps);
+            for interdit in ["de ", "message :", "«", "\""] {
+                assert!(
+                    !assemble.contains(interdit),
+                    "« {interdit} » laisse penser qu'un contenu ou un nom est cité \
+                     dans « {assemble} »"
+                );
+            }
             assert!(
-                !assemble.contains(interdit),
-                "« {interdit} » laisse penser qu'un contenu ou un nom est cité"
+                assemble.contains("Weave"),
+                "« {assemble} » ne dit pas où aller"
             );
         }
-        assert!(assemble.contains("Weave"), "l'alerte doit dire où aller");
     }
 
     /// Sans appareil enregistré, pousser ne doit rien tenter ni rien casser.

@@ -242,6 +242,21 @@ export const CONSENT_KINDS = ["donnees_sensibles"] as const;
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
 
 /**
+ * Poids maximal d'une photo de profil, en octets — deux mébioctets.
+ *
+ * Le serveur le refusait, l'application s'en donnait sa propre copie, et rien
+ * ne les rapprochait. Abaisser la borne du serveur aurait laissé l'application
+ * accepter des photos qu'il rejette ensuite : on choisit une photo, on attend
+ * le téléversement, et on la perd pour une règle que rien n'avait annoncée.
+ * C'est la faute déjà corrigée pour la longueur d'un message.
+ *
+ * Écrit à plat plutôt que `2 * 1024 * 1024` : les tests de contrat refusent
+ * d'évaluer une expression, et le disent, plutôt que d'en lire le premier
+ * nombre.
+ */
+export const PHOTO_MAX_BYTES = 2_097_152;
+
+/**
  * La version des textes en vigueur, au format ISO.
  *
  * Un consentement porte la version du texte accepté. La politique promet qu'en

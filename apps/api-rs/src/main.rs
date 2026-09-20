@@ -19,6 +19,7 @@ mod messages;
 mod migrations;
 mod partage;
 mod purge;
+mod rappels;
 mod routes;
 mod storekit;
 mod temps;
@@ -199,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
     // verrou dans le cache garantit un seul passage par jour, quel que soit le
     // nombre de dynos.
     purge::planifier(state.clone());
+    rappels::planifier(state.clone());
 
     let app = construire_routeur(state).layer(CorsLayer::new().allow_origin(origine));
 
