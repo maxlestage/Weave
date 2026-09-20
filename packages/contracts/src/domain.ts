@@ -100,13 +100,7 @@ export interface Feed {
  * - `desistee` : la place, une fois accordée, a été rendue. L'unité, elle,
  *   reste dépensée : la demande avait bien été lue, et il y avait été répondu.
  */
-export type RequestState =
-  | "envoyee"
-  | "acceptee"
-  | "refusee"
-  | "expiree"
-  | "retiree"
-  | "desistee";
+export type RequestState = "envoyee" | "acceptee" | "refusee" | "expiree" | "retiree" | "desistee";
 
 export interface JoinRequest {
   readonly id: string;
