@@ -24,7 +24,7 @@ la configuration du projet lisible.
 brew install xcodegen        # une fois
 cd apps/ios
 xcodegen generate
-open Weave.xcodeproj
+open 'Weave ‣.xcodeproj'
 ```
 
 Renseignez votre identifiant d'équipe avant de compiler :
