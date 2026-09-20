@@ -66,7 +66,10 @@ async fn corriger_un_titre_ne_previent_personne() {
     let service = Service::monter().await;
     service.compte("c_hote_titre", "depart").await;
     let attendu = service.compte("c_attendu_titre", "depart").await;
-    let telephone = service.appareil(&attendu).await;
+    // L'appareil peut recevoir une bannière : l'acceptation passe donc par
+    // elle, et non par l'alerte de repli. Sans cela, ce test verrait le oui
+    // et croirait que le titre corrigé a prévenu quelqu'un.
+    let telephone = service.appareil_avec(&attendu, true).await;
     let plan = plan_de(&service, "c_hote_titre", "Une balade au bord de l eau", 1).await;
     accepte(&service, "c_hote_titre", "c_attendu_titre", &plan).await;
 
@@ -99,7 +102,7 @@ async fn changer_l_heure_previent_les_personnes_attendues() {
     let service = Service::monter().await;
     service.compte("c_hote_heure", "depart").await;
     let attendu = service.compte("c_attendu_heure", "depart").await;
-    let telephone = service.appareil(&attendu).await;
+    let telephone = service.appareil_avec(&attendu, true).await;
     let plan = plan_de(&service, "c_hote_heure", "Un concert au parc", 1).await;
     accepte(&service, "c_hote_heure", "c_attendu_heure", &plan).await;
 

@@ -52,7 +52,9 @@ async fn le_rendez_vous_qui_approche_est_rappele_a_qui_y_a_rendez_vous() {
     let absent = service.compte("c_absent_rap", "depart").await;
 
     let telephone_hote = service.appareil(&hote).await;
-    let telephone_invite = service.appareil(&invite).await;
+    // Une bannière plutôt qu'une alerte à l'acceptation : c'est le RAPPEL
+    // qu'on compte ici, et le repli du oui s'y ajouterait.
+    let telephone_invite = service.appareil_avec(&invite, true).await;
     let telephone_absent = service.appareil(&absent).await;
 
     let plan = plan_de(&service, "c_hote_rap", "Une balade au bord de l eau").await;

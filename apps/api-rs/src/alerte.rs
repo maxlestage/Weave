@@ -93,18 +93,37 @@ const HEURE_CHANGEE: Texte = Texte {
     fil: "plans",
 };
 
+/// Quelqu'un a dit oui.
+///
+/// C'est l'événement qui compte le plus dans ce produit, et il ne reposait que
+/// sur la Live Activity : `accepter` la démarre, et son démarrage fait vibrer
+/// le téléphone. Mais elle a besoin d'un jeton « push to start », qu'un
+/// appareil n'a pas toujours — ActivityKit refusé, iPhone pas encore
+/// enregistré, version trop ancienne. Sans lui, la personne acceptée
+/// n'apprenait rien jusqu'à ce qu'elle rouvre l'application.
+///
+/// Cette alerte est un REPLI, pas un doublon : elle ne part que si aucune
+/// bannière n'a pu démarrer. Deux notifications pour un même oui seraient une
+/// raison de les couper toutes.
+const ACCEPTE: Texte = Texte {
+    titre: "On vous attend",
+    corps: "Ouvrez Weave pour voir quel plan.",
+    fil: "plans",
+};
+
 /// Tous les textes d'alerte, pour que le test les tienne tous.
 #[cfg(test)]
 ///
 /// La liste existe pour une raison précise : le test ne portait que sur
 /// `NOUVEAU_MESSAGE`. En ajouter un second sans l'y inscrire l'aurait laissé
 /// dire n'importe quoi sur un écran verrouillé.
-const TOUS_LES_TEXTES: [Texte; 5] = [
+const TOUS_LES_TEXTES: [Texte; 6] = [
     NOUVEAU_MESSAGE,
     PLACE_RENDUE,
     PLAN_ANNULE,
     RENDEZ_VOUS,
     HEURE_CHANGEE,
+    ACCEPTE,
 ];
 
 /// Prévient quelqu'un qu'un message l'attend.
@@ -134,6 +153,11 @@ pub async fn prevenir_rendez_vous(state: &AppState, destinataire: &str) {
 /// Prévient quelqu'un que l'heure d'un plan qu'il a rejoint a changé.
 pub async fn prevenir_heure_changee(state: &AppState, destinataire: &str) {
     prevenir(state, destinataire, HEURE_CHANGEE).await;
+}
+
+/// Prévient quelqu'un qu'il est attendu — quand la bannière n'a pas pu partir.
+pub async fn prevenir_accepte(state: &AppState, destinataire: &str) {
+    prevenir(state, destinataire, ACCEPTE).await;
 }
 
 async fn prevenir(state: &AppState, destinataire: &str, texte: Texte) {
@@ -237,7 +261,7 @@ mod tests {
         // s'afficherait.
         assert_eq!(
             TOUS_LES_TEXTES.len(),
-            5,
+            6,
             "un texte a été ajouté sans être inscrit dans la liste éprouvée"
         );
 

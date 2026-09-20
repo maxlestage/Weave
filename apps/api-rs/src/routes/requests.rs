@@ -725,8 +725,29 @@ async fn accepter(
 
     // Celui qui avait demandé apprend qu'il est attendu : là aussi, la bannière
     // doit pouvoir apparaître sans que l'application ait été lancée.
-    if let Err(erreur) = live_activity::demarrer_pour(&state, &demande.author_id).await {
-        tracing::warn!(erreur = %erreur, "Live Activity non démarrée");
+    //
+    // Et si elle ne peut pas, une alerte prend le relais.
+    //
+    // C'est l'événement qui compte le plus dans ce produit, et il ne reposait
+    // que sur la Live Activity. Or celle-ci a besoin d'un jeton « push to
+    // start » qu'un appareil n'a pas toujours : ActivityKit refusé, iPhone pas
+    // encore enregistré, version trop ancienne. Sans lui, la personne acceptée
+    // n'apprenait rien jusqu'à ce qu'elle rouvre l'application — et un oui
+    // qu'on découvre trois jours plus tard n'en est plus vraiment un.
+    //
+    // Un REPLI, et non un doublon : l'alerte ne part que si aucune bannière
+    // n'a démarré. `demarrer_pour` rend leur nombre, ce qui permet de le
+    // savoir. Deux notifications pour un même oui seraient une raison de les
+    // couper toutes.
+    let bannieres = match live_activity::demarrer_pour(&state, &demande.author_id).await {
+        Ok(nombre) => nombre,
+        Err(erreur) => {
+            tracing::warn!(erreur = %erreur, "Live Activity non démarrée");
+            0
+        }
+    };
+    if bannieres == 0 {
+        alerte::prevenir_accepte(&state, &demande.author_id).await;
     }
     live_activity::publier_au_mieux(&state, &compte.id).await;
 

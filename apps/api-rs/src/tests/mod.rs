@@ -298,6 +298,16 @@ impl Service {
     /// La ligne est insérée directement : c'est la POUSSÉE qu'on veut éprouver,
     /// pas l'enregistrement d'un appareil, qui a ses propres tests.
     pub async fn appareil(&self, compte_id: &str) -> String {
+        self.appareil_avec(compte_id, false).await
+    }
+
+    /// Un appareil, avec ou sans jeton « push to start ».
+    ///
+    /// Sans lui, aucune Live Activity ne peut démarrer à distance : c'est le
+    /// cas qu'une alerte de repli doit couvrir, et il n'est pas rare —
+    /// ActivityKit refusé, version trop ancienne, iPhone pas encore
+    /// enregistré.
+    pub async fn appareil_avec(&self, compte_id: &str, bannieres: bool) -> String {
         use crate::entities::devices;
         use sea_orm::{ActiveModelTrait, Set};
 
@@ -311,7 +321,7 @@ impl Service {
             os_version: Set(None),
             app_version: Set(None),
             apns_token: Set(Some(jeton.clone())),
-            push_to_start_token: Set(None),
+            push_to_start_token: Set(bannieres.then(|| format!("pts-{compte_id}"))),
             apns_environment: Set("sandbox".to_string()),
             last_seen_at: Set(chrono::Utc::now().naive_utc()),
             created_at: Set(chrono::Utc::now().naive_utc()),

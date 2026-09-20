@@ -953,16 +953,16 @@ async fn annuler_un_plan_previent_les_personnes_attendues() {
     // C'était le pire des silences du produit : l'auteur annulait, et les
     // personnes attendues n'en savaient rien. Elles seraient venues, et leur
     // bannière annonçait encore le rendez-vous.
+    //
+    // On cherche l'alerte d'ANNULATION parmi celles reçues, plutôt que de les
+    // compter : cet appareil n'a pas de jeton de bannière, il a donc déjà reçu
+    // le repli de l'acceptation. Compter faisait passer ce test pour cassé
+    // quand j'ai ajouté ce repli, alors que les deux alertes sont justes — un
+    // oui, puis son annulation, sont bien deux choses à apprendre.
     let alertes = service.alertes_vers(&telephone);
-    assert_eq!(
-        alertes.len(),
-        1,
-        "personne n'a prévenu qui était attendu : {alertes:?}"
-    );
     assert!(
-        alertes[0].0.contains("annul"),
-        "l'alerte ne dit pas que le plan n'aura pas lieu : {:?}",
-        alertes[0]
+        alertes.iter().any(|(titre, _)| titre.contains("annul")),
+        "personne n'a prévenu qui était attendu : {alertes:?}"
     );
 }
 
@@ -1040,4 +1040,52 @@ async fn un_desistement_rouvre_le_plan_meme_au_dela_du_plafond() {
         )
         .await;
     assert_ne!(statut, StatusCode::OK, "le plafond a été abandonné : {corps}");
+}
+
+#[tokio::test]
+async fn un_oui_se_sait_meme_sans_banniere() {
+    let service = Service::monter().await;
+    service.compte("c_hote_oui", "depart").await;
+    let invite = service.compte("c_invite_oui", "depart").await;
+    // Un appareil joignable par alerte, mais SANS jeton « push to start » :
+    // aucune Live Activity ne peut démarrer à distance.
+    let telephone = service.appareil(&invite).await;
+    let plan = plan_solo(&service, "c_hote_oui", "Une balade au bord de l eau").await;
+
+    accepte(&service, "c_hote_oui", "c_invite_oui", &plan).await;
+
+    // C'est l'événement qui compte le plus du produit, et il ne reposait que
+    // sur la bannière. Sans jeton, la personne n'apprenait rien jusqu'à
+    // rouvrir l'application — et un oui qu'on découvre trois jours plus tard
+    // n'en est plus vraiment un.
+    let alertes = service.alertes_vers(&telephone);
+    assert_eq!(alertes.len(), 1, "le oui n'a pas été annoncé : {alertes:?}");
+    assert!(
+        alertes[0].0.contains("attend"),
+        "l'alerte ne dit pas ce qui arrive : {:?}",
+        alertes[0]
+    );
+    // Et elle ne nomme ni le plan ni personne.
+    let assemble = format!("{} {}", alertes[0].0, alertes[0].1);
+    assert!(!assemble.contains("balade"), "{assemble}");
+    assert!(!assemble.contains("c_hote_oui"), "{assemble}");
+}
+
+#[tokio::test]
+async fn une_banniere_qui_part_ne_double_pas_l_alerte() {
+    let service = Service::monter().await;
+    service.compte("c_hote_dbl", "depart").await;
+    let invite = service.compte("c_invite_dbl", "depart").await;
+    // Cette fois l'appareil peut recevoir une bannière.
+    let telephone = service.appareil_avec(&invite, true).await;
+    let plan = plan_solo(&service, "c_hote_dbl", "Un concert au parc").await;
+
+    accepte(&service, "c_hote_dbl", "c_invite_dbl", &plan).await;
+
+    // Un repli, pas un doublon. Deux notifications pour un même oui seraient
+    // une raison de les couper toutes.
+    assert!(
+        service.alertes_vers(&telephone).is_empty(),
+        "la bannière ET l'alerte sont parties pour le même oui"
+    );
 }
