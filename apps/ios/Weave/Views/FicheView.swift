@@ -45,6 +45,7 @@ struct FicheView: View {
     @State private var choixPhoto: PhotosPickerItem?
     @State private var photo: UIImage?
     @State private var photoEnCours = false
+    @State private var retraitPhoto = false
     @State private var enCours = false
     @State private var erreur: String?
 
@@ -110,6 +111,16 @@ struct FicheView: View {
                         if photoEnCours { ProgressView() }
                     }
                     .disabled(photoEnCours)
+
+                    // Rien ne permettait de la reprendre. Une photo posée
+                    // restait, sauf à supprimer tout son compte — une réponse
+                    // démesurée à « je ne veux plus montrer mon visage ».
+                    if photo != nil {
+                        Button("Retirer ma photo", role: .destructive) {
+                            retraitPhoto = true
+                        }
+                        .disabled(photoEnCours)
+                    }
                 } header: {
                     Text("Votre photo")
                 } footer: {
@@ -149,6 +160,21 @@ struct FicheView: View {
                 Button("D'accord") { erreur = nil }
             } message: {
                 Text(erreur ?? "")
+            }
+            .confirmationDialog(
+                "Retirer votre photo ?",
+                isPresented: $retraitPhoto,
+                titleVisibility: .visible
+            ) {
+                Button("Retirer", role: .destructive) {
+                    Task { await retirerPhoto() }
+                }
+                Button("Annuler", role: .cancel) {}
+            } message: {
+                // Ce que « retirer » veut dire ici, dit avant le geste : les
+                // octets partent, et non l'affichage seul. On peut en reposer
+                // une, mais pas récupérer celle-là.
+                Text("Elle est effacée du service, pas seulement masquée. Vous pourrez en déposer une autre.")
             }
             .onAppear {
                 if ville.isEmpty { ville = villeInitiale }
@@ -214,6 +240,22 @@ struct FicheView: View {
     /// La fiche doit exister d'abord — le serveur refuse une photo sans ville,
     /// puisqu'elle s'attache à la fiche. À l'inscription, l'envoi est donc
     /// différé jusqu'au dépôt de la fiche ; ailleurs, il part tout de suite.
+    private func retirerPhoto() async {
+        photoEnCours = true
+        defer { photoEnCours = false }
+        do {
+            try await modele.api.removePhoto()
+            photo = nil
+            // La fiche que l'application garde en mémoire porte l'adresse de
+            // la photo : sans cette relecture, l'écran d'accueil continuerait
+            // de l'afficher jusqu'au prochain lancement, avec un lien qui ne
+            // mène plus nulle part.
+            await modele.rafraichirMoi()
+        } catch {
+            erreur = (error as? WeaveAPIError)?.userMessage ?? error.localizedDescription
+        }
+    }
+
     private func envoyerPhoto(_ choix: PhotosPickerItem) async {
         photoEnCours = true
         defer { photoEnCours = false }

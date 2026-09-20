@@ -11,12 +11,14 @@ use crate::{
     auth::{Authentifie, oublier_compte},
     cache,
     crypto::signer_url_media,
+    crypto::{code_otp, hacher_secret, hash_email, normaliser_email, verifier_secret},
     droits::{
         Critere, credits_pour, demandes_restantes, exiger_credit_dans, filtre_autorise,
         quota_journalier,
     },
-    entities::{accounts, preferences, profiles},
-    error::{AppError, introuvable, invalide},
+    entities::{accounts, otp_challenges, preferences, profiles},
+    error::{AppError, Code, introuvable, invalide, non_autorise},
+    limitation::{consommer, regles},
     temps::{age_depuis, iso8601},
 };
 use axum::{
@@ -26,7 +28,9 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use sea_orm::sea_query::Expr;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -69,6 +73,8 @@ pub fn routes() -> Router<AppState> {
             get(lire_criteres).patch(ajuster_criteres),
         )
         .route("/v1/me/escale", post(ouvrir_escale).delete(fermer_escale))
+        .route("/v1/me/email", post(demander_changement_email))
+        .route("/v1/me/email/verify", post(changer_email))
 }
 
 #[derive(Deserialize)]
@@ -77,6 +83,189 @@ struct ModificationCompte {
     display_name: Option<String>,
     timezone: Option<String>,
     locale: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NouvelleAdresse {
+    email: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfirmationAdresse {
+    email: String,
+    code: String,
+}
+
+/// Demande un code pour changer d'adresse e-mail.
+///
+/// ## Ce qui manquait, et ce que cela coûtait
+///
+/// L'adresse EST le compte : il n'y a ni mot de passe, ni question de secours,
+/// et l'on se connecte par un code envoyé dans sa boîte. Rien ne permettait
+/// d'en changer.
+///
+/// Perdre l'accès à cette boîte — un changement d'employeur, un fournisseur
+/// qui ferme, une faute de frappe à l'inscription — rendait donc le compte
+/// définitivement injoignable. Avec ses conversations, son abonnement en
+/// cours et ses achats. On ne pouvait même plus le supprimer, puisque
+/// supprimer demande d'être connecté.
+///
+/// ## Le code part à la NOUVELLE adresse
+///
+/// C'est ce qui prouve qu'on la contrôle. L'envoyer à l'ancienne ne
+/// prouverait rien sur la nouvelle, et laisserait déplacer son compte vers
+/// une adresse saisie de travers — ce qui est précisément l'un des cas qu'on
+/// veut réparer.
+///
+/// ## Cette route ne dit jamais si une adresse est déjà prise
+///
+/// La tentation est de refuser tout de suite « cette adresse est utilisée ».
+/// Ce serait un moyen de savoir, pour n'importe quelle adresse, si elle a un
+/// compte sur Weave — sur une application de rencontre, c'est une information
+/// qu'on ne donne pas.
+///
+/// L'unicité est donc vérifiée à la CONFIRMATION, une fois le contrôle de la
+/// boîte prouvé. Qui possède les deux adresses l'apprendra alors, et c'est
+/// sans conséquence : elles sont à lui.
+async fn demander_changement_email(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Json(corps): Json<NouvelleAdresse>,
+) -> Result<Json<Value>, AppError> {
+    let email = normaliser_email(&corps.email);
+    if !email.contains('@') || email.len() > 320 {
+        return Err(invalide(Msg::AdresseEmailInvalide));
+    }
+    let empreinte = hash_email(&email);
+
+    // Deux compteurs, comme à la connexion : le compte borne les rafales, et
+    // l'empreinte protège une boîte donnée. Sans le second, un compte pourrait
+    // arroser de codes une adresse qui n'est pas la sienne.
+    consommer(&state, regles::DEMANDE_OTP, &compte.id).await?;
+    consommer(&state, regles::DEMANDE_OTP, &empreinte).await?;
+
+    let code = code_otp();
+    let code_hache = hacher_secret(&code).map_err(|erreur| {
+        tracing::error!(erreur = %erreur, "hachage du code impossible");
+        AppError::new(Code::Internal, Msg::ErreurInterne.t())
+    })?;
+
+    otp_challenges::ActiveModel {
+        id: Set(cuid2::create_id()),
+        email_hash: Set(empreinte.clone()),
+        code_hash: Set(code_hache),
+        attempts: Set(0),
+        consumed_at: Set(None),
+        expires_at: Set((Utc::now()
+            + chrono::Duration::minutes(crate::routes::auth::OTP_TTL_MINUTES))
+        .naive_utc()),
+        created_at: Set(Utc::now().naive_utc()),
+    }
+    .insert(&state.db)
+    .await?;
+
+    tracing::info!(email_hash = %empreinte, "Code de changement d'adresse émis");
+
+    Ok(Json(json!({
+        "sent": true,
+        "expiresInSeconds": crate::routes::auth::OTP_TTL_MINUTES * 60,
+        "devCode": (!state.config.is_production()).then_some(code.clone()),
+    })))
+}
+
+/// Confirme le changement d'adresse avec le code reçu.
+///
+/// Les sessions ouvertes ne sont PAS révoquées, et c'est un choix. Le cas
+/// qu'une révocation viserait — un appareil volé dont on déplace le compte —
+/// n'est pas servi par elle : elle déconnecterait la victime de ses autres
+/// appareils, pas le voleur du sien. Elle coûterait donc à qui change
+/// légitimement d'adresse, sans rien retirer à personne d'autre.
+async fn changer_email(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Json(corps): Json<ConfirmationAdresse>,
+) -> Result<Json<Value>, AppError> {
+    consommer(&state, regles::VERIF_OTP, &compte.id).await?;
+
+    let email = normaliser_email(&corps.email);
+    let empreinte = hash_email(&email);
+
+    let actuel = accounts::Entity::find_by_id(compte.id.as_str())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable(Msg::CompteIntrouvable))?;
+
+    // Changer pour l'adresse qu'on a déjà : rien à faire, et ce n'est pas une
+    // erreur. Le dire autrement obligerait l'écran à connaître l'adresse
+    // courante pour savoir s'il a le droit de demander.
+    if empreinte == actuel.email_hash {
+        return Ok(Json(json!({ "ok": true, "email": email })));
+    }
+
+    let defi = otp_challenges::Entity::find()
+        .filter(otp_challenges::Column::EmailHash.eq(empreinte.as_str()))
+        .filter(otp_challenges::Column::ConsumedAt.is_null())
+        .filter(otp_challenges::Column::ExpiresAt.gt(Utc::now().naive_utc()))
+        .order_by_desc(otp_challenges::Column::CreatedAt)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| non_autorise(Msg::CodeExpire))?;
+
+    use sea_orm::sea_query::ExprTrait;
+
+    // Une tentative se paie d'avance, et en une seule écriture — la même
+    // leçon qu'à la connexion : lire le compteur puis l'incrémenter laisse N
+    // essais simultanés n'en consommer qu'un, et un code à six chiffres ne
+    // résiste pas à cela.
+    let tentative = otp_challenges::Entity::update_many()
+        .col_expr(
+            otp_challenges::Column::Attempts,
+            sea_orm::sea_query::Expr::col(otp_challenges::Column::Attempts).add(1),
+        )
+        .filter(otp_challenges::Column::Id.eq(defi.id.as_str()))
+        .filter(otp_challenges::Column::Attempts.lt(crate::routes::auth::OTP_MAX_TENTATIVES))
+        .exec(&state.db)
+        .await?;
+    if tentative.rows_affected != 1 {
+        return Err(non_autorise(Msg::TropDeTentativesSurCeCode));
+    }
+
+    if !verifier_secret(&corps.code, &defi.code_hash) {
+        return Err(non_autorise(Msg::CodeIncorrect));
+    }
+
+    // L'unicité, ici seulement : le contrôle de la boîte est prouvé, et
+    // l'apprendre maintenant ne renseigne que celui qui possède l'adresse.
+    if accounts::Entity::find()
+        .filter(accounts::Column::EmailHash.eq(empreinte.as_str()))
+        .one(&state.db)
+        .await?
+        .is_some()
+    {
+        return Err(invalide(Msg::AdresseDejaUtilisee));
+    }
+
+    // Le code est consommé dans la même transaction que le changement : s'il
+    // l'était avant, un échec d'écriture laisserait un code brûlé et une
+    // adresse inchangée, et il faudrait tout recommencer sans savoir pourquoi.
+    let transaction = state.db.begin().await?;
+
+    let mut modifie: accounts::ActiveModel = actuel.into();
+    modifie.email = Set(email.clone());
+    modifie.email_hash = Set(empreinte.clone());
+    modifie.updated_at = Set(Utc::now().naive_utc());
+    modifie.update(&transaction).await?;
+
+    let mut consomme: otp_challenges::ActiveModel = defi.into();
+    consomme.consumed_at = Set(Some(Utc::now().naive_utc()));
+    consomme.update(&transaction).await?;
+
+    transaction.commit().await?;
+
+    tracing::info!(compte = %compte.id, "adresse de connexion changée");
+    Ok(Json(json!({ "ok": true, "email": email })))
 }
 
 /// Modifier son compte : le nom affiché, le fuseau, la langue.

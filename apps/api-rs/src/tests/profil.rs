@@ -334,3 +334,139 @@ async fn l_export_et_l_envoi_de_photo_sont_bornes() {
         "l'envoi de photo n'est borné par rien : {corps}"
     );
 }
+
+// ————————————————————————————————————————————————————————————————————————
+// Retirer sa photo
+//
+// On pouvait la déposer et la remplacer, jamais la retirer. C'est la donnée
+// la plus identifiante de la fiche, et la seule qu'on ne pouvait pas
+// reprendre — tout le reste s'édite.
+// ————————————————————————————————————————————————————————————————————————
+
+/// Pose une fiche et une photo, et rend le jeton du compte.
+async fn compte_avec_photo(service: &Service, nom: &str) -> String {
+    let jeton = service.jeton(nom);
+    let (statut, corps) = service
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({ "city": "Lyon", "latitude": 45.76, "longitude": 4.84, "gender": "femme" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let jpeg = [&[0xFF, 0xD8, 0xFF, 0xE0][..], &[0u8; 64][..]].concat();
+    let (statut, corps) = service.put_octets("/v1/me/photo", &jeton, jpeg).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    jeton
+}
+
+async fn octets_en_base(service: &Service) -> u64 {
+    use crate::entities::media_objects;
+    use sea_orm::{EntityTrait, PaginatorTrait};
+    media_objects::Entity::find()
+        .count(&service.db)
+        .await
+        .expect("médias comptés")
+}
+
+#[tokio::test]
+async fn retirer_sa_photo_efface_les_octets_et_pas_seulement_la_reference() {
+    let service = Service::monter().await;
+    service.compte("c_photo_off", "depart").await;
+    let jeton = compte_avec_photo(&service, "c_photo_off").await;
+
+    assert_eq!(octets_en_base(&service).await, 1);
+    let (statut, corps) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert!(!corps["photoUrl"].is_null(), "la photo n'a pas été posée");
+
+    let (statut, corps) = service.delete("/v1/me/photo", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, corps) = service.get("/v1/me", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert!(
+        corps["photoUrl"].is_null(),
+        "la fiche montre encore une photo"
+    );
+
+    // « Supprimer » ne peut pas vouloir dire « ne plus afficher ». Effacer la
+    // seule référence garderait l'image en base, illisible mais présente — et
+    // un octet conservé sans usage est ce que la politique s'interdit.
+    assert_eq!(
+        octets_en_base(&service).await,
+        0,
+        "les octets de la photo sont restés en base"
+    );
+}
+
+#[tokio::test]
+async fn retirer_une_photo_absente_ne_se_plaint_pas() {
+    let service = Service::monter().await;
+    service.compte("c_photo_vide", "depart").await;
+    let jeton = service.jeton("c_photo_vide");
+    let (statut, corps) = service
+        .put(
+            "/v1/me/profile",
+            Some(&jeton),
+            json!({ "city": "Lille", "latitude": 50.63, "longitude": 3.06, "gender": "homme" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // Une fiche sans photo est déjà dans l'état voulu. Rendre une erreur
+    // ferait dépendre la réponse de ce qu'on ignorait — et l'appel vient d'un
+    // écran qui ne sait pas toujours s'il y en avait une.
+    for tour in 0..2 {
+        let (statut, corps) = service.delete("/v1/me/photo", Some(&jeton)).await;
+        assert_eq!(statut, StatusCode::OK, "tour {tour} : {corps}");
+    }
+}
+
+#[tokio::test]
+async fn on_ne_retire_que_sa_propre_photo() {
+    let service = Service::monter().await;
+    service.compte("c_photo_mienne", "depart").await;
+    service.compte("c_photo_tiers", "depart").await;
+    compte_avec_photo(&service, "c_photo_mienne").await;
+    let tiers = compte_avec_photo(&service, "c_photo_tiers").await;
+
+    assert_eq!(octets_en_base(&service).await, 2);
+    let (statut, corps) = service.delete("/v1/me/photo", Some(&tiers)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // La route n'agit que sur la fiche du porteur du jeton. Une seule des deux
+    // photos part : celle de qui l'a demandé.
+    assert_eq!(
+        octets_en_base(&service).await,
+        1,
+        "retirer sa photo a emporté celle de quelqu'un d'autre"
+    );
+    let (statut, corps) = service
+        .get("/v1/me", Some(&service.jeton("c_photo_mienne")))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert!(
+        !corps["photoUrl"].is_null(),
+        "la photo d'un tiers a disparu"
+    );
+}
+
+#[tokio::test]
+async fn une_photo_retiree_puis_redeposee_repart_de_zero() {
+    let service = Service::monter().await;
+    service.compte("c_photo_reprise", "depart").await;
+    let jeton = compte_avec_photo(&service, "c_photo_reprise").await;
+
+    let (statut, _) = service.delete("/v1/me/photo", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK);
+
+    // Rien n'empêche de revenir sur sa décision, et la nouvelle photo n'hérite
+    // pas de la relecture de modération de l'ancienne : ce n'est pas la même
+    // image, et reconduire un « déjà vu » mentirait sur ce qui a été vu.
+    let jpeg = [&[0xFF, 0xD8, 0xFF, 0xE0][..], &[1u8; 64][..]].concat();
+    let (statut, corps) = service.put_octets("/v1/me/photo", &jeton, jpeg).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(octets_en_base(&service).await, 1);
+}

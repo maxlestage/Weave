@@ -646,9 +646,21 @@ pub fn jeton_pour(compte_id: &str) -> String {
 /// refuseraient pour de mauvaises raisons.
 pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
     let maintenant = "2026-09-12 10:00:00";
+
+    // L'empreinte est CELLE de l'adresse, et non un identifiant fabriqué.
+    //
+    // Elle valait « h_{id} », sans rapport avec la colonne `email` d'à côté.
+    // Un tel compte ne peut pas exister en production — c'est `hash_email` qui
+    // écrit les deux — et tout test qui rapproche l'adresse de son empreinte
+    // trébuchait dessus : la connexion ne retrouvait pas le compte, l'unicité
+    // ne voyait pas la collision. J'ai découvert la chose en écrivant le
+    // changement d'adresse, où trois tests sur dix tombaient pour cette seule
+    // raison.
+    let email = format!("{id}@exemple.fr");
+    let empreinte = crate::crypto::hash_email(&email);
     for sql in [
         format!(
-            "INSERT INTO accounts (id,email,emailHash,handle,displayName,birthDate,status,timezone,locale,verified,createdAt,updatedAt) VALUES ('{id}','{id}@exemple.fr','h_{id}','{id}','Compte {id}','2000-01-15 00:00:00','active','Europe/Paris','fr-FR',0,'{maintenant}','{maintenant}')"
+            "INSERT INTO accounts (id,email,emailHash,handle,displayName,birthDate,status,timezone,locale,verified,createdAt,updatedAt) VALUES ('{id}','{email}','{empreinte}','{id}','Compte {id}','2000-01-15 00:00:00','active','Europe/Paris','fr-FR',0,'{maintenant}','{maintenant}')"
         ),
         format!(
             "INSERT INTO profiles (id,accountId,city,latRounded,lonRounded,gender,bio,createdAt,updatedAt) VALUES ('prf_{id}','{id}','Lyon',45.75,4.85,'autre','','{maintenant}','{maintenant}')"
@@ -698,6 +710,7 @@ async fn le_schema_de_test_est_bien_celui_du_depot() {
         .expect("les migrations postérieures à « 0_init » doivent être appliquées");
 }
 mod activite;
+mod adresse;
 mod blocages;
 mod consentements;
 mod conversations;

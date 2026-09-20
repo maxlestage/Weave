@@ -35,9 +35,9 @@ use std::net::SocketAddr;
 
 /// Dix minutes : assez pour aller chercher le code dans sa boîte, assez court
 /// pour qu'un code intercepté ne serve plus longtemps.
-const OTP_TTL_MINUTES: i64 = 10;
+pub(crate) const OTP_TTL_MINUTES: i64 = 10;
 /// Cinq essais, puis il faut redemander un code.
-const OTP_MAX_TENTATIVES: i32 = 5;
+pub(crate) const OTP_MAX_TENTATIVES: i32 = 5;
 /// Weave est réservé aux majeurs.
 pub const AGE_MINIMUM: i32 = 18;
 use crate::messages::Msg;

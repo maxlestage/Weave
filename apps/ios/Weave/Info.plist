@@ -3,7 +3,18 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Weave</string>
+  <!--
+    Le nom sous l'icône, et lui seul.
+
+    `PRODUCT_BUNDLE_IDENTIFIER` ne bouge PAS : changer `com.weave.app` ferait
+    une nouvelle application aux yeux d'Apple, et ni TestFlight, ni les
+    abonnements, ni les achats déjà faits ne suivraient.
+
+    Le caractère « ‣ » (U+2023, puce triangulaire) fait partie du nom. Il est
+    écrit ici en clair, en UTF-8, et non en entité XML : `&#8227;` serait
+    correct pour un analyseur, mais illisible pour qui relit ce fichier.
+  -->
+  <string>Weave ‣</string>
   <key>CFBundleShortVersionString</key>
   <string>$(MARKETING_VERSION)</string>
   <key>CFBundleVersion</key>
