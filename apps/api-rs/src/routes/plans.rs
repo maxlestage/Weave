@@ -552,12 +552,32 @@ async fn modifier_plan(
         ajuste.capacity = Set(capacite);
         // Une place ajoutée rouvre un plan complet ; la dernière place
         // accordée le referme.
-        ajuste.state = Set(if capacite > accordees {
+        let etat = if capacite > accordees {
             "ouvert"
         } else {
             "complet"
+        };
+
+        // Rouvrir, c'est remettre un plan AU FIL. Le plafond de trois plans
+        // ouverts s'y applique donc, exactement comme à la publication.
+        //
+        // Sans ce contrôle, la route que je venais d'écrire offrait le moyen
+        // de le contourner : trois plans ouverts, un quatrième complet, une
+        // place ajoutée à celui-là — et quatre plans au fil. Un plan complet
+        // ne compte pas dans le plafond puisqu'il n'y figure plus ; le
+        // remettre lui rend son poids.
+        //
+        // Le contrôle ne porte que sur la RÉOUVERTURE : un plan déjà ouvert
+        // qu'on corrige ne revient pas au fil, il y est. Refuser là rendrait
+        // toute correction impossible à qui a trois plans — c'est-à-dire à qui
+        // se sert le plus du produit.
+        if etat == "ouvert"
+            && plan.state != "ouvert"
+            && compter_ouverts(&state.db, &compte.id).await? >= MAX_PLANS_OUVERTS
+        {
+            return Err(trop_de_plans());
         }
-        .to_string());
+        ajuste.state = Set(etat.to_string());
     }
 
     ajuste.updated_at = Set(Utc::now().naive_utc());

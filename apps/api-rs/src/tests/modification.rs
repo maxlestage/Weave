@@ -327,3 +327,113 @@ async fn un_plan_annule_ou_passe_ne_se_modifie_plus() {
         );
     }
 }
+
+#[tokio::test]
+async fn rouvrir_un_plan_complet_ne_contourne_pas_le_plafond() {
+    let service = Service::monter().await;
+    service.compte("c_hote_plaf", "escapade").await;
+    service.compte("c_invite_plaf", "depart").await;
+
+    // Un plan rempli : complet, donc hors du fil, donc hors du plafond.
+    let plein = plan_de(&service, "c_hote_plaf", "Un cafe pres du canal", 1).await;
+    accepte(&service, "c_hote_plaf", "c_invite_plaf", &plein).await;
+    assert_eq!(
+        colonne(&service, &plein, "state").await.as_deref(),
+        Some("complet")
+    );
+
+    // Puis le plafond atteint avec trois autres.
+    for titre in [
+        "Une expo le samedi",
+        "Un concert au parc",
+        "Un marche dimanche",
+    ] {
+        plan_de(&service, "c_hote_plaf", titre, 1).await;
+    }
+
+    // Ajouter une place au plan complet le remettrait au fil : quatre plans
+    // visibles, alors que trois est la borne. C'est le contournement que la
+    // route que je venais d'écrire offrait — trouvé en relisant ce qu'elle
+    // touchait, pas par un test qui existait.
+    let (statut, corps) = service
+        .patch(
+            &format!("/v1/plans/{plein}"),
+            Some(&service.jeton("c_hote_plaf")),
+            json!({ "capacity": 2 }),
+        )
+        .await;
+    assert_ne!(
+        statut,
+        StatusCode::OK,
+        "un quatrième plan est revenu au fil : {corps}"
+    );
+    assert_eq!(
+        colonne(&service, &plein, "state").await.as_deref(),
+        Some("complet")
+    );
+}
+
+#[tokio::test]
+async fn corriger_un_titre_reste_possible_au_plafond() {
+    let service = Service::monter().await;
+    service.compte("c_hote_titre_plaf", "depart").await;
+    let mut plans = Vec::new();
+    for titre in [
+        "Une expo le samedi",
+        "Un concert au parc",
+        "Un marche dimanche",
+    ] {
+        plans.push(plan_de(&service, "c_hote_titre_plaf", titre, 1).await);
+    }
+
+    // Le contrôle ne porte que sur la RÉOUVERTURE. Un plan déjà ouvert qu'on
+    // corrige ne revient pas au fil : il y est. Refuser ici rendrait toute
+    // correction impossible à qui a trois plans — c'est-à-dire à qui se sert
+    // le plus du produit.
+    let (statut, corps) = service
+        .patch(
+            &format!("/v1/plans/{}", plans[0]),
+            Some(&service.jeton("c_hote_titre_plaf")),
+            json!({ "title": "Une expo le samedi apres midi" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+}
+
+#[tokio::test]
+async fn changer_la_capacite_d_un_plan_deja_ouvert_reste_possible_au_plafond() {
+    let service = Service::monter().await;
+    service.compte("c_hote_cap_plaf", "escapade").await;
+    let mut plans = Vec::new();
+    for titre in [
+        "Une expo le samedi",
+        "Un concert au parc",
+        "Un marche dimanche",
+    ] {
+        plans.push(plan_de(&service, "c_hote_cap_plaf", titre, 1).await);
+    }
+
+    // La correction du titre ne passe même pas par le bloc de capacité : elle
+    // ne pouvait donc pas éprouver la précision de la garde. Ma première
+    // version s'arrêtait là, et vérifier le plafond SANS condition laissait
+    // tous les tests au vert.
+    //
+    // Ici, le plan est déjà ouvert et sa capacité change. Il est au fil, il y
+    // reste : le plafond n'a rien à redire.
+    let (statut, corps) = service
+        .patch(
+            &format!("/v1/plans/{}", plans[0]),
+            Some(&service.jeton("c_hote_cap_plaf")),
+            json!({ "capacity": 2 }),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "ajouter une place à un plan DÉJÀ au fil a été refusé : {corps}"
+    );
+    assert_eq!(
+        colonne(&service, &plans[0], "state").await.as_deref(),
+        Some("ouvert")
+    );
+}
