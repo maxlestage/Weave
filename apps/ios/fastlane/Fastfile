@@ -45,7 +45,7 @@ platform :ios do
     # il est ainsi toujours croissant, ce qu'exige App Store Connect.
     increment_build_number(
       build_number: ENV.fetch("BUILD_NUMBER", Time.now.to_i.to_s),
-      xcodeproj: "Weave.xcodeproj",
+      xcodeproj: "Weave ‣.xcodeproj",
     )
 
     # `match` conserve certificats et profils chiffrés dans un dépôt privé :
@@ -60,9 +60,9 @@ platform :ios do
     end
 
     build_app(
-      project: "Weave.xcodeproj",
-      # Le schéma porte le nom de la cible iPhone, « ‣ » compris. Le PROJET,
-      # lui, reste « Weave.xcodeproj » : il contient aussi la montre.
+      project: "Weave ‣.xcodeproj",
+      # Le projet, la cible et le schéma portent tous « ‣ ». Seul le nom du
+      # fichier livré reste sobre : « Weave.ipa » se tape et se cherche.
       scheme: "Weave ‣",
       configuration: "Release",
       export_method: "app-store",

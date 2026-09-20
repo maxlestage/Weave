@@ -97,8 +97,8 @@ jobs:
       - name: Conserver le projet généré
         uses: actions/upload-artifact@v4
         with:
-          name: Weave.xcodeproj
-          path: apps/ios/Weave.xcodeproj
+          name: Weave-xcodeproj
+          path: apps/ios/Weave ‣.xcodeproj
           retention-days: 14
 
       - name: Compiler
@@ -113,7 +113,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build \
-            -project Weave.xcodeproj \
+            -project 'Weave ‣.xcodeproj' \
             -scheme 'Weave ‣' \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
@@ -157,7 +157,7 @@ jobs:
           echo "Simulateur : $udid"
 
           xcodebuild test \
-            -project Weave.xcodeproj \
+            -project 'Weave ‣.xcodeproj' \
             -scheme 'Weave ‣' \
             -configuration Debug \
             -destination "id=$udid" \
