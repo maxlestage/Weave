@@ -2623,3 +2623,83 @@ fn l_application_porte_son_nom_et_garde_son_identifiant() {
          ne suivraient pas"
     );
 }
+
+/// Le schéma que la CI invoque est celui que le projet déclare.
+///
+/// ## Pourquoi trois fichiers doivent s'accorder
+///
+/// Le nom de la cible iPhone devient celui du schéma Xcode. Trois endroits
+/// l'invoquent : les deux `xcodebuild` de la compilation, et le `build_app`
+/// de fastlane qui envoie à TestFlight.
+///
+/// Renommer la cible sans les suivre ne casse rien de visible : le projet se
+/// génère, les tests Rust passent, le site se construit. Cela casse la
+/// CONSTRUCTION iOS — et la fastlane ne tourne qu'au moment d'envoyer une
+/// version, c'est-à-dire le jour où l'on voulait livrer.
+///
+/// Le nom porte « ‣ », ce qui ajoute une façon de se tromper : un schéma non
+/// cité serait coupé à l'espace, et `xcodebuild` chercherait un schéma
+/// « Weave » qui n'existe plus.
+#[test]
+fn le_schema_ios_est_le_meme_partout() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let ios = racine.join("ios");
+    if !ios.is_dir() {
+        eprintln!("dépôt iOS absent — accord non vérifié");
+        return;
+    }
+
+    // Le nom fait foi là où il est déclaré : dans `project.yml`.
+    let projet = std::fs::read_to_string(ios.join("project.yml")).expect("project.yml lisible");
+    let declare = projet
+        .split("\nschemes:\n")
+        .nth(1)
+        .and_then(|reste| reste.lines().next())
+        .map(|ligne| ligne.trim().trim_end_matches(':').trim_matches('"').to_string())
+        .expect("aucun schéma déclaré");
+    assert_eq!(
+        declare, "Weave ‣",
+        "le schéma déclaré a changé sans que ce test le sache"
+    );
+
+    // La compilation, deux fois. Le schéma est CITÉ : sans les guillemets,
+    // l'espace le couperait et `xcodebuild` chercherait « Weave ».
+    let ci = std::fs::read_to_string(racine.join("../.github/workflows/ios-compilation.yml"))
+        .expect("ios-compilation.yml lisible");
+    let attendu_ci = format!("-scheme '{declare}'");
+    assert_eq!(
+        ci.matches(&attendu_ci).count(),
+        2,
+        "les deux appels à xcodebuild n'invoquent pas « {declare} » entre guillemets"
+    );
+    assert!(
+        !ci.contains("-scheme Weave \\"),
+        "un appel à xcodebuild invoque encore le schéma sans guillemets"
+    );
+
+    // Et l'envoi à TestFlight.
+    let fastfile =
+        std::fs::read_to_string(ios.join("fastlane/Fastfile")).expect("Fastfile lisible");
+    assert!(
+        fastfile.contains(&format!("scheme: \"{declare}\"")),
+        "fastlane n'envoie pas le schéma « {declare} » : la construction de \
+         livraison chercherait un schéma qui n'existe pas"
+    );
+
+    // Le PROJET garde son nom : il contient aussi la montre, et le renommer
+    // l'emporterait avec lui.
+    assert!(
+        projet.contains("\nname: Weave\n"),
+        "le projet a été renommé : la montre et ses extensions suivraient"
+    );
+    // Les DEUX emplois, et non « le nom figure quelque part » : le Fastfile
+    // cite `Weave.xcodeproj` à deux endroits — la numérotation de version et
+    // la construction. En changer un seul laissait ma première version au
+    // vert, puisque l'autre suffisait à la satisfaire. C'est la même faute
+    // que la garde qui cherchait « Signaler » n'importe où dans un fichier.
+    assert_eq!(
+        fastfile.matches("\"Weave.xcodeproj\"").count(),
+        2,
+        "fastlane ne désigne plus Weave.xcodeproj aux deux endroits"
+    );
+}
