@@ -36,6 +36,20 @@ public struct Preferences: Decodable, Sendable {
     public let escaleCity: String?
     /// Fin de l'escale en cours.
     public let escaleUntil: Date?
+    /// Le rappel avant le rendez-vous est-il voulu ?
+    ///
+    /// Actif par défaut, et sans palier : oublier un rendez-vous n'est pas un
+    /// confort qu'on vend, et faire payer pour être prévenu ferait du socle
+    /// gratuit un produit qui laisse quelqu'un attendre seul.
+    ///
+    /// Facultatif au décodage : une application à jour peut parler à un
+    /// serveur qui ne l'est pas encore, et l'absence du champ ne doit pas
+    /// emporter la lecture entière des critères. Absent vaut « actif », comme
+    /// au serveur.
+    public let remindersOn: Bool?
+
+    /// Le rappel part-il ? Absent vaut actif.
+    public var rappelsActifs: Bool { remindersOn ?? true }
 
     /// Une escale court-elle en ce moment ?
     ///

@@ -29,6 +29,9 @@ pub struct Model {
     pub state: String,
     #[sea_orm(column_name = "cancelledAt")]
     pub cancelled_at: Option<DateTime>,
+    /// L'heure à laquelle le rappel est parti. Nul tant qu'il n'est pas parti.
+    #[sea_orm(column_name = "remindedAt")]
+    pub reminded_at: Option<DateTime>,
     #[sea_orm(column_name = "createdAt")]
     pub created_at: DateTime,
     #[sea_orm(column_name = "updatedAt")]

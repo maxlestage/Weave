@@ -18,6 +18,10 @@ struct ReglagesView: View {
     /// deux âges s'appliquent ensemble : toucher un curseur avant d'avoir lu
     /// aurait écrasé l'autre avec une valeur par défaut.
     @State private var criteresLus = false
+    /// Le rappel avant le rendez-vous. Actif tant qu'on n'a pas lu le vrai
+    /// réglage — c'est l'état du serveur, et l'afficher éteint puis le voir
+    /// s'allumer serait pire que d'attendre une seconde.
+    @State private var rappels = true
     @State private var jours: Set<Int> = []
     @State private var recherche: Set<Gender> = []
     /// Le consentement aux données sensibles vaut-il en ce moment ?
@@ -67,6 +71,19 @@ struct ReglagesView: View {
                     } footer: {
                         Text("Bornées à toutes les offres, socle gratuit compris. Elles reviennent à minuit. C'est ce qui empêche d'arroser — sur Weave, une demande vaut quelque chose.")
                     }
+                }
+
+                Section {
+                    Toggle("Me rappeler avant", isOn: $rappels)
+                } header: {
+                    Text("Rendez-vous")
+                } footer: {
+                    // Ce que le réglage fait, et ce qu'il ne dit à personne.
+                    Text(
+                        "Deux heures avant, une notification vous le remet en mémoire — "
+                            + "à vous comme aux personnes que vous attendez. Elle ne dit ni "
+                            + "le plan, ni avec qui : elle s'affiche sur un écran verrouillé."
+                    )
                 }
 
                 Section {
@@ -308,6 +325,18 @@ struct ReglagesView: View {
                 guard criteresLus else { return }
                 Task { await appliquerAges() }
             }
+            .onChange(of: rappels) { _, actifs in
+                // Le même garde-fou que les curseurs d'âge, et pour la même
+                // raison : la valeur de départ vaut « actif », et l'écrire
+                // avant d'avoir lu le réglage réel le rallumerait tout seul
+                // chez quelqu'un qui l'avait coupé.
+                guard criteresLus else { return }
+                Task {
+                    try? await modele.api.updatePreferences(
+                        PreferencesPatch(remindersOn: actifs)
+                    )
+                }
+            }
             .task { await chargerCriteres() }
             .sheet(item: $bilan) { rapport in
                 BilanView(bilan: rapport)
@@ -462,6 +491,7 @@ struct ReglagesView: View {
         escaleEnCours = criteres.escaleEnCours
         jours = Set(criteres.days)
         recherche = Set(criteres.seeking)
+        rappels = criteres.rappelsActifs
         sensiblesAccordees = (try? await modele.api.consents().estActif(.donneesSensibles)) ?? false
         criteresLus = true
     }

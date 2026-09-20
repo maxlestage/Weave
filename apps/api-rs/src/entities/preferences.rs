@@ -26,6 +26,9 @@ pub struct Model {
     pub escale_city: Option<String>,
     #[sea_orm(column_name = "escaleUntil")]
     pub escale_until: Option<DateTime>,
+    /// Le rappel avant le rendez-vous est-il voulu ? Actif par défaut.
+    #[sea_orm(column_name = "remindersOn")]
+    pub reminders_on: bool,
     #[sea_orm(column_name = "updatedAt")]
     pub updated_at: DateTime,
 }

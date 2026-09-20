@@ -138,6 +138,19 @@ pub enum Msg {
     DemandePasLaVotre,
     DemandeDejaRepondue,
     DemandeDejaTranchee,
+    /// Rendre sa place suppose qu'on l'ait : ni une demande encore en
+    /// attente, ni une déjà rendue, ni une refusée.
+    /// Un plan annulé n'aura pas lieu, un plan passé a déjà eu lieu : ni l'un
+    /// ni l'autre ne se corrige.
+    PlanNonModifiable,
+    /// Réduire la capacité sous les places déjà accordées évincerait quelqu'un
+    /// qui a reçu un oui.
+    CapaciteSousLesPlacesAccordees {
+        accordees: i64,
+    },
+    PlaceNonRendable,
+    /// Se désister après l'heure dite n'apprend plus rien à personne.
+    RendezVousDejaPasse,
     DejaDemandeAVenir,
     MessageTropCourt {
         minimum: i64,
@@ -313,6 +326,14 @@ impl Msg {
             DemandePasLaVotre => "Cette demande n'est pas la vôtre.".into(),
             DemandeDejaRepondue => "Cette demande a déjà reçu une réponse.".into(),
             DemandeDejaTranchee => "Cette demande est déjà tranchée.".into(),
+            PlanNonModifiable => "Ce plan ne se modifie plus.".into(),
+            CapaciteSousLesPlacesAccordees { accordees } => format!(
+                "Vous avez déjà accordé {accordees} place(s) : les reprendre reviendrait à décommander quelqu'un."
+            ),
+            PlaceNonRendable => "Vous n'avez pas de place à rendre sur ce plan.".into(),
+            RendezVousDejaPasse => {
+                "Le rendez-vous est passé : il n'y a plus de place à rendre.".into()
+            }
             DejaDemandeAVenir => {
                 "Vous avez déjà demandé à venir. On ne redemande pas deux fois.".into()
             }
@@ -476,6 +497,14 @@ impl Msg {
             DemandePasLaVotre => "That request isn't yours.".into(),
             DemandeDejaRepondue => "That request has already been answered.".into(),
             DemandeDejaTranchee => "That request has already been settled.".into(),
+            PlanNonModifiable => "That plan can't be changed any more.".into(),
+            CapaciteSousLesPlacesAccordees { accordees } => format!(
+                "You've already given out {accordees} spot(s): taking them back would mean uninviting someone."
+            ),
+            PlaceNonRendable => "You have no spot to give back on that plan.".into(),
+            RendezVousDejaPasse => {
+                "The meeting time has passed: there's no spot left to give back.".into()
+            }
             DejaDemandeAVenir => "You've already asked to come. You don't ask twice.".into(),
             MessageTropCourt { minimum } => format!(
                 "Write at least {minimum} characters: that's what separates a request from a gesture."
@@ -639,6 +668,14 @@ impl Msg {
             DemandePasLaVotre => "Esa petición no es tuya.".into(),
             DemandeDejaRepondue => "Esa petición ya ha recibido respuesta.".into(),
             DemandeDejaTranchee => "Esa petición ya está resuelta.".into(),
+            PlanNonModifiable => "Ese plan ya no se puede modificar.".into(),
+            CapaciteSousLesPlacesAccordees { accordees } => format!(
+                "Ya has concedido {accordees} sitio(s): retirarlos sería desinvitar a alguien."
+            ),
+            PlaceNonRendable => "No tienes ningún sitio que devolver en ese plan.".into(),
+            RendezVousDejaPasse => {
+                "La hora de la cita ya pasó: no queda sitio que devolver.".into()
+            }
             DejaDemandeAVenir => "Ya has pedido venir. No se pide dos veces.".into(),
             MessageTropCourt { minimum } => format!(
                 "Escribe al menos {minimum} caracteres: es lo que distingue una petición de un gesto."

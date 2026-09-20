@@ -464,6 +464,7 @@ async fn la_liste_des_conversations_est_bornee() {
             capacity: Set(1),
             state: Set("complet".to_string()),
             cancelled_at: Set(None),
+            reminded_at: Set(None),
             created_at: Set(maintenant),
             updated_at: Set(maintenant),
         }
