@@ -19,6 +19,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "test": "cargo test --manifest-path apps/api-rs/Cargo.toml",
     "lint": "bunx --bun prettier --check .",
+    "verifier": "./verifier.sh",
     "format": "bunx --bun prettier --write .",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",

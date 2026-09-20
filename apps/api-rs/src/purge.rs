@@ -491,6 +491,7 @@ pub(super) mod tests {
             capacity: Set(1),
             state: Set("complet".to_string()),
             cancelled_at: Set(None),
+            reminded_at: Set(None),
             created_at: Set(Utc::now().naive_utc()),
             updated_at: Set(Utc::now().naive_utc()),
         }

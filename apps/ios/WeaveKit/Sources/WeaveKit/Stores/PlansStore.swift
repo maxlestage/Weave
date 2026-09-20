@@ -87,6 +87,27 @@ public final class PlansStore {
         }
     }
 
+    /// Corrige un plan publié.
+    ///
+    /// Rien n'est retiré de l'affichage : le plan reste, il change. C'est la
+    /// différence avec l'annulation, et c'est pour cela que la liste est
+    /// relue plutôt que retouchée — la capacité modifiée peut avoir rouvert
+    /// ou refermé le plan, et seul le serveur le sait.
+    public func edit(_ plan: MyPlan, _ modification: PlanEdit) async -> Bool {
+        guard !modification.vide else { return true }
+        do {
+            try await api.editPlan(id: plan.id, modification)
+            myPlans = try await api.myPlans()
+            return true
+        } catch let error as WeaveAPIError {
+            handle(error)
+            return false
+        } catch {
+            alert = .transport(error.localizedDescription)
+            return false
+        }
+    }
+
     public func cancel(_ plan: MyPlan) async {
         myPlans.removeAll { $0.id == plan.id }
         do {
@@ -113,6 +134,28 @@ public final class PlansStore {
             // Un plan qui vient de se remplir ou d'être annulé n'a plus à
             // figurer dans le fil.
             if case .planClosed = error { remove(plan.id) }
+            return false
+        } catch {
+            alert = .transport(error.localizedDescription)
+            return false
+        }
+    }
+
+    /// Rend sa place sur un plan qu'on avait rejoint.
+    ///
+    /// Le fil est rechargé, et non seulement retouché : la place rendue rouvre
+    /// le plan côté serveur, et il revient dans le fil — y compris dans celui
+    /// de qui vient de la rendre, ce qui est juste. Il peut changer d'avis
+    /// d'ici au rendez-vous, et rien ne l'en empêche sinon une autre demande.
+    public func release(_ request: JoinRequest) async -> Bool {
+        do {
+            try await api.release(requestID: request.id)
+            await refreshSent()
+            feed = try await api.feed()
+            myPlans = try await api.myPlans()
+            return true
+        } catch let error as WeaveAPIError {
+            handle(error)
             return false
         } catch {
             alert = .transport(error.localizedDescription)
@@ -177,12 +220,7 @@ public final class PlansStore {
     public func dropPast() {
         let vivants = feed.plans.filter { $0.startsAt > .now }
         guard vivants.count != feed.plans.count else { return }
-        feed = Feed(
-            plans: vivants,
-            requestsLeftToday: feed.requestsLeftToday,
-            fromCache: true,
-            generatedAt: feed.generatedAt
-        )
+        feed = feed.remplacant(plans: vivants)
     }
 
     // MARK: - Interne
@@ -198,38 +236,13 @@ public final class PlansStore {
     }
 
     private func markRequested(_ planID: String, requestsLeft: Int) {
-        let plans = feed.plans.map { plan -> Plan in
-            guard plan.id == planID else { return plan }
-            return Plan(
-                id: plan.id,
-                author: plan.author,
-                title: plan.title,
-                note: plan.note,
-                category: plan.category,
-                startsAt: plan.startsAt,
-                city: plan.city,
-                distanceKm: plan.distanceKm,
-                capacity: plan.capacity,
-                seatsLeft: plan.seatsLeft,
-                state: plan.state,
-                requested: true,
-                createdAt: plan.createdAt
-            )
-        }
-        feed = Feed(
-            plans: plans,
-            requestsLeftToday: requestsLeft,
-            fromCache: true,
-            generatedAt: feed.generatedAt
+        feed = feed.remplacant(
+            plans: feed.plans.map { $0.id == planID ? $0.demande() : $0 },
+            requestsLeftToday: requestsLeft
         )
     }
 
     private func remove(_ planID: String) {
-        feed = Feed(
-            plans: feed.plans.filter { $0.id != planID },
-            requestsLeftToday: feed.requestsLeftToday,
-            fromCache: true,
-            generatedAt: feed.generatedAt
-        )
+        feed = feed.remplacant(plans: feed.plans.filter { $0.id != planID })
     }
 }

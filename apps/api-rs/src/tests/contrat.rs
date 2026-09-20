@@ -28,7 +28,12 @@ fn valeur_du_contrat(source: &str, nom: &str) -> i64 {
         .unwrap_or_else(|| panic!("« {nom} » a disparu du contrat partagé"));
 
     let reste = ligne[prefixe.len()..].trim();
-    let brut: String = reste.chars().take_while(|c| c.is_ascii_digit()).collect();
+    // Le tiret bas sépare les milliers en TypeScript comme en Swift : le
+    // refuser obligerait à écrire « 2097152 » là où « 2_097_152 » se lit.
+    let brut: String = reste
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '_')
+        .collect();
     assert!(
         !brut.is_empty(),
         "« {nom} » ne commence pas par un nombre : « {reste} »"
@@ -41,7 +46,7 @@ fn valeur_du_contrat(source: &str, nom: &str) -> i64 {
         "« {nom} » vaut une expression — « {reste} » — que ce test ne sait pas évaluer"
     );
 
-    brut.parse().expect("un entier")
+    brut.replace('_', "").parse().expect("un entier")
 }
 
 fn contrat() -> String {
@@ -57,7 +62,7 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
 
     // Chaque ligne : le nom dans le contrat, la constante Rust qui doit lui
     // répondre. La liste ne couvre que ce que l'API réécrit de son côté.
-    let accords: [(&str, i64); 17] = [
+    let accords: [(&str, i64); 18] = [
         // L'âge minimum d'abord : c'est la seule de ces valeurs qui décide
         // qui a le droit d'être là. Les CGU l'annoncent en lisant le contrat,
         // l'API le refuse en lisant sa propre constante — et rien ne les
@@ -119,6 +124,10 @@ fn les_nombres_de_l_api_sont_ceux_du_contrat_partage() {
         (
             "CONVERSATION_MAX_CHARS",
             crate::routes::conversations::MESSAGE_MAX as i64,
+        ),
+        (
+            "PHOTO_MAX_BYTES",
+            crate::routes::media::PHOTO_MAX_OCTETS as i64,
         ),
     ];
 
@@ -320,17 +329,49 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
         ("accountPurgeDays", "ACCOUNT_PURGE_DAYS"),
         ("bioMaxChars", "BIO_MAX_CHARS"),
         ("conversationMaxChars", "CONVERSATION_MAX_CHARS"),
+        ("photoMaxBytes", "PHOTO_MAX_BYTES"),
+        ("maxOpen", "MAX_OPEN_PLANS"),
     ] {
-        let prefixe = format!("public let {cote_swift} = ");
-        let ligne = source
-            .lines()
-            .find(|l| l.trim_start().starts_with(&prefixe))
+        // Deux formes, parce que les constantes vivent à deux endroits : au
+        // fil du module (`public let`) ou portées par le type qu'elles
+        // concernent (`public static let`, dans `MyPlan`).
+        //
+        // Seule la première était lue. `MyPlan.maxOpen` annonçait donc dans son
+        // commentaire un accord — « identique côté serveur » — que rien ne
+        // tenait : relever le plafond au serveur aurait laissé l'application
+        // griser le bouton de publication au troisième plan, et personne
+        // n'aurait pu se servir de ce qui venait d'être ouvert.
+        let (prefixe, ligne) = ["public let ", "public static let "]
+            .iter()
+            .find_map(|forme| {
+                let prefixe = format!("{forme}{cote_swift} = ");
+                source
+                    .lines()
+                    .find(|l| l.trim_start().starts_with(&prefixe))
+                    .map(|ligne| (prefixe, ligne))
+            })
             .unwrap_or_else(|| panic!("« {cote_swift} » a disparu du modèle iOS"));
-        let brut: String = ligne.trim_start()[prefixe.len()..]
+        let reste = ligne.trim_start()[prefixe.len()..].trim();
+        let brut: String = reste
             .chars()
-            .take_while(|c| c.is_ascii_digit())
+            .take_while(|c| c.is_ascii_digit() || *c == '_')
             .collect();
+
+        // Ce qui suit doit être la fin de la déclaration, pas un calcul.
+        //
+        // Ce lecteur n'en disait rien : il prenait les premiers chiffres et
+        // laissait tomber le reste. `photoMaxBytes` valait `2 * 1024 * 1024`,
+        // et il en lisait DEUX — deux octets, rapprochés sans broncher de
+        // n'importe quoi. Le lecteur du contrat, lui, refuse une expression et
+        // le dit ; celui-ci fait pareil désormais.
+        let suite = reste[brut.len()..].trim();
+        assert!(
+            suite.is_empty() || suite.starts_with("//"),
+            "« {cote_swift} » vaut une expression — « {reste} » — que ce test ne sait pas évaluer"
+        );
+
         let valeur: i64 = brut
+            .replace('_', "")
             .parse()
             .unwrap_or_else(|_| panic!("« {cote_swift} » ne vaut pas un entier : « {ligne} »"));
 
@@ -1256,6 +1297,20 @@ fn empiler_le_swift(repertoire: &std::path::Path, sortie: &mut String) {
 ///
 /// Rien ne l'aurait signalé. Les deux bouts fonctionnaient, la base ne
 /// contenait bien que des positions arrondies, et seul le trajet mentait.
+///
+/// ## Ce que ce test ne peut pas voir, et qui le voit
+///
+/// Il lit du texte. Il vérifiait donc que l'appel s'ÉCRIVAIT
+/// `Self.arrondirPosition(latitude)` — pas que la fonction ainsi nommée fasse
+/// quoi que ce soit. J'ai vidé son corps pour ne rendre que son argument :
+/// l'identité, aucun arrondi, et ce test est resté au vert. Il s'est en
+/// revanche cassé sur un remaniement qui ne changeait rien au comportement.
+/// C'est le défaut d'un test textuel pris pour un test de comportement.
+///
+/// Le comportement est maintenant éprouvé où il vit, dans les tests Swift :
+/// la grille, le sens de l'arrondi, l'hémisphère sud. Ce test-ci garde ce
+/// qu'aucun test Swift ne peut atteindre — l'accord des DEUX grilles, celle du
+/// client et celle du serveur, qui ne se rencontrent dans aucun programme.
 #[test]
 fn la_position_est_arrondie_avant_de_quitter_l_appareil() {
     let client = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1263,8 +1318,21 @@ fn la_position_est_arrondie_avant_de_quitter_l_appareil() {
     let swift = std::fs::read_to_string(&client)
         .unwrap_or_else(|e| panic!("WeaveAPI.swift illisible en {} : {e}", client.display()));
 
+    // Le dépôt de la fiche passe par la fabrique du corps, et non par un corps
+    // monté sur place qui pourrait oublier l'arrondi. La fabrique, elle, est
+    // éprouvée en Swift.
+    let depot = swift
+        .split("public func submitProfile(")
+        .nth(1)
+        .and_then(|reste| reste.split("\n    }").next())
+        .expect("submitProfile a disparu du client");
+    assert!(
+        depot.contains("corpsDeFiche("),
+        "le dépôt de la fiche ne passe plus par `corpsDeFiche` : \
+         l'arrondi promis par la politique n'est plus sur son chemin"
+    );
     for champ in ["latitude", "longitude"] {
-        let attendu = format!("{champ}: Self.arrondirPosition({champ})");
+        let attendu = format!("{champ}: arrondirPosition({champ})");
         assert!(
             swift.contains(&attendu),
             "« {champ} » part sans être arrondie : la politique promet le contraire"
@@ -2405,5 +2473,76 @@ fn empiler_les_fichiers_swift(repertoire: &std::path::Path, sortie: &mut Vec<(St
                 .to_string();
             sortie.push((nom, source));
         }
+    }
+}
+
+/// Partout où l'on lit les mots d'un inconnu, on peut le signaler.
+///
+/// ## Ce qui manquait
+///
+/// Une demande à venir arrive avec un message écrit par quelqu'un qu'on n'a
+/// jamais vu. L'écran qui les affiche n'offrait que « Accepter » et « Sans
+/// suite ». Devant un message déplacé, cela revenait à choisir entre ouvrir
+/// une conversation avec son auteur, ou l'écarter en silence — et le laisser
+/// recommencer sur le plan suivant.
+///
+/// Le moyen existait pourtant, et partout ailleurs : dans la conversation, et
+/// sur la fiche, avant même de demander à venir. Il manquait au seul endroit
+/// où l'on reçoit sans avoir rien demandé.
+///
+/// ## Pourquoi un test qui lit du SwiftUI
+///
+/// Ces écrans ne se jouent pas sous Linux, et une vue ne s'éprouve pas comme
+/// une fonction. Mais la règle, elle, est vérifiable telle qu'elle est écrite :
+/// un fichier qui affiche des mots d'autrui doit nommer le menu. C'est une
+/// garde textuelle, et je la dis pour ce qu'elle est — elle ne prouve pas que
+/// le menu est ATTEIGNABLE, seulement qu'il n'a pas disparu.
+///
+/// Les mentions légales le promettent, et ce n'est pas qu'une bonne intention :
+/// le règlement européen sur les services numériques impose un moyen de
+/// signaler un contenu et un moyen de bloquer son auteur.
+#[test]
+fn on_peut_signaler_partout_ou_l_on_lit_les_mots_d_un_inconnu() {
+    let vues = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios/Weave/Views");
+    if !vues.is_dir() {
+        eprintln!(
+            "vues iOS absentes en {} — accord non vérifié",
+            vues.display()
+        );
+        return;
+    }
+
+    // Les trois endroits où l'on lit ce qu'un autre a écrit : le message d'une
+    // demande reçue, la conversation, et la fiche qu'on consulte avant de
+    // demander à venir.
+    for (fichier, quoi) in [
+        ("MesPlansView.swift", "le message d'une demande reçue"),
+        ("ConversationsView.swift", "les messages d'une conversation"),
+        ("DemanderView.swift", "la fiche de quelqu'un"),
+    ] {
+        let source = std::fs::read_to_string(vues.join(fichier))
+            .unwrap_or_else(|e| panic!("{fichier} illisible : {e}"));
+        assert!(
+            source.contains("MenuDeProtection("),
+            "« {fichier} » affiche {quoi} sans offrir de quoi signaler son auteur"
+        );
+    }
+
+    // Et le menu offre bien les deux, pas l'un ou l'autre : bloquer sans
+    // pouvoir signaler laisse le comportement continuer ailleurs, signaler
+    // sans pouvoir bloquer laisse la personne joignable en attendant.
+    let menu = std::fs::read_to_string(vues.join("ProtectionView.swift"))
+        .expect("ProtectionView.swift lisible");
+    //
+    // Les LIBELLÉS des boutons, et non les mots quelque part dans le fichier :
+    // ma première version cherchait « Signaler » et « Bloquer » n'importe où,
+    // et les commentaires de cette page les contiennent tous les deux. Renommer
+    // les deux boutons la laissait au vert. C'est la mutation qui me l'a appris.
+    for verbe in ["Signaler", "Bloquer"] {
+        let libelle = format!("Label(\"{verbe} \\(prenom)\"");
+        assert!(
+            menu.contains(&libelle),
+            "le menu de protection n'offre plus de bouton « {verbe} »"
+        );
     }
 }

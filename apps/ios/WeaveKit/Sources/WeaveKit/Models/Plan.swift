@@ -95,6 +95,66 @@ public struct Plan: Codable, Identifiable, Hashable, Sendable {
     public var isJoinable: Bool {
         state == .ouvert && seatsLeft > 0 && !requested && startsAt > .now
     }
+
+    /// Le même plan, marqué comme demandé.
+    ///
+    /// Le magasin le rebâtissait champ par champ — treize arguments recopiés à
+    /// la main pour n'en changer qu'un. Le compilateur exige qu'ils soient tous
+    /// là, mais rien n'empêche d'en INTERVERTIR deux de même type : `capacity`
+    /// et `seatsLeft` sont deux entiers, `title`, `note` et `city` trois
+    /// chaînes. Un plan complet se serait affiché avec des places libres, et
+    /// une demande aurait été possible dessus.
+    public func demande() -> Plan {
+        Plan(
+            id: id,
+            author: author,
+            title: title,
+            note: note,
+            category: category,
+            startsAt: startsAt,
+            city: city,
+            distanceKm: distanceKm,
+            capacity: capacity,
+            seatsLeft: seatsLeft,
+            state: state,
+            requested: true,
+            createdAt: createdAt
+        )
+    }
+}
+
+/// Ce qu'on corrige sur un plan déjà publié.
+///
+/// Tous les champs sont facultatifs : on n'envoie que ce qui change. La
+/// catégorie et la ville n'y figurent pas, et c'est délibéré — les changer ne
+/// corrige pas un plan, cela en fait un autre, auquel des gens ont dit oui
+/// sans le connaître. Un autre plan se publie.
+public struct PlanEdit: Encodable, Sendable {
+    public let title: String?
+    public let note: String?
+    public let startsAt: Date?
+    public let capacity: Int?
+
+    public init(
+        title: String? = nil,
+        note: String? = nil,
+        startsAt: Date? = nil,
+        capacity: Int? = nil
+    ) {
+        self.title = title
+        self.note = note
+        self.startsAt = startsAt
+        self.capacity = capacity
+    }
+
+    /// Y a-t-il seulement quelque chose à envoyer ?
+    ///
+    /// Une requête vide aboutirait — le serveur accepte un ajustement sans
+    /// champ — mais elle ferait croire à une modification qui n'a pas eu lieu,
+    /// et elle invaliderait le cache du fil pour rien.
+    public var vide: Bool {
+        title == nil && note == nil && startsAt == nil && capacity == nil
+    }
 }
 
 /// Le fil : les plans à venir, autour de soi.
@@ -125,6 +185,22 @@ public struct Feed: Codable, Hashable, Sendable {
     }
 
     public var soonest: Plan? { plans.first }
+
+    /// Le même fil, avec d'autres plans — et le reste conservé.
+    ///
+    /// Trois endroits du magasin rebâtissaient un `Feed` champ par champ pour
+    /// n'en changer qu'un. `fromCache` y devient vrai : ce qu'on tient ne vient
+    /// plus du serveur, il a été retouché ici, et l'écran doit pouvoir le dire.
+    /// `generatedAt` ne bouge pas — c'est l'heure de composition du fil, et la
+    /// retoucher ferait croire à une composition qui n'a pas eu lieu.
+    public func remplacant(plans: [Plan], requestsLeftToday: Int? = nil) -> Feed {
+        Feed(
+            plans: plans,
+            requestsLeftToday: requestsLeftToday ?? self.requestsLeftToday,
+            fromCache: true,
+            generatedAt: generatedAt
+        )
+    }
 }
 
 /// Un de ses propres plans, avec ce qu'il a suscité.
@@ -142,16 +218,33 @@ public struct MyPlan: Codable, Identifiable, Hashable, Sendable {
     public let seatsLeft: Int
     public let state: PlanState
     public let pendingRequests: Int
+
+    /// Les places déjà accordées.
+    ///
+    /// Déduite plutôt que reçue : le serveur rend la capacité et ce qu'il
+    /// reste, et leur différence est exactement ce qui a été donné. L'écran de
+    /// modification s'en sert pour ne pas proposer de reprendre la parole à
+    /// quelqu'un — le serveur refuse de toute façon, mais un bouton qu'on
+    /// presse pour lire un refus est un bouton mal fait.
+    public var seatsAccordees: Int { max(capacity - seatsLeft, 0) }
 }
 
 // MARK: - Demandes
 
-public enum RequestState: String, Codable, Sendable {
+/// L'état d'une demande. `packages/contracts` fait foi : `REQUEST_STATES`.
+///
+/// Un état que le serveur écrit et que ce type ignore ne casse pas une ligne :
+/// il casse la RÉPONSE ENTIÈRE, puisque Swift échoue à décoder une énumération
+/// sans cas correspondant. C'est déjà arrivé sur l'état d'un plan, et « Mes
+/// plans » ne s'ouvrait plus. Un test de contrat rapproche donc les deux listes.
+public enum RequestState: String, Codable, Sendable, CaseIterable {
     case envoyee
     case acceptee
     case refusee
     case expiree
     case retiree
+    /// La place avait été accordée, et elle a été rendue.
+    case desistee
 
     public var displayName: String {
         switch self {
@@ -160,6 +253,7 @@ public enum RequestState: String, Codable, Sendable {
         case .refusee: "Sans suite"
         case .expiree: "Close"
         case .retiree: "Retirée"
+        case .desistee: "Place rendue"
         }
     }
 }

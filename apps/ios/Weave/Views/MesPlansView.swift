@@ -62,6 +62,7 @@ struct MesPlansView: View {
 private struct MonPlanCarte: View {
     @Environment(ModeleApplication.self) private var modele
     let plan: MyPlan
+    @State private var modification = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -94,11 +95,24 @@ private struct MonPlanCarte: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white, in: .rect(cornerRadius: 18))
         .contextMenu {
+            // Corriger passe AVANT annuler, et sans rôle destructeur.
+            //
+            // Rien ne permettait de corriger un plan : une coquille dans le
+            // titre, une heure décalée, et il fallait annuler puis republier.
+            // Ce contournement consomme l'un des trois plans ouverts, perd les
+            // personnes acceptées, et leur annonce « un plan est annulé » pour
+            // une faute de frappe.
+            if plan.state == .ouvert || plan.state == .complet {
+                Button("Modifier ce plan") { modification = true }
+            }
             // Annuler un plan n'est pas anodin : les demandes en attente sont
             // closes. On ne le met donc pas à portée d'un balayage.
             Button("Annuler ce plan", role: .destructive) {
                 Task { await modele.plans.cancel(plan) }
             }
+        }
+        .sheet(isPresented: $modification) {
+            ModifierPlanView(plan: plan)
         }
     }
 
@@ -143,6 +157,11 @@ struct DemandesRecuesView: View {
                     List(demandes) { demande in
                         DemandeLigne(demande: demande) { acceptee in
                             Task { await repondre(demande, accepte: acceptee) }
+                        } apresProtection: {
+                            // Bloquer coupe tout des deux côtés, la demande
+                            // comprise : la retirer de l'écran évite de laisser
+                            // à l'affichage une ligne qui n'existe plus.
+                            demandes.removeAll { $0.id == demande.id }
                         }
                     }
                     .listStyle(.plain)
@@ -175,6 +194,7 @@ struct DemandesRecuesView: View {
 private struct DemandeLigne: View {
     let demande: IncomingRequest
     let repondre: (Bool) -> Void
+    let apresProtection: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -187,6 +207,22 @@ private struct DemandeLigne: View {
                         .foregroundStyle(Color.weaveCuivre)
                         .accessibilityLabel("Profil vérifié")
                 }
+                Spacer()
+                // C'est ICI qu'arrive le premier message d'un inconnu, et
+                // c'était le seul endroit du produit où l'on en lisait un sans
+                // pouvoir rien en faire.
+                //
+                // Il n'y avait que « Accepter » et « Sans suite ». Devant un
+                // message déplacé, cela revenait à choisir entre ouvrir une
+                // conversation avec son auteur, ou l'écarter en silence — et
+                // le laisser recommencer sur le plan suivant. Le signalement
+                // existait partout ailleurs : dans la conversation, et avant
+                // même de demander à venir.
+                MenuDeProtection(
+                    compteID: demande.author.id,
+                    prenom: demande.author.displayName,
+                    apresCoupure: apresProtection
+                )
             }
 
             Text(demande.message)
@@ -205,5 +241,92 @@ private struct DemandeLigne: View {
             .buttonStyle(.borderless)
         }
         .padding(.vertical, 8)
+    }
+}
+
+/// Corriger un plan publié.
+///
+/// Ce qu'on peut changer, et rien de plus : le titre, la note, l'heure, le
+/// nombre de places. Ni la catégorie ni la ville — les changer ne corrige pas
+/// un plan, cela en fait un autre, auquel des gens ont dit oui sans le
+/// connaître.
+private struct ModifierPlanView: View {
+    let plan: MyPlan
+
+    @Environment(ModeleApplication.self) private var modele
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var titre = ""
+    @State private var note = ""
+    @State private var debut = Date.now
+    @State private var places = 1
+    @State private var envoi = false
+
+    /// Ce qui est réellement différent.
+    ///
+    /// Le champ absent vaut « ne change pas » côté serveur : envoyer un titre
+    /// identique n'est pas faux, mais un changement d'HEURE identique
+    /// préviendrait les personnes acceptées pour rien. On ne poste que l'écart.
+    private var ecart: PlanEdit {
+        PlanEdit(
+            title: titre != plan.title ? titre : nil,
+            note: note != plan.note ? note : nil,
+            startsAt: debut != plan.startsAt ? debut : nil,
+            capacity: places != plan.capacity ? places : nil
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Le plan") {
+                    TextField("Ce que vous comptez faire", text: $titre)
+                    TextField("Une précision, si besoin", text: $note, axis: .vertical)
+                        .lineLimit(1...4)
+                }
+
+                Section {
+                    DatePicker("Quand", selection: $debut, in: Date.now...)
+                } footer: {
+                    if debut != plan.startsAt {
+                        // Dit avant, pas après : quelqu'un qui corrige une
+                        // coquille ne s'attend pas à faire sonner un téléphone.
+                        Text("Les personnes que vous attendez seront prévenues du changement d'heure.")
+                    }
+                }
+
+                Section {
+                    Stepper("\(places) place\(places > 1 ? "s" : "")", value: $places, in: 1...6)
+                } footer: {
+                    if places < plan.seatsAccordees {
+                        Text("Vous avez déjà accordé \(plan.seatsAccordees) place\(plan.seatsAccordees > 1 ? "s" : "") : les reprendre reviendrait à décommander quelqu'un.")
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Modifier")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Enregistrer") {
+                        envoi = true
+                        Task {
+                            if await modele.plans.edit(plan, ecart) { dismiss() }
+                            envoi = false
+                        }
+                    }
+                    .disabled(envoi || ecart.vide || places < plan.seatsAccordees)
+                }
+            }
+            .task {
+                titre = plan.title
+                note = plan.note
+                debut = plan.startsAt
+                places = plan.capacity
+            }
+        }
     }
 }

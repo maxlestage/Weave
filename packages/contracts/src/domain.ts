@@ -91,7 +91,16 @@ export interface Feed {
 /* Demandes                                                            */
 /* ------------------------------------------------------------------ */
 
-export type RequestState = "envoyee" | "acceptee" | "refusee" | "expiree" | "retiree";
+/**
+ * - `envoyee`  : écrite, sans réponse encore.
+ * - `acceptee` : la place est accordée, la conversation est ouverte.
+ * - `refusee`  : sans suite, sans motif.
+ * - `expiree`  : close sans décision — le plan s'est rempli ou a été annulé.
+ * - `retiree`  : reprise avant d'avoir été lue. L'unité de quota est rendue.
+ * - `desistee` : la place, une fois accordée, a été rendue. L'unité, elle,
+ *   reste dépensée : la demande avait bien été lue, et il y avait été répondu.
+ */
+export type RequestState = "envoyee" | "acceptee" | "refusee" | "expiree" | "retiree" | "desistee";
 
 export interface JoinRequest {
   readonly id: string;

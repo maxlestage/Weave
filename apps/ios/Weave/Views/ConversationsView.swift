@@ -116,6 +116,7 @@ private struct ConversationLigne: View {
 private struct DemandeEnvoyeeLigne: View {
     @Environment(ModeleApplication.self) private var modele
     let demande: JoinRequest
+    @State private var confirmeDesistement = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -141,6 +142,36 @@ private struct DemandeEnvoyeeLigne: View {
                     Task { await modele.plans.withdraw(demande) }
                 }
             }
+            // Une place accordée se rend — jusqu'à l'heure du rendez-vous.
+            //
+            // Rien ne le permettait : une fois accepté, on ne pouvait plus
+            // reculer. La place restait prise pour quelqu'un qui ne viendrait
+            // pas, l'autre attendait au café sans rien savoir, et la seule
+            // sortie était de ne pas venir.
+            if demande.state == .acceptee && demande.planStartsAt > .now {
+                Button("Je ne peux pas venir", role: .destructive) {
+                    confirmeDesistement = true
+                }
+            }
+        }
+        .confirmationDialog(
+            "Rendre votre place ?",
+            isPresented: $confirmeDesistement,
+            titleVisibility: .visible
+        ) {
+            Button("Rendre ma place", role: .destructive) {
+                Task { await modele.plans.release(demande) }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            // Les deux conséquences, dites avant plutôt qu'après. La seconde
+            // surtout : se désister n'est pas gratuit, et l'apprendre une fois
+            // le geste fait serait déloyal.
+            Text(
+                "La place repart au fil, et la personne qui vous attendait est prévenue. "
+                    + "Votre demande du jour reste dépensée. "
+                    + "La conversation, elle, reste ouverte : vous pouvez y dire un mot."
+            )
         }
     }
 }
