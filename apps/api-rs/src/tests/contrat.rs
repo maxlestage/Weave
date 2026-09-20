@@ -2546,3 +2546,80 @@ fn on_peut_signaler_partout_ou_l_on_lit_les_mots_d_un_inconnu() {
         );
     }
 }
+
+/// Le nom sous l'icône, exactement.
+///
+/// ## Pourquoi un test pour un nom
+///
+/// Il porte « ‣ » — U+2023, une puce triangulaire — et c'est tout le risque.
+/// Un caractère hors ASCII traverse une chaîne d'outils qui ne sont pas tous
+/// attentifs à l'encodage : un éditeur qui réécrit le fichier en Latin-1, un
+/// script de build qui le relit octet à octet, un correctif appliqué à la
+/// main. Le nom ne DISPARAÎT pas dans ces cas-là : il devient « Weave â€£ »,
+/// ou « Weave ? », et la construction passe.
+///
+/// C'est une faute qu'on ne voit qu'une fois l'application installée sur un
+/// téléphone — c'est-à-dire trop tard, et sur l'écran d'accueil de quelqu'un.
+///
+/// Le test compare donc les OCTETS attendus, et non la chaîne telle que Rust
+/// la lirait : une comparaison de chaînes ne distinguerait pas un fichier mal
+/// encodé d'un fichier correct, puisque la lecture aurait déjà échoué ou
+/// remplacé le caractère.
+///
+/// ## Ce qui ne change pas
+///
+/// `PRODUCT_BUNDLE_IDENTIFIER` reste `com.weave.app`. Le changer ferait une
+/// NOUVELLE application aux yeux d'Apple : ni TestFlight, ni les abonnements,
+/// ni les achats déjà faits ne suivraient. Le test le tient aussi, parce que
+/// c'est le genre de chose qu'on modifie « pendant qu'on y est ».
+#[test]
+fn l_application_porte_son_nom_et_garde_son_identifiant() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
+    if !racine.is_dir() {
+        eprintln!(
+            "dépôt iOS absent en {} — accord non vérifié",
+            racine.display()
+        );
+        return;
+    }
+
+    // Les octets, pas la chaîne : c'est l'encodage qu'on éprouve.
+    let brut = std::fs::read(racine.join("Weave/Info.plist")).expect("Info.plist lisible");
+    let attendu = "<string>Weave \u{2023}</string>".as_bytes();
+
+    // Deux échecs possibles, et ils ne disent pas la même chose. Les
+    // distinguer, parce qu'un message qui accuse la mauvaise cause envoie
+    // chercher au mauvais endroit.
+    if !brut.windows(attendu.len()).any(|f| f == attendu) {
+        let entite = "<string>Weave &#8227;</string>".as_bytes();
+        assert!(
+            !brut.windows(entite.len()).any(|f| f == entite),
+            "le nom est écrit en entité XML. Ce n'est pas FAUX — un analyseur \
+             rend le même caractère — mais ce fichier se relit à l'œil, et \
+             « &#8227; » n'y dit rien. C'est un choix de lisibilité, pas une \
+             correction."
+        );
+        panic!(
+            "le nom affiché n'est pas « Weave ‣ » en UTF-8 : un outil l'a \
+             réencodé, ou quelqu'un l'a réécrit"
+        );
+    }
+
+    // Et il n'y est qu'une fois : deux `CFBundleDisplayName` dans un plist
+    // laisseraient Apple choisir, et ce ne serait pas forcément celui qu'on
+    // vient de relire.
+    let texte = String::from_utf8(brut).expect("Info.plist en UTF-8");
+    assert_eq!(
+        texte.matches("CFBundleDisplayName").count(),
+        1,
+        "le nom affiché est déclaré plusieurs fois"
+    );
+
+    let projet = std::fs::read_to_string(racine.join("project.yml")).expect("project.yml lisible");
+    assert!(
+        projet.contains("PRODUCT_BUNDLE_IDENTIFIER: com.weave.app\n"),
+        "l'identifiant de l'application a changé : Apple y verrait une autre \
+         application, et TestFlight, les abonnements et les achats déjà faits \
+         ne suivraient pas"
+    );
+}

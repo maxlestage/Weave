@@ -626,6 +626,25 @@ mod tests {
         .expect("signalement inséré");
     }
 
+    /// Une fiche portant une photo DÉJÀ RELUE.
+    ///
+    /// La fixture ordinaire laisse `photoReviewedAt` à `NULL`. Un test qui
+    /// vérifie que le retrait l'efface ne pouvait donc rien distinguer :
+    /// retirer la ligne qui l'efface le laissait au vert, puisque la colonne
+    /// valait déjà `NULL` avant. C'est la mutation qui me l'a appris.
+    async fn fiche_avec_photo_relue(db: &DatabaseConnection, compte_id: &str, cle: &str) {
+        fiche_avec_photo(db, compte_id, cle).await;
+        let fiche = profiles::Entity::find()
+            .filter(profiles::Column::AccountId.eq(compte_id))
+            .one(db)
+            .await
+            .expect("lecture")
+            .expect("fiche posée");
+        let mut maj: profiles::ActiveModel = fiche.into();
+        maj.photo_reviewed_at = Set(Some(Utc::now().naive_utc()));
+        maj.update(db).await.expect("relecture posée");
+    }
+
     async fn fiche_avec_photo(db: &DatabaseConnection, compte_id: &str, cle: &str) {
         media_objects::ActiveModel {
             key: Set(cle.to_string()),
@@ -954,7 +973,9 @@ mod tests {
     async fn retirer_une_photo_efface_ses_octets() {
         let db = base_de_test().await;
         compte(&db, "retire", "active").await;
-        fiche_avec_photo(&db, "retire", "cle-2").await;
+        // La photo a DÉJÀ été relue : sans cela, l'assertion sur la date
+        // d'examen ne distinguerait rien.
+        fiche_avec_photo_relue(&db, "retire", "cle-2").await;
 
         assert_eq!(
             photo_retirer(&db, "retire").await.expect("retrait"),
@@ -971,6 +992,25 @@ mod tests {
         assert_eq!(
             fiche.photo_reviewed_at, None,
             "pas de photo à examiner, donc pas de date d'examen"
+        );
+
+        // Le geste est consigné, et rien ne le tenait.
+        //
+        // C'est ce qui explique une photo disparue de la file de relecture :
+        // sans cette trace, un modérateur qui la cherche ne trouve rien et ne
+        // sait pas si elle a existé. La route par laquelle quelqu'un retire sa
+        // propre photo passe par ici, et l'entrée prend le même sens.
+        let trace = audit_events::Entity::find()
+            .filter(audit_events::Column::Action.eq("photo_retiree"))
+            .one(&db)
+            .await
+            .expect("lecture")
+            .expect("le retrait n'est consigné nulle part");
+        assert_eq!(trace.account_id.as_deref(), Some("retire"));
+        assert!(
+            trace.meta_json.contains("cle-2"),
+            "la trace ne dit pas quelle photo est partie : {}",
+            trace.meta_json
         );
         assert!(
             media_objects::Entity::find_by_id("cle-2")
