@@ -2655,7 +2655,13 @@ fn le_schema_ios_est_le_meme_partout() {
         .split("\nschemes:\n")
         .nth(1)
         .and_then(|reste| reste.lines().next())
-        .map(|ligne| ligne.trim().trim_end_matches(':').trim_matches('"').to_string())
+        .map(|ligne| {
+            ligne
+                .trim()
+                .trim_end_matches(':')
+                .trim_matches('"')
+                .to_string()
+        })
         .expect("aucun schéma déclaré");
     assert_eq!(
         declare, "Weave ‣",
@@ -2686,20 +2692,37 @@ fn le_schema_ios_est_le_meme_partout() {
          livraison chercherait un schéma qui n'existe pas"
     );
 
-    // Le PROJET garde son nom : il contient aussi la montre, et le renommer
-    // l'emporterait avec lui.
+    // Le projet porte le même nom que la cible, et le fichier généré aussi.
     assert!(
-        projet.contains("\nname: Weave\n"),
-        "le projet a été renommé : la montre et ses extensions suivraient"
+        projet.contains("\nname: \"Weave \u{2023}\"\n"),
+        "le projet ne porte plus « Weave ‣ »"
     );
-    // Les DEUX emplois, et non « le nom figure quelque part » : le Fastfile
-    // cite `Weave.xcodeproj` à deux endroits — la numérotation de version et
-    // la construction. En changer un seul laissait ma première version au
-    // vert, puisque l'autre suffisait à la satisfaire. C'est la même faute
-    // que la garde qui cherchait « Signaler » n'importe où dans un fichier.
+
+    // Les DEUX emplois chez fastlane, et non « le nom figure quelque part » :
+    // le Fastfile cite le projet à deux endroits — la numérotation de version
+    // et la construction. En changer un seul laissait ma première version au
+    // vert, puisque l'autre suffisait à la satisfaire. C'est la même faute que
+    // la garde qui cherchait « Signaler » n'importe où dans un fichier.
     assert_eq!(
-        fastfile.matches("\"Weave.xcodeproj\"").count(),
+        fastfile.matches("\"Weave \u{2023}.xcodeproj\"").count(),
         2,
-        "fastlane ne désigne plus Weave.xcodeproj aux deux endroits"
+        "fastlane ne désigne plus « Weave ‣.xcodeproj » aux deux endroits"
     );
+
+    // Et `xcodebuild` le nomme entre guillemets, deux fois : sans eux,
+    // l'espace couperait le chemin et le projet serait introuvable.
+    assert_eq!(
+        ci.matches("-project 'Weave \u{2023}.xcodeproj'").count(),
+        2,
+        "les deux appels à xcodebuild ne désignent pas le projet entre guillemets"
+    );
+
+    // Les cibles voisines gardent leurs noms : ce sont des applications
+    // distinctes sur l'appareil, et le renommage portait sur l'iPhone.
+    for voisine in ["WeaveActivity", "WeaveWatch", "WeaveWatchWidgets"] {
+        assert!(
+            projet.contains(&format!("\n  {voisine}:\n")),
+            "la cible « {voisine} » a été renommée avec l'iPhone"
+        );
+    }
 }
