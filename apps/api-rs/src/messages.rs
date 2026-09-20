@@ -138,6 +138,11 @@ pub enum Msg {
     DemandePasLaVotre,
     DemandeDejaRepondue,
     DemandeDejaTranchee,
+    /// Rendre sa place suppose qu'on l'ait : ni une demande encore en
+    /// attente, ni une déjà rendue, ni une refusée.
+    PlaceNonRendable,
+    /// Se désister après l'heure dite n'apprend plus rien à personne.
+    RendezVousDejaPasse,
     DejaDemandeAVenir,
     MessageTropCourt {
         minimum: i64,
@@ -313,6 +318,10 @@ impl Msg {
             DemandePasLaVotre => "Cette demande n'est pas la vôtre.".into(),
             DemandeDejaRepondue => "Cette demande a déjà reçu une réponse.".into(),
             DemandeDejaTranchee => "Cette demande est déjà tranchée.".into(),
+            PlaceNonRendable => "Vous n'avez pas de place à rendre sur ce plan.".into(),
+            RendezVousDejaPasse => {
+                "Le rendez-vous est passé : il n'y a plus de place à rendre.".into()
+            }
             DejaDemandeAVenir => {
                 "Vous avez déjà demandé à venir. On ne redemande pas deux fois.".into()
             }
@@ -476,6 +485,10 @@ impl Msg {
             DemandePasLaVotre => "That request isn't yours.".into(),
             DemandeDejaRepondue => "That request has already been answered.".into(),
             DemandeDejaTranchee => "That request has already been settled.".into(),
+            PlaceNonRendable => "You have no spot to give back on that plan.".into(),
+            RendezVousDejaPasse => {
+                "The meeting time has passed: there's no spot left to give back.".into()
+            }
             DejaDemandeAVenir => "You've already asked to come. You don't ask twice.".into(),
             MessageTropCourt { minimum } => format!(
                 "Write at least {minimum} characters: that's what separates a request from a gesture."
@@ -639,6 +652,10 @@ impl Msg {
             DemandePasLaVotre => "Esa petición no es tuya.".into(),
             DemandeDejaRepondue => "Esa petición ya ha recibido respuesta.".into(),
             DemandeDejaTranchee => "Esa petición ya está resuelta.".into(),
+            PlaceNonRendable => "No tienes ningún sitio que devolver en ese plan.".into(),
+            RendezVousDejaPasse => {
+                "La hora de la cita ya pasó: no queda sitio que devolver.".into()
+            }
             DejaDemandeAVenir => "Ya has pedido venir. No se pide dos veces.".into(),
             MessageTropCourt { minimum } => format!(
                 "Escribe al menos {minimum} caracteres: es lo que distingue una petición de un gesto."

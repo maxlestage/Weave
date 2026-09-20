@@ -120,6 +120,28 @@ public final class PlansStore {
         }
     }
 
+    /// Rend sa place sur un plan qu'on avait rejoint.
+    ///
+    /// Le fil est rechargé, et non seulement retouché : la place rendue rouvre
+    /// le plan côté serveur, et il revient dans le fil — y compris dans celui
+    /// de qui vient de la rendre, ce qui est juste. Il peut changer d'avis
+    /// d'ici au rendez-vous, et rien ne l'en empêche sinon une autre demande.
+    public func release(_ request: JoinRequest) async -> Bool {
+        do {
+            try await api.release(requestID: request.id)
+            await refreshSent()
+            feed = try await api.feed()
+            myPlans = try await api.myPlans()
+            return true
+        } catch let error as WeaveAPIError {
+            handle(error)
+            return false
+        } catch {
+            alert = .transport(error.localizedDescription)
+            return false
+        }
+    }
+
     public func withdraw(_ request: JoinRequest) async {
         do {
             try await api.withdraw(requestID: request.id)

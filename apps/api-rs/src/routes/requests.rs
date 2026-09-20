@@ -7,7 +7,7 @@
 
 use crate::messages::Msg;
 use crate::{
-    AppState,
+    AppState, alerte,
     auth::Authentifie,
     cache,
     crypto::signer_url_media,
@@ -54,6 +54,7 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/requests/{id}", delete(retirer))
         .route("/v1/requests/{id}/accept", post(accepter))
         .route("/v1/requests/{id}/decline", post(refuser))
+        .route("/v1/requests/{id}/release", post(se_desister))
 }
 
 /// Mes demandes envoyées.
@@ -447,6 +448,136 @@ async fn demander(
 /// Quand la dernière place part, le plan passe « complet » et les demandes
 /// encore en attente sont closes — leurs auteurs n'ont plus à attendre une
 /// réponse qui ne viendrait pas.
+/// Rendre sa place après avoir été accepté.
+///
+/// ## Ce qui manquait
+///
+/// Une fois accepté, on ne pouvait plus reculer : `retirer` n'agit que sur une
+/// demande encore « envoyée ». Trois conséquences, et aucune n'est petite.
+///
+/// La place restait prise. Le plan restait « complet » pour quelqu'un qui ne
+/// viendrait pas, et personne d'autre ne pouvait la prendre.
+///
+/// L'auteur ne savait rien. Il attendait au café une personne qui avait déjà
+/// renoncé, sans qu'aucun écran ne le lui dise.
+///
+/// Et la seule sortie était de ne pas venir — ou de bloquer l'autre, ce qui
+/// est une accusation, pour un empêchement. Un produit qui fait se rencontrer
+/// des gens doit rendre le désistement plus facile que l'absence.
+///
+/// ## Le quota n'est pas rendu
+///
+/// « Une demande retirée avant d'avoir été lue vous est rendue », dit le site.
+/// Celle-ci a été lue, et il y a été répondu. L'unité est dépensée.
+///
+/// ## La conversation reste ouverte
+///
+/// Elle n'est pas close ici, et c'est délibéré : quelqu'un qui se désiste a
+/// souvent une phrase à écrire, et la lui retirer au moment où il en a le plus
+/// besoin transformerait un empêchement en disparition. Les deux peuvent la
+/// fermer quand ils veulent, comme partout ailleurs.
+async fn se_desister(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let demande = join_requests::Entity::find_by_id(id.clone())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable(Msg::DemandeIntrouvable))?;
+
+    if demande.author_id != compte.id {
+        return Err(AppError::new(Code::Forbidden, Msg::DemandePasLaVotre.t()));
+    }
+
+    let plan = plans::Entity::find_by_id(demande.plan_id.clone())
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| introuvable(Msg::DemandeIntrouvable))?;
+
+    // Passé l'heure du rendez-vous, se désister n'a plus d'objet : il n'y a
+    // plus de place à rendre, et prévenir l'auteur à ce moment-là ne lui
+    // apprend que ce qu'il a déjà constaté.
+    if plan.starts_at <= Utc::now().naive_utc() {
+        return Err(invalide(Msg::RendezVousDejaPasse));
+    }
+
+    let transaction = state.db.begin().await?;
+
+    // Le verrou de la ligne du plan, pris comme à l'acceptation et pour la
+    // même raison : sans lui, rendre une place et en accepter une autre se
+    // croisent, et le compte des places acceptées n'est plus celui que chacune
+    // des deux a lu.
+    plans::Entity::update_many()
+        .col_expr(
+            plans::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(plans::Column::Id.eq(plan.id.as_str()))
+        .exec(&transaction)
+        .await?;
+
+    // Une seule écriture, conditionnée sur l'état de départ — la même leçon
+    // qu'au retrait : deux désistements concurrents de la même demande
+    // franchiraient ensemble un contrôle lu puis écrit.
+    let rendue = join_requests::Entity::update_many()
+        .col_expr(
+            join_requests::Column::State,
+            sea_orm::sea_query::Expr::value("desistee"),
+        )
+        .col_expr(
+            join_requests::Column::DecidedAt,
+            sea_orm::sea_query::Expr::value(Utc::now().naive_utc()),
+        )
+        .filter(join_requests::Column::Id.eq(id.as_str()))
+        .filter(join_requests::Column::State.eq("acceptee"))
+        .exec(&transaction)
+        .await?;
+
+    if rendue.rows_affected == 0 {
+        transaction.rollback().await?;
+        return Err(invalide(Msg::PlaceNonRendable));
+    }
+
+    // Le plan complet retrouve une place, et retourne au fil.
+    //
+    // Conditionné sur « complet » plutôt que décidé d'après ce qu'on a lu plus
+    // haut : un plan annulé entre-temps ne doit pas se rouvrir, et un plan
+    // déjà ouvert n'a rien à changer.
+    //
+    // Les demandes que l'acceptation avait closes — celles passées à
+    // « expirée » quand la dernière place est partie — ne sont PAS ranimées.
+    // Leurs auteurs ont été prévenus que c'était fini ; les faire revenir à
+    // l'attente leur reprendrait une décision déjà digérée. La place repart au
+    // fil, pour qui la voudra.
+    plans::Entity::update_many()
+        .col_expr(
+            plans::Column::State,
+            sea_orm::sea_query::Expr::value("ouvert"),
+        )
+        .filter(plans::Column::Id.eq(plan.id.as_str()))
+        .filter(plans::Column::State.eq("complet"))
+        .exec(&transaction)
+        .await?;
+
+    transaction.commit().await?;
+
+    for compte_id in [&compte.id, &plan.author_id] {
+        if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(compte_id)).await {
+            tracing::warn!(erreur = %erreur, "fil non invalidé");
+        }
+    }
+
+    // L'auteur apprend qu'une place s'est libérée. C'est la raison d'être de
+    // cette route : sans cette ligne, elle ne ferait qu'éviter une attente au
+    // café à celui qui se désiste, pas à celui qui attend.
+    alerte::prevenir_place_rendue(&state, &plan.author_id).await;
+    live_activity::publier_au_mieux(&state, &plan.author_id).await;
+    live_activity::publier_au_mieux(&state, &compte.id).await;
+
+    Ok(Json(json!({ "ok": true })))
+}
+
 async fn accepter(
     State(state): State<AppState>,
     Authentifie(compte): Authentifie,

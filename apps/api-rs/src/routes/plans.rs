@@ -11,8 +11,9 @@
 
 use crate::messages::Msg;
 use crate::{
-    AppState,
+    AppState, alerte,
     auth::Authentifie,
+    cache,
     crypto::signer_url_media,
     droits::{HORIZON_CREDIT_JOURS, droits_pour, exiger_credit},
     entities::{accounts, join_requests, plans, profiles},
@@ -442,7 +443,34 @@ async fn annuler(
         close.update(&transaction).await?;
     }
 
+    // Les personnes ACCEPTÉES, elles, ne sont pas touchées en base : leur
+    // demande reste « acceptée », et la conversation avec elles reste ouverte
+    // — c'est là qu'on explique une annulation. Mais il faut les prévenir.
+    //
+    // C'est ce qui manquait, et c'était le pire des silences du produit :
+    // l'auteur annulait, et les personnes attendues n'en savaient rien. Elles
+    // seraient venues. Leur bannière annonçait même encore le rendez-vous.
+    let attendues: Vec<String> = join_requests::Entity::find()
+        .filter(join_requests::Column::PlanId.eq(id.as_str()))
+        .filter(join_requests::Column::State.eq("acceptee"))
+        .all(&transaction)
+        .await?
+        .into_iter()
+        .map(|demande| demande.author_id)
+        .collect();
+
     transaction.commit().await?;
+
+    // Après la validation, jamais avant : une alerte annonçant une annulation
+    // que la transaction annulerait ensuite serait un mensonge irrattrapable.
+    for attendue in &attendues {
+        alerte::prevenir_plan_annule(&state, attendue).await;
+        // La bannière de chacune annonçait ce plan : elle est recalculée.
+        live_activity::publier_au_mieux(&state, attendue).await;
+        if let Err(erreur) = cache::oublier(&state.cache, &cache::cles::fil(attendue)).await {
+            tracing::warn!(erreur = %erreur, "fil non invalidé");
+        }
+    }
 
     live_activity::publier_au_mieux(&state, &compte.id).await;
 

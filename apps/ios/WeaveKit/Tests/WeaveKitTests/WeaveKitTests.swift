@@ -237,6 +237,56 @@ struct FeedEditTests {
     }
 }
 
+// MARK: - États d'une demande
+
+@Suite("États d'une demande")
+struct RequestStateTests {
+    @Test("Tous les états du serveur sont connus du client")
+    func etatsConnus() {
+        // Un état écrit par le serveur et absent d'ici ne casse pas une ligne :
+        // il casse la RÉPONSE ENTIÈRE, puisque Swift échoue à décoder une
+        // énumération sans cas correspondant. « Mes demandes » tomberait d'un
+        // bloc — c'est déjà arrivé sur l'état d'un plan.
+        //
+        // Écrits ici, et non lus du type qu'on éprouve : un test qui lit ce
+        // qu'il garde ne garde rien. L'accord avec le contrat partagé est tenu
+        // par un test de contrat qui lit les deux sources.
+        let attendus = [
+            "envoyee", "acceptee", "refusee", "expiree", "retiree", "desistee",
+        ]
+        #expect(Set(RequestState.allCases.map(\.rawValue)) == Set(attendus))
+    }
+
+    @Test("Chaque état porte un libellé distinct, écrit pour être lu")
+    func libellesDistincts() {
+        for etat in RequestState.allCases {
+            #expect(etat.displayName != etat.rawValue, "« \(etat.rawValue) » s'affiche tel quel")
+            #expect(etat.displayName.first?.isUppercase == true)
+        }
+        // Deux états qui s'affichent pareil rendent l'écran illisible : « close »
+        // et « place rendue » ne veulent pas dire la même chose à qui les lit.
+        #expect(
+            Set(RequestState.allCases.map(\.displayName)).count == RequestState.allCases.count
+        )
+    }
+
+    @Test("Une demande dont la place a été rendue se décode")
+    func desisteeSeDecode() throws {
+        // Le décodage entier, et non le seul état : c'est la liste complète que
+        // l'écran perdrait.
+        let json = #"""
+        {"id":"r1","planId":"p1","planTitle":"Un cafe","planStartsAt":"2026-10-01T18:00:00.000Z",
+        "author":{"id":"u1","displayName":"Ana","age":30,"photoUrl":null,"verified":false},
+        "message":"Je serais venu avec plaisir mais je ne peux pas.",
+        "state":"desistee","sentAt":"2026-09-20T10:00:00.000Z",
+        "decidedAt":"2026-09-20T11:00:00.000Z","conversationId":"c1"}
+        """#
+        let demande = try decodeur.decode(JoinRequest.self, from: Data(json.utf8))
+        #expect(demande.state == .desistee)
+        #expect(demande.state.displayName == "Place rendue")
+    }
+}
+
 // MARK: - Consentement
 
 @Suite("Consentement")

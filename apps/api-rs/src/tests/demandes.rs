@@ -604,3 +604,393 @@ async fn le_plafond_journalier_refuse_la_demande_de_trop() {
         "un refus a rendu une demande : {fiche}"
     );
 }
+
+// ————————————————————————————————————————————————————————————————————————
+// Rendre sa place après avoir été accepté
+//
+// Ce que le produit ne permettait pas. Une fois accepté, on ne pouvait plus
+// reculer : la place restait prise, l'auteur attendait au café sans rien
+// savoir, et la seule sortie était de ne pas venir.
+// ————————————————————————————————————————————————————————————————————————
+
+/// Publie un plan pour une seule personne, et rend son identifiant.
+async fn plan_solo(service: &Service, hote: &str, titre: &str) -> String {
+    let (statut, corps) = service
+        .post(
+            "/v1/plans",
+            Some(&service.jeton(hote)),
+            json!({
+                "title": titre,
+                "category": "balade",
+                "capacity": 1,
+                "startsAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
+            }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    corps["id"].as_str().unwrap().to_string()
+}
+
+/// Demande, fait accepter, et rend l'identifiant de la demande.
+async fn accepte(service: &Service, hote: &str, invite: &str, plan: &str) -> String {
+    let (statut, corps) = demander(service, invite, plan).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let demande = corps["id"].as_str().unwrap().to_string();
+
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/accept"),
+            Some(&service.jeton(hote)),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    demande
+}
+
+async fn etat_du_plan(service: &Service, plan: &str) -> String {
+    let ligne = service
+        .db
+        .query_one_raw(sea_orm::Statement::from_string(
+            service.db.get_database_backend(),
+            format!("SELECT state FROM plans WHERE id = '{plan}'"),
+        ))
+        .await
+        .expect("plan lu")
+        .expect("plan présent");
+    ligne.try_get::<String>("", "state").expect("état lisible")
+}
+
+#[tokio::test]
+async fn rendre_sa_place_rouvre_le_plan_et_le_remet_au_fil() {
+    let service = Service::monter().await;
+    service.compte("c_hote_rendu", "depart").await;
+    service.compte("c_parti_rendu", "depart").await;
+    let plan = plan_solo(&service, "c_hote_rendu", "Une balade au bord de l eau").await;
+    let demande = accepte(&service, "c_hote_rendu", "c_parti_rendu", &plan).await;
+
+    // La place prise ferme le plan : c'est l'état de départ de l'épreuve.
+    assert_eq!(etat_du_plan(&service, &plan).await, "complet");
+
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_parti_rendu")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // La place est rendue, et le plan repart au fil des autres.
+    assert_eq!(
+        etat_du_plan(&service, &plan).await,
+        "ouvert",
+        "le plan reste fermé pour quelqu'un qui ne viendra pas"
+    );
+
+    // Et quelqu'un d'autre peut la prendre. C'est la seule preuve qui compte :
+    // rouvrir le plan sans que la place soit réellement libre ne servirait à
+    // rien, puisque l'acceptation recompte les places prises.
+    service.compte("c_autre_rendu", "depart").await;
+    let (statut, corps) = demander(&service, "c_autre_rendu", &plan).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let suivante = corps["id"].as_str().unwrap().to_string();
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{suivante}/accept"),
+            Some(&service.jeton("c_hote_rendu")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(etat_du_plan(&service, &plan).await, "complet");
+}
+
+#[tokio::test]
+async fn rendre_sa_place_ne_rend_pas_l_unite_de_quota() {
+    let service = Service::monter().await;
+    service.compte("c_hote_quota_rendu", "depart").await;
+    service.compte("c_parti_quota", "depart").await;
+    let plan = plan_solo(&service, "c_hote_quota_rendu", "Un cafe pres du canal").await;
+    let demande = accepte(&service, "c_hote_quota_rendu", "c_parti_quota", &plan).await;
+
+    let (statut, _) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_parti_quota")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    // « Une demande retirée AVANT D'AVOIR ÉTÉ LUE vous est rendue », dit le
+    // site. Celle-ci a été lue, et il y a été répondu : l'unité est dépensée.
+    // La rendre ferait d'un désistement un moyen d'écrire sans compter.
+    let (statut, corps) = service
+        .get("/v1/requests/sent", Some(&service.jeton("c_parti_quota")))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        corps["requestsLeftToday"], 4,
+        "l'unité a été rendue alors que la demande avait été lue"
+    );
+}
+
+#[tokio::test]
+async fn seul_celui_qui_tient_la_place_peut_la_rendre() {
+    let service = Service::monter().await;
+    service.compte("c_hote_vol", "depart").await;
+    service.compte("c_tenant_vol", "depart").await;
+    service.compte("c_tiers_vol", "depart").await;
+    let plan = plan_solo(&service, "c_hote_vol", "Un concert au parc").await;
+    let demande = accepte(&service, "c_hote_vol", "c_tenant_vol", &plan).await;
+
+    // Ni un tiers, ni l'auteur du plan : rendre une place est une décision de
+    // celui qui l'occupe. L'auteur, lui, annule son plan — ce n'est pas la
+    // même chose, et cela se dit autrement.
+    for intrus in ["c_tiers_vol", "c_hote_vol"] {
+        let (statut, corps) = service
+            .post(
+                &format!("/v1/requests/{demande}/release"),
+                Some(&service.jeton(intrus)),
+                json!({}),
+            )
+            .await;
+        assert_eq!(statut, StatusCode::FORBIDDEN, "{intrus} : {corps}");
+    }
+    assert_eq!(etat_du_plan(&service, &plan).await, "complet");
+}
+
+#[tokio::test]
+async fn on_ne_rend_que_la_place_qu_on_a() {
+    let service = Service::monter().await;
+    service.compte("c_hote_sans", "depart").await;
+    service.compte("c_invite_sans", "depart").await;
+    let plan = plan_de(&service, "c_hote_sans", "Une expo le samedi").await;
+
+    // Une demande encore en attente n'est pas une place : elle se RETIRE, et
+    // ce retrait-là rend l'unité de quota. Confondre les deux rendrait une
+    // unité à qui n'a encore reçu aucune réponse.
+    let (statut, corps) = demander(&service, "c_invite_sans", &plan).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let demande = corps["id"].as_str().unwrap().to_string();
+
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_invite_sans")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY, "{corps}");
+
+    // Et une place déjà rendue ne se rend pas deux fois.
+    let (statut, _) = service
+        .post(
+            &format!("/v1/requests/{demande}/accept"),
+            Some(&service.jeton("c_hote_sans")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+    let chemin = format!("/v1/requests/{demande}/release");
+    let (premier, _) = service
+        .post(&chemin, Some(&service.jeton("c_invite_sans")), json!({}))
+        .await;
+    assert_eq!(premier, StatusCode::OK);
+    let (second, corps) = service
+        .post(&chemin, Some(&service.jeton("c_invite_sans")), json!({}))
+        .await;
+    assert_eq!(second, StatusCode::UNPROCESSABLE_ENTITY, "{corps}");
+}
+
+#[tokio::test]
+async fn on_ne_se_desiste_plus_une_fois_l_heure_passee() {
+    let service = Service::monter().await;
+    service.compte("c_hote_tard", "depart").await;
+    service.compte("c_parti_tard", "depart").await;
+    let plan = plan_solo(&service, "c_hote_tard", "Un brunch dimanche matin").await;
+    let demande = accepte(&service, "c_hote_tard", "c_parti_tard", &plan).await;
+
+    // L'heure est reculée en base : la route refuse de publier dans le passé,
+    // et c'est le passage du temps qu'on éprouve, pas la publication.
+    service
+        .db
+        .execute_unprepared(&format!(
+            "UPDATE plans SET startsAt = '2020-01-01 00:00:00' WHERE id = '{plan}'"
+        ))
+        .await
+        .expect("heure reculée");
+
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_parti_tard")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "se désister après coup ne rend plus rien à personne : {corps}"
+    );
+}
+
+#[tokio::test]
+async fn deux_desistements_concurrents_ne_rendent_qu_une_place() {
+    let service = Service::monter().await;
+    service.compte("c_hote_deux", "depart").await;
+    service.compte("c_parti_deux", "depart").await;
+    // Un plan de groupe se vend (« Tablée ») : le solo suffit ici, puisque
+    // c'est la MÊME place que deux appels tentent de rendre.
+    let plan = plan_solo(&service, "c_hote_deux", "Une partie de cartes au bar").await;
+    let demande = accepte(&service, "c_hote_deux", "c_parti_deux", &plan).await;
+
+    let chemin = format!("/v1/requests/{demande}/release");
+    let jeton = service.jeton("c_parti_deux");
+    let (a, b) = tokio::join!(
+        service.post(&chemin, Some(&jeton), json!({})),
+        service.post(&chemin, Some(&jeton), json!({}))
+    );
+
+    let reussites = [a.0, b.0].iter().filter(|s| s.is_success()).count();
+    assert_eq!(
+        reussites, 1,
+        "deux désistements de la même place ont abouti : {:?} {:?}",
+        a.1, b.1
+    );
+}
+
+#[tokio::test]
+async fn annuler_un_plan_laisse_les_personnes_acceptees_dans_leur_etat() {
+    let service = Service::monter().await;
+    service.compte("c_hote_annul", "depart").await;
+    service.compte("c_attendu_annul", "depart").await;
+    let plan = plan_solo(&service, "c_hote_annul", "Un marche le dimanche").await;
+    let demande = accepte(&service, "c_hote_annul", "c_attendu_annul", &plan).await;
+
+    let (statut, corps) = service
+        .delete(
+            &format!("/v1/plans/{plan}"),
+            Some(&service.jeton("c_hote_annul")),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // La demande acceptée n'est pas effacée : la conversation reste ouverte,
+    // c'est là qu'on explique une annulation. Ce qui manquait n'était pas une
+    // écriture en base, c'était de PRÉVENIR — et le plan annulé ne doit plus
+    // pouvoir se rouvrir par un désistement.
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_attendu_annul")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    assert_eq!(
+        etat_du_plan(&service, &plan).await,
+        "annule",
+        "un plan annulé s'est rouvert parce que quelqu'un a rendu sa place"
+    );
+}
+
+#[tokio::test]
+async fn rendre_sa_place_previent_l_auteur() {
+    let service = Service::monter().await;
+    let hote = service.compte("c_hote_prev", "depart").await;
+    service.compte("c_parti_prev", "depart").await;
+    let telephone = service.appareil(&hote).await;
+    let plan = plan_solo(&service, "c_hote_prev", "Un cafe pres du canal").await;
+    let demande = accepte(&service, "c_hote_prev", "c_parti_prev", &plan).await;
+
+    let (statut, corps) = service
+        .post(
+            &format!("/v1/requests/{demande}/release"),
+            Some(&service.jeton("c_parti_prev")),
+            json!({}),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // C'est la raison d'être de cette route. Sans cette poussée, elle
+    // n'éviterait l'attente au café qu'à celui qui se désiste — pas à celui
+    // qui attend.
+    let alertes = service.alertes_vers(&telephone);
+    assert_eq!(
+        alertes.len(),
+        1,
+        "l'auteur n'a pas été prévenu : {alertes:?}"
+    );
+    assert!(
+        alertes[0].0.contains("place"),
+        "l'alerte ne dit pas ce qui a changé : {:?}",
+        alertes[0]
+    );
+    // Et elle ne nomme personne : elle s'affiche sur un écran verrouillé.
+    let assemble = format!("{} {}", alertes[0].0, alertes[0].1);
+    assert!(!assemble.contains("c_parti_prev"), "{assemble}");
+}
+
+#[tokio::test]
+async fn annuler_un_plan_previent_les_personnes_attendues() {
+    let service = Service::monter().await;
+    service.compte("c_hote_dit", "depart").await;
+    let attendu = service.compte("c_attendu_dit", "depart").await;
+    let telephone = service.appareil(&attendu).await;
+    let plan = plan_solo(&service, "c_hote_dit", "Un marche le dimanche").await;
+    accepte(&service, "c_hote_dit", "c_attendu_dit", &plan).await;
+
+    let (statut, corps) = service
+        .delete(
+            &format!("/v1/plans/{plan}"),
+            Some(&service.jeton("c_hote_dit")),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    // C'était le pire des silences du produit : l'auteur annulait, et les
+    // personnes attendues n'en savaient rien. Elles seraient venues, et leur
+    // bannière annonçait encore le rendez-vous.
+    let alertes = service.alertes_vers(&telephone);
+    assert_eq!(
+        alertes.len(),
+        1,
+        "personne n'a prévenu qui était attendu : {alertes:?}"
+    );
+    assert!(
+        alertes[0].0.contains("annul"),
+        "l'alerte ne dit pas que le plan n'aura pas lieu : {:?}",
+        alertes[0]
+    );
+}
+
+#[tokio::test]
+async fn une_demande_encore_en_attente_ne_fait_prevenir_personne_a_l_annulation() {
+    let service = Service::monter().await;
+    service.compte("c_hote_muet", "depart").await;
+    let demandeur = service.compte("c_demandeur_muet", "depart").await;
+    let telephone = service.appareil(&demandeur).await;
+    let plan = plan_de(&service, "c_hote_muet", "Une expo le samedi").await;
+
+    let (statut, _) = demander(&service, "c_demandeur_muet", &plan).await;
+    assert_eq!(statut, StatusCode::OK);
+
+    let (statut, _) = service
+        .delete(
+            &format!("/v1/plans/{plan}"),
+            Some(&service.jeton("c_hote_muet")),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    // Une demande sans réponse se clôt d'elle-même, et l'application le montre
+    // à l'ouverture. Faire vibrer le téléphone de quelqu'un pour lui apprendre
+    // qu'un plan auquel il n'était pas encore convié n'aura pas lieu ferait de
+    // chaque annulation une notification de plus à subir.
+    assert!(
+        service.alertes_vers(&telephone).is_empty(),
+        "une demande en attente a déclenché une alerte d'annulation"
+    );
+}

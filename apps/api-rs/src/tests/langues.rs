@@ -199,6 +199,8 @@ fn aucune_phrase_n_est_identique_dans_deux_langues() {
         Msg::DemandePasLaVotre,
         Msg::DemandeDejaRepondue,
         Msg::DemandeDejaTranchee,
+        Msg::PlaceNonRendable,
+        Msg::RendezVousDejaPasse,
         Msg::DejaDemandeAVenir,
         Msg::MessageTropCourt { minimum: 20 },
         Msg::MessageDeDemandeTropLong { maximum: 600 },

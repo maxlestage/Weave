@@ -188,12 +188,20 @@ public struct MyPlan: Codable, Identifiable, Hashable, Sendable {
 
 // MARK: - Demandes
 
-public enum RequestState: String, Codable, Sendable {
+/// L'état d'une demande. `packages/contracts` fait foi : `REQUEST_STATES`.
+///
+/// Un état que le serveur écrit et que ce type ignore ne casse pas une ligne :
+/// il casse la RÉPONSE ENTIÈRE, puisque Swift échoue à décoder une énumération
+/// sans cas correspondant. C'est déjà arrivé sur l'état d'un plan, et « Mes
+/// plans » ne s'ouvrait plus. Un test de contrat rapproche donc les deux listes.
+public enum RequestState: String, Codable, Sendable, CaseIterable {
     case envoyee
     case acceptee
     case refusee
     case expiree
     case retiree
+    /// La place avait été accordée, et elle a été rendue.
+    case desistee
 
     public var displayName: String {
         switch self {
@@ -202,6 +210,7 @@ public enum RequestState: String, Codable, Sendable {
         case .refusee: "Sans suite"
         case .expiree: "Close"
         case .retiree: "Retirée"
+        case .desistee: "Place rendue"
         }
     }
 }

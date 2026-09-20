@@ -181,6 +181,19 @@ public actor WeaveAPI {
         let _: EmptyResponse = try await request(.delete, "/v1/requests/\(requestID)")
     }
 
+    /// Rend sa place après avoir été accepté.
+    ///
+    /// L'unité de quota n'est PAS rendue — contrairement à `withdraw`, qui
+    /// reprend une demande avant qu'elle ait été lue. Celle-ci a été lue, et il
+    /// y a été répondu.
+    ///
+    /// La conversation reste ouverte : c'est là qu'on dit pourquoi.
+    public func release(requestID: String) async throws {
+        let _: EmptyResponse = try await request(
+            .post, "/v1/requests/\(requestID)/release"
+        )
+    }
+
     public func accept(requestID: String) async throws -> String {
         struct Result: Decodable { let conversationId: String }
         let result: Result = try await request(.post, "/v1/requests/\(requestID)/accept")

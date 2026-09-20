@@ -161,6 +161,26 @@ fn en_tetes(config: &Env, envoi: &Envoi<'_>) -> Vec<(&'static str, String)> {
 pub struct ClientApns {
     http: reqwest::Client,
     jeton: Arc<RwLock<Option<(String, u64)>>>,
+    /// Ce qui a été poussé, pour que les tests puissent le relire.
+    ///
+    /// Hors configuration APNs, `envoyer` se contentait de rendre « simulé ».
+    /// Aucune notification n'était donc éprouvable de bout en bout : on pouvait
+    /// vérifier le TEXTE d'une alerte, jamais qu'elle partait, ni à qui. Or ce
+    /// qui manquait au produit n'était pas le texte — c'était l'envoi.
+    ///
+    /// Le champ n'existe qu'à la compilation des tests : en production, ce
+    /// client ne garde la trace de rien.
+    #[cfg(test)]
+    traces: Arc<std::sync::Mutex<Vec<Trace>>>,
+}
+
+/// Une notification simulée, telle qu'un test la relit.
+#[cfg(test)]
+#[derive(Clone, Debug)]
+pub struct Trace {
+    pub jeton_appareil: String,
+    pub type_envoi: &'static str,
+    pub charge: serde_json::Value,
 }
 
 impl ClientApns {
@@ -172,7 +192,15 @@ impl ClientApns {
                 .build()
                 .unwrap_or_default(),
             jeton: Arc::new(RwLock::new(None)),
+            #[cfg(test)]
+            traces: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
+    }
+
+    /// Ce qui a été poussé depuis le dernier appel, dans l'ordre.
+    #[cfg(test)]
+    pub fn traces(&self) -> Vec<Trace> {
+        self.traces.lock().map(|t| t.clone()).unwrap_or_default()
     }
 
     /// Envoie une notification, ou la simule si APNs n'est pas configuré.
@@ -186,6 +214,14 @@ impl ClientApns {
                 type_envoi = envoi.type_envoi.en_tete(),
                 "APNs non configuré, envoi simulé"
             );
+            #[cfg(test)]
+            if let Ok(mut traces) = self.traces.lock() {
+                traces.push(Trace {
+                    jeton_appareil: envoi.jeton_appareil.to_string(),
+                    type_envoi: envoi.type_envoi.en_tete(),
+                    charge: envoi.charge.clone(),
+                });
+            }
             return Resultat {
                 ok: true,
                 statut: 200,

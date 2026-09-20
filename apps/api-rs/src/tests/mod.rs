@@ -293,6 +293,55 @@ impl Service {
         id
     }
 
+    /// Enregistre un appareil joignable par alerte, et rend son jeton APNs.
+    ///
+    /// La ligne est insérée directement : c'est la POUSSÉE qu'on veut éprouver,
+    /// pas l'enregistrement d'un appareil, qui a ses propres tests.
+    pub async fn appareil(&self, compte_id: &str) -> String {
+        use crate::entities::devices;
+        use sea_orm::{ActiveModelTrait, Set};
+
+        let jeton = format!("apns-{compte_id}");
+        devices::ActiveModel {
+            id: Set(format!("dev-{compte_id}")),
+            account_id: Set(compte_id.to_string()),
+            platform: Set("ios".to_string()),
+            vendor_id: Set(format!("vendor-{compte_id}")),
+            model: Set(None),
+            os_version: Set(None),
+            app_version: Set(None),
+            apns_token: Set(Some(jeton.clone())),
+            push_to_start_token: Set(None),
+            apns_environment: Set("sandbox".to_string()),
+            last_seen_at: Set(chrono::Utc::now().naive_utc()),
+            created_at: Set(chrono::Utc::now().naive_utc()),
+        }
+        .insert(&self.db)
+        .await
+        .expect("appareil inséré");
+        jeton
+    }
+
+    /// Les alertes poussées à un appareil, titre et corps.
+    ///
+    /// Les Live Activities sont écartées : elles passent par le même client,
+    /// et ce qu'on éprouve ici est ce qui s'affiche en bannière.
+    pub fn alertes_vers(&self, jeton: &str) -> Vec<(String, String)> {
+        self.etat
+            .apns
+            .traces()
+            .into_iter()
+            .filter(|trace| trace.jeton_appareil == jeton && trace.type_envoi == "alert")
+            .map(|trace| {
+                let alerte = &trace.charge["aps"]["alert"];
+                (
+                    alerte["title"].as_str().unwrap_or_default().to_string(),
+                    alerte["body"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    }
+
     /// Une adresse e-mail propre à ce test.
     ///
     /// Les demandes de code sont limitées en débit par empreinte d'adresse, et
