@@ -31,6 +31,26 @@ const RACINE = new URL("../../../", import.meta.url).pathname;
 const REACT = `${RACINE}apps/web/dist`;
 const YEW = `${RACINE}apps/site/dist-rs`;
 
+/*
+ * La coquille HTML n'est pas encore portée, et on le DIT plutôt que de la taire.
+ *
+ * `<head>` est produit par `apps/web/build.ts` — adresses canoniques,
+ * `hreflang`, plan du site, titres et descriptions par page. Du côté Yew,
+ * `rendre.rs` écrit pour l'instant une coquille de dépannage, écrite à la
+ * main. Ce n'est donc pas une régression : c'est du travail qui reste, comme
+ * les sections que Yew ne rend pas encore.
+ *
+ * On la compare quand même, et la différence s'affiche à chaque exécution :
+ * c'est ainsi qu'elle reste visible. Elle ne fait pas échouer l'outil tant que
+ * ce drapeau est faux — autrement la CI serait rouge en permanence, et une CI
+ * rouge en permanence ne dit plus rien de personne.
+ *
+ * Le jour où `build.ts` est porté : passer ce drapeau à `true`. Il est ici, et
+ * nommé, précisément pour qu'on ne l'oublie pas dans un `if` au fond du
+ * fichier.
+ */
+const LA_COQUILLE_EST_PORTEE = false;
+
 const LANGUES = [
   { code: "fr", prefixe: "" },
   { code: "en", prefixe: "/en" },
@@ -208,6 +228,30 @@ async function relever(html: string): Promise<Evenement[]> {
 
 /* — Les sections ————————————————————————————————————————————————— */
 
+/**
+ * Le contenu d'une balise unique, fermeture comprise.
+ *
+ * `<head>` et `<body>` relèvent de deux travaux différents : la coquille HTML
+ * est produite par la chaîne de construction (adresses canoniques, `hreflang`,
+ * plan du site), l'arbre du corps par les composants. Les comparer ensemble
+ * ferait d'un `hreflang` manquant et d'un pied de page manquant la même
+ * ligne, alors que ce ne sont pas les mêmes fichiers à reprendre.
+ */
+function contenuDe(evenements: Evenement[], balise: string): Evenement[] | null {
+  const debut = evenements.findIndex((e) => e.genre === "ouvre" && e.balise === balise);
+  if (debut < 0) return null;
+  let profondeur = 0;
+  for (let i = debut; i < evenements.length; i += 1) {
+    const e = evenements[i];
+    if (e.genre === "ouvre" && e.balise === balise) profondeur += 1;
+    else if (e.genre === "ferme" && e.balise === balise) {
+      profondeur -= 1;
+      if (profondeur === 0) return evenements.slice(debut, i + 1);
+    }
+  }
+  return evenements.slice(debut);
+}
+
 /** Découpe le relevé en sections, par `id`, fermeture comprise. */
 function sections(evenements: Evenement[]): Map<string, Evenement[]> {
   const trouvees = new Map<string, Evenement[]>();
@@ -352,6 +396,46 @@ for (const langue of LANGUES) {
       divergences += 1;
       console.log(`    #${id} — rendue par Yew seul : React n'a pas cette section.`);
     }
+  }
+
+  /*
+   * La page entière, dès que plus aucune section ne manque.
+   *
+   * La comparaison par section ne voit ni l'en-tête, ni le pied de page, ni le
+   * lien d'évitement, ni l'ORDRE dans lequel les sections se suivent : chacune
+   * est comparée à sa jumelle, où qu'elle soit. Tant qu'il manque des sections
+   * la page entière diffère forcément, et l'exiger ne dirait rien d'utile.
+   * Dès qu'elles sont toutes là, c'est la seule comparaison qui prouve
+   * vraiment que les deux chaînes rendent le même site.
+   *
+   * Elle s'allume donc d'elle-même, sans qu'on ait à y penser le bon jour.
+   */
+  const toutesLesSections = [...sectionsReact.keys()].every((id) => sectionsYew.has(id));
+  if (!toutesLesSections) continue;
+
+  for (const [balise, quoi] of [
+    ["body", "le corps de la page"],
+    ["head", "la coquille HTML"],
+  ] as const) {
+    const gauche = contenuDe(attendu, balise);
+    const droite = contenuDe(obtenu, balise);
+    if (gauche === null || droite === null) {
+      divergences += 1;
+      console.log(`    ${quoi} — <${balise}> introuvable d'un côté`);
+      continue;
+    }
+    const ecart = diverger(gauche, droite);
+    if (ecart === null) {
+      comparees += 1;
+      console.log(`    ${quoi} — identique (${gauche.length} nœuds)`);
+      continue;
+    }
+    const compte = balise === "head" ? LA_COQUILLE_EST_PORTEE : true;
+    if (compte) divergences += 1;
+    console.log(
+      `    ${quoi} — DIVERGE${compte ? "" : " (pas encore portée : voir LA_COQUILLE_EST_PORTEE)"}`,
+    );
+    for (const ligne of ecart) console.log(ligne);
   }
 }
 

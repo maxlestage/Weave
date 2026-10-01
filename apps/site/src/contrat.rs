@@ -15,6 +15,7 @@ use crate::langues::Traduit;
 pub const REQUESTS_PER_DAY_FLOOR: u32 = 5;
 pub const MAX_OPEN_PLANS: u32 = 3;
 pub const PLAN_MIN_LEAD_MINUTES: u32 = 60;
+pub const REQUEST_MIN_CHARS: u32 = 20;
 pub const MIN_AGE: u32 = 18;
 pub const MESSAGE_RETENTION_DAYS: u32 = 90;
 pub const ACCOUNT_PURGE_DAYS: u32 = 30;
@@ -23,19 +24,66 @@ pub const POLICY_UPDATED_LABEL: &str = "12 septembre 2026";
 
 // — Les catégories de plan ——————————————————————————————————————
 
-/// Les libellés de catégorie, dans les trois langues.
-pub const CATEGORIES: [(&str, Traduit<&str>); 8] = [
-    ("sortie", Traduit(["Sortie", "Going out", "Salida"])),
-    ("sport", Traduit(["Sport", "Sport", "Deporte"])),
-    ("culture", Traduit(["Culture", "Culture", "Cultura"])),
-    ("repas", Traduit(["Repas", "Food", "Comida"])),
-    ("musique", Traduit(["Musique", "Music", "Música"])),
-    ("jeux", Traduit(["Jeux", "Games", "Juegos"])),
-    ("balade", Traduit(["Balade", "Walk", "Paseo"])),
-    (
-        "benevolat",
-        Traduit(["Bénévolat", "Volunteering", "Voluntariado"]),
-    ),
+/// Une catégorie de plan.
+///
+/// Une énumération, et non une clé à rapprocher d'une table. Les sections du
+/// site nomment une catégorie pour afficher son libellé ; avec une chaîne,
+/// une faute de frappe compilait et affichait `sport` tel quel au visiteur,
+/// ou demandait un cas par défaut qui revenait au même. Ici, elle ne compile
+/// pas.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Categorie {
+    Sortie,
+    Sport,
+    Culture,
+    Repas,
+    Musique,
+    Jeux,
+    Balade,
+    Benevolat,
+}
+
+impl Categorie {
+    /// La clé telle que l'API et le contrat la portent.
+    pub const fn cle(self) -> &'static str {
+        match self {
+            Categorie::Sortie => "sortie",
+            Categorie::Sport => "sport",
+            Categorie::Culture => "culture",
+            Categorie::Repas => "repas",
+            Categorie::Musique => "musique",
+            Categorie::Jeux => "jeux",
+            Categorie::Balade => "balade",
+            Categorie::Benevolat => "benevolat",
+        }
+    }
+
+    /// Le libellé affiché, dans les trois langues.
+    pub const fn libelle(self) -> Traduit<&'static str> {
+        match self {
+            Categorie::Sortie => Traduit(["Sortie", "Going out", "Salida"]),
+            Categorie::Sport => Traduit(["Sport", "Sport", "Deporte"]),
+            Categorie::Culture => Traduit(["Culture", "Culture", "Cultura"]),
+            Categorie::Repas => Traduit(["Repas", "Food", "Comida"]),
+            Categorie::Musique => Traduit(["Musique", "Music", "Música"]),
+            Categorie::Jeux => Traduit(["Jeux", "Games", "Juegos"]),
+            Categorie::Balade => Traduit(["Balade", "Walk", "Paseo"]),
+            Categorie::Benevolat => Traduit(["Bénévolat", "Volunteering", "Voluntariado"]),
+        }
+    }
+}
+
+/// Les catégories, dans l'ordre où le contrat les déclare — c'est celui dans
+/// lequel le site les montre.
+pub const CATEGORIES: [Categorie; 8] = [
+    Categorie::Sortie,
+    Categorie::Sport,
+    Categorie::Culture,
+    Categorie::Repas,
+    Categorie::Musique,
+    Categorie::Jeux,
+    Categorie::Balade,
+    Categorie::Benevolat,
 ];
 
 // — Le catalogue ————————————————————————————————————————————————
@@ -296,5 +344,64 @@ pub const PRODUITS_UNITE: [ProduitUnite; 5] = [
         ]),
         prix_centimes: 499,
         prix: Traduit(["4,99 €", "€4.99", "4,99 €"]),
+    },
+];
+
+// — Les pages juridiques ————————————————————————————————————————
+
+/// Une page juridique.
+///
+/// Elles ne sont publiées QU'EN FRANÇAIS, et leurs adresses ne portent donc
+/// pas de préfixe de langue. Traduire des conditions générales n'est pas un
+/// travail de langue : une traduction non relue engagerait sur un texte que
+/// personne n'a validé.
+pub struct PageJuridique {
+    /// Adresse de la page, sans barre oblique initiale.
+    pub adresse: &'static str,
+    /// Titre de l'onglet et du partage.
+    pub titre: &'static str,
+    /// Description de référencement — celle que les moteurs affichent.
+    pub description: &'static str,
+    /// Libellé court, pour le pied de page.
+    pub lien: &'static str,
+    /// Date de la version en vigueur DE CE DOCUMENT, et non des quatre.
+    pub mise_a_jour: &'static str,
+}
+
+pub const PAGES_JURIDIQUES: [PageJuridique; 5] = [
+    PageJuridique {
+        adresse: "confidentialite",
+        titre: "Politique de confidentialité",
+        description: "Ce que Weave collecte, pourquoi, combien de temps, et ce que nous nous interdisons. Position arrondie au kilomètre, aucun cookie, aucune revente de données.",
+        lien: "Confidentialité",
+        mise_a_jour: "12 septembre 2026",
+    },
+    PageJuridique {
+        adresse: "cgu",
+        titre: "Conditions générales d'utilisation",
+        description: "Ce que Weave propose, ce que nous attendons de vous, et les règles qu'aucun abonnement ne lève.",
+        lien: "Conditions d'utilisation",
+        mise_a_jour: "12 septembre 2026",
+    },
+    PageJuridique {
+        adresse: "cgv",
+        titre: "Conditions générales de vente",
+        description: "Abonnements et achats à l'unité : prix, reconduction, résiliation, rétractation et remboursement.",
+        lien: "Conditions de vente",
+        mise_a_jour: "13 septembre 2026",
+    },
+    PageJuridique {
+        adresse: "suppression-compte",
+        titre: "Supprimer votre compte",
+        description: "Comment supprimer votre compte Weave, ce qui est effacé sous trente jours, et les trois choses que nous sommes tenus de conserver.",
+        lien: "Supprimer son compte",
+        mise_a_jour: "12 septembre 2026",
+    },
+    PageJuridique {
+        adresse: "mentions-legales",
+        titre: "Mentions légales",
+        description: "Qui édite Weave, qui l'héberge, et à qui écrire pour un signalement.",
+        lien: "Mentions légales",
+        mise_a_jour: "12 septembre 2026",
     },
 ];
