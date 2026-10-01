@@ -22,6 +22,20 @@ etape() {
 
 etape "Types" bun run typecheck
 etape "Site" bun run --filter @weave/web build
+# Le portage en Yew se vérifie en comparant les deux rendus, section par
+# section : c'est la seule façon de savoir qu'aucune phrase n'a disparu en
+# route. Le rendu est en débogage et non en production — on compare du HTML,
+# pas des temps de compilation.
+# L'en-tête de `contrat.rs` annonçait qu'un test vérifiait qu'il est à jour.
+# Rien ne le vérifiait.
+etape "Site — le contrat engendré est-il à jour" \
+  bun run apps/site/outils/engendrer-contrat.ts --verifier
+
+etape "Site — le rendu Yew" \
+  cargo run --quiet --manifest-path apps/site/Cargo.toml --features ssr --bin rendre
+etape "Site — React et Yew rendent-ils la même chose" \
+  bun run apps/site/outils/comparer.ts
+
 etape "API" cargo test --manifest-path apps/api-rs/Cargo.toml
 etape "API — compilation de production" \
   cargo build --release --manifest-path apps/api-rs/Cargo.toml
