@@ -5,3 +5,4 @@ bun.lock
 
 # Artefacts de compilation Rust : ni écrits ni relus à la main.
 apps/api-rs/target
+apps/site/target
