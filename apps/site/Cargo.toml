@@ -1,0 +1,26 @@
+[package]
+name = "weave-site"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Le site vitrine, en Rust.
+#
+# Il remplace le front React. Le rendu se fait À LA CONSTRUCTION, en natif :
+# `yew::ServerRenderer` produit le HTML, et rien n'est envoyé au navigateur
+# qu'un fichier HTML et une feuille de style.
+#
+# Pas de cible wasm, donc, et pas de `trunk` : le binaire tourne sur la machine
+# qui construit. C'est ce que permet la nature du site — quelques milliers de
+# lignes de texte en trois langues, et UNE seule chose interactive.
+
+[dependencies]
+# `ssr` seul. `csr` et `hydration` restent disponibles si un jour une page a
+# besoin d'état côté client : les composants ne changeraient pas, seul le
+# point d'entrée s'ajouterait.
+yew = { version = "0.23", features = ["ssr"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[profile.release]
+opt-level = "z"
+strip = true
