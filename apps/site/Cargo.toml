@@ -4,23 +4,62 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# Le site vitrine, en Rust.
+# Le site vitrine, en Rust, avec rendu serveur ET hydratation.
 #
-# Il remplace le front React. Le rendu se fait À LA CONSTRUCTION, en natif :
-# `yew::ServerRenderer` produit le HTML, et rien n'est envoyé au navigateur
-# qu'un fichier HTML et une feuille de style.
+# Trois cibles, un seul jeu de composants :
 #
-# Pas de cible wasm, donc, et pas de `trunk` : le binaire tourne sur la machine
-# qui construit. C'est ce que permet la nature du site — quelques milliers de
-# lignes de texte en trois langues, et UNE seule chose interactive.
+# * la bibliothèque porte les composants ;
+# * `rendre`, binaire NATIF, produit le HTML à la construction (`ssr`) ;
+# * la même bibliothèque, compilée en wasm, hydrate ce HTML (`hydration`).
+#
+# Les traits sont exclusifs à la compilation : `yew/ssr` et `yew/hydration`
+# demandent des arbres de dépendances différents, et les activer ensemble
+# ferait entrer le DOM dans le binaire natif.
+
+[lib]
+# `cdylib` pour le wasm, `rlib` pour que le binaire natif lie la bibliothèque.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+ssr = ["yew/ssr", "dep:tokio"]
+hydration = [
+  "yew/hydration",
+  "dep:wasm-bindgen",
+  "dep:web-sys",
+  "dep:console_error_panic_hook",
+]
 
 [dependencies]
-# `ssr` seul. `csr` et `hydration` restent disponibles si un jour une page a
-# besoin d'état côté client : les composants ne changeraient pas, seul le
-# point d'entrée s'ajouterait.
-yew = { version = "0.23", features = ["ssr"] }
-tokio = { version = "1", features = ["rt", "macros"] }
+yew = "0.23"
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
+wasm-bindgen = { version = "0.2.129", optional = true }
+# Une panique dans le wasm sort autrement en « unreachable executed », sans
+# fichier ni ligne. Ce crochet la fait apparaître dans la console du
+# navigateur avec son message — c'est la différence entre une erreur qu'on
+# corrige et une erreur qu'on devine.
+console_error_panic_hook = { version = "0.1", optional = true }
+# Les traits sont nommés un à un, et non pris en bloc : `web-sys` expose toute
+# la plateforme web, et chaque trait activé entre dans le binaire livré.
+web-sys = { version = "0.3", optional = true, features = [
+  "Window",
+  "Document",
+  "Element",
+  "Location",
+  "console",
+] }
 
+[[bin]]
+name = "rendre"
+path = "src/bin/rendre.rs"
+required-features = ["ssr"]
+
+# Le wasm est compilé en taille, pas en vitesse d'exécution : ce qui coûte au
+# visiteur, c'est le téléchargement, pas les microsecondes d'hydratation d'un
+# menu.
 [profile.release]
 opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
 strip = true
