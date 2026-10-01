@@ -63,6 +63,11 @@ import { DOCUMENTS } from "../../web/src/pages/documents.ts";
 // raison : une seconde copie de ces textes en Rust indexerait un jour la page
 // anglaise avec un titre français.
 import { METADONNEES } from "../../web/src/pages/metadonnees.ts";
+// L'identité de l'éditeur — le seul fichier que l'éditeur doit compléter. Les
+// pages juridiques la lisent ; une seconde copie en Rust finirait par annoncer
+// un SIREN différent de celui du site React, et une mention légale fausse
+// engage pénalement son éditeur.
+import { CONTACT, EDITEUR } from "../../web/src/pages/identite.ts";
 
 const LANGUES = ["fr", "en", "es"] as const;
 
@@ -335,6 +340,85 @@ ecrire("];", "");
  * On compare donc au contenu engendré, et à rien d'autre. L'état de git n'y
  * entre pas.
  */
+/* — L'identité de l'éditeur ————————————————————————————————————— */
+
+const identite: string[] = [
+  "//! L'identité de l'éditeur. ENGENDRÉ. Ne pas modifier à la main.",
+  "//!",
+  "//! Produit par `apps/site/outils/engendrer-contrat.ts` à partir de",
+  "//! `apps/web/src/pages/identite.ts`, qui reste LE SEUL FICHIER À COMPLÉTER.",
+  "//!",
+  "//! Rien n'est inventé. Une mention légale qui annoncerait une raison sociale",
+  "//! ou un numéro d'immatriculation plausibles mais faux serait une fausse",
+  "//! déclaration — et personne ne s'apercevrait qu'elle est fausse, puisqu'elle",
+  "//! aurait l'air complète. Les valeurs manquantes sont donc des libellés",
+  "//! explicites, surlignés à l'écran, et `est_a_completer` les reconnaît.",
+  "",
+  "/// Vrai si la valeur n'a pas encore été renseignée.",
+  "///",
+  "/// Le site REFUSE de se construire pour un vrai domaine tant qu'il en reste",
+  "/// une : c'est le même critère que du côté React, et il tient à un préfixe.",
+  "pub fn est_a_completer(valeur: &str) -> bool {",
+  '    valeur.starts_with("[à compléter")',
+  "}",
+  "",
+  "pub struct Hebergeur {",
+  "    pub nom: &'static str,",
+  "    pub adresse: &'static str,",
+  "    pub telephone: &'static str,",
+  "    /// Ex. « dans l'Union européenne (Irlande) » — sert aussi aux transferts.",
+  "    pub region: &'static str,",
+  "}",
+  "",
+  "pub struct Editeur {",
+  "    /// Dénomination sociale, ou nom et prénom pour une personne physique.",
+  "    pub raison_sociale: &'static str,",
+  "    pub forme_juridique: &'static str,",
+  "    pub adresse: &'static str,",
+  "    /// SIREN ou SIRET, et numéro RCS avec sa ville d'immatriculation.",
+  "    pub immatriculation: &'static str,",
+  "    pub tva: &'static str,",
+  "    /// La personne physique responsable du contenu.",
+  "    pub directeur_publication: &'static str,",
+  "    /// La LCEN exige un moyen de contact direct et effectif.",
+  "    pub telephone: &'static str,",
+  "    pub hebergeur: Hebergeur,",
+  "}",
+  "",
+  "pub struct Contact {",
+  "    /// Exercice des droits RGPD et questions sur les données.",
+  "    pub confidentialite: &'static str,",
+  "    /// Assistance, résiliation, réclamations.",
+  "    pub support: &'static str,",
+  "    /// Point de contact unique exigé par le règlement sur les services",
+  "    /// numériques.",
+  "    pub signalements: &'static str,",
+  "}",
+  "",
+  "pub const EDITEUR: Editeur = Editeur {",
+  `    raison_sociale: ${r(EDITEUR.raisonSociale)},`,
+  `    forme_juridique: ${r(EDITEUR.formeJuridique)},`,
+  `    adresse: ${r(EDITEUR.adresse)},`,
+  `    immatriculation: ${r(EDITEUR.immatriculation)},`,
+  `    tva: ${r(EDITEUR.tva)},`,
+  `    directeur_publication: ${r(EDITEUR.directeurPublication)},`,
+  `    telephone: ${r(EDITEUR.telephone)},`,
+  "    hebergeur: Hebergeur {",
+  `        nom: ${r(EDITEUR.hebergeur.nom)},`,
+  `        adresse: ${r(EDITEUR.hebergeur.adresse)},`,
+  `        telephone: ${r(EDITEUR.hebergeur.telephone)},`,
+  `        region: ${r(EDITEUR.hebergeur.region)},`,
+  "    },",
+  "};",
+  "",
+  "pub const CONTACT: Contact = Contact {",
+  `    confidentialite: ${r(CONTACT.confidentialite)},`,
+  `    support: ${r(CONTACT.support)},`,
+  `    signalements: ${r(CONTACT.signalements)},`,
+  "};",
+  "",
+];
+
 /* — Les métadonnées de l'accueil ——————————————————————————————— */
 
 const metadonnees: string[] = [
@@ -452,5 +536,6 @@ async function poser(nom: string, contenu: string[]) {
 
 await poser("contrat.rs", lignes);
 await poser("metadonnees.rs", metadonnees);
+await poser("identite.rs", identite);
 
 if (aDerive) process.exit(1);
