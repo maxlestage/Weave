@@ -9,6 +9,23 @@ use crate::langues::Langue;
 use crate::sections::pied_de_page::PiedDePage;
 use yew::prelude::*;
 
+/// La date de la version en vigueur d'un document, par son adresse.
+///
+/// Une date par document, et non une pour tous : les textes ne changent pas
+/// ensemble, et celle de la politique de confidentialité EST la version que
+/// portent les consentements enregistrés — la changer périme ceux donnés sur
+/// la précédente.
+pub fn mise_a_jour(adresse: &str) -> &'static str {
+    crate::contrat::PAGES_JURIDIQUES
+        .iter()
+        .find(|page| page.adresse == adresse)
+        .map(|page| page.mise_a_jour)
+        // Un `expect` et non une valeur de repli : une page juridique sans date
+        // de version est un document qu'on ne peut pas dater, donc qu'on ne
+        // doit pas publier. Mieux vaut que la construction s'arrête.
+        .expect("aucune page juridique à cette adresse")
+}
+
 /// Un article du document : son ancre, son titre, son contenu.
 #[derive(Clone, PartialEq)]
 pub struct Article {
@@ -214,5 +231,64 @@ pub fn Page(p: &ProprietesPage) -> Html {
             // sont publiées que dans cette langue.
             <PiedDePage langue={Langue::Fr} />
         </>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct ProprietesTableau {
+    pub entetes: Vec<&'static str>,
+    pub lignes: Vec<Vec<Html>>,
+    /// Ce que le tableau montre, pour qui l'atteint au clavier.
+    #[prop_or_default]
+    pub titre: Option<AttrValue>,
+}
+
+/// Un tableau lisible au téléphone : il défile seul plutôt que de déborder.
+///
+/// Le conteneur qui défile est FOCALISABLE, et porte un nom. Sans cela, ce qui
+/// dépasse à droite n'était atteignable qu'à la souris ou au doigt : personne
+/// ne peut faire défiler au clavier une zone qui ne prend pas le focus, et les
+/// colonnes cachées d'un tableau de tarifs devenaient illisibles pour qui
+/// navigue au clavier. Le nom vient du titre : une zone focalisable et muette
+/// ne dit pas ce qu'on vient d'atteindre.
+#[function_component]
+pub fn Tableau(p: &ProprietesTableau) -> Html {
+    html! {
+        <div
+            class="-mx-5 mt-4 overflow-x-auto px-5 sm:mx-0 sm:px-0"
+            tabindex="0"
+            role="group"
+            aria-label={p.titre.clone().unwrap_or(AttrValue::Static("Tableau"))}
+        >
+            <table class="w-full min-w-[34rem] border-collapse text-sm">
+                <thead>
+                    <tr>
+                        { for p.entetes.iter().map(|entete| html! {
+                            <th
+                                scope="col"
+                                class="py-2 pr-4 text-left align-bottom font-semibold"
+                                style="border-bottom: 2px solid var(--bordure)"
+                            >
+                                { *entete }
+                            </th>
+                        }) }
+                    </tr>
+                </thead>
+                <tbody>
+                    { for p.lignes.iter().map(|ligne| html! {
+                        <tr>
+                            { for ligne.iter().map(|cellule| html! {
+                                <td
+                                    class="py-2.5 pr-4 align-top"
+                                    style="border-bottom: 1px solid var(--bordure)"
+                                >
+                                    { cellule.clone() }
+                                </td>
+                            }) }
+                        </tr>
+                    }) }
+                </tbody>
+            </table>
+        </div>
     }
 }
