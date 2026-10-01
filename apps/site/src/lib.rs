@@ -11,8 +11,10 @@
 
 pub mod composants;
 pub mod contrat;
+pub mod identite;
 pub mod langues;
 pub mod metadonnees;
+pub mod pages;
 pub mod racine;
 pub mod sections;
 
