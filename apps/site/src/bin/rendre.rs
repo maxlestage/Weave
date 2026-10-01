@@ -306,10 +306,38 @@ async fn main() -> std::io::Result<()> {
 /// endroit. Les pages arrivent une à une, et une adresse sans composant doit se
 /// voir — pas se deviner.
 async fn rendre_page_juridique(adresse: &str) -> Option<String> {
+    use weave_site::pages::cgu::Cgu;
+    use weave_site::pages::cgv::Cgv;
+    use weave_site::pages::confidentialite::Confidentialite;
     use weave_site::pages::mentions_legales::MentionsLegales;
+    use weave_site::pages::suppression_compte::SuppressionCompte;
     match adresse {
         "mentions-legales" => Some(
             ServerRenderer::<MentionsLegales>::new()
+                .hydratable(false)
+                .render()
+                .await,
+        ),
+        "confidentialite" => Some(
+            ServerRenderer::<Confidentialite>::new()
+                .hydratable(false)
+                .render()
+                .await,
+        ),
+        "cgu" => Some(
+            ServerRenderer::<Cgu>::new()
+                .hydratable(false)
+                .render()
+                .await,
+        ),
+        "cgv" => Some(
+            ServerRenderer::<Cgv>::new()
+                .hydratable(false)
+                .render()
+                .await,
+        ),
+        "suppression-compte" => Some(
+            ServerRenderer::<SuppressionCompte>::new()
                 .hydratable(false)
                 .render()
                 .await,

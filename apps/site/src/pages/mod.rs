@@ -6,5 +6,9 @@
 //! anglophone ou hispanophone plutôt que de le mener vers une page dont il ne
 //! saurait pas qu'elle est dans une autre langue.
 
+pub mod cgu;
+pub mod cgv;
+pub mod confidentialite;
 pub mod mentions_legales;
 pub mod page;
+pub mod suppression_compte;

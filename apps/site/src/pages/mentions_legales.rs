@@ -6,26 +6,9 @@
 //! directement accessible. L'absence de ces mentions est pénalement
 //! sanctionnée — d'où le surlignage voyant de tout ce qui manque.
 
-use crate::contrat;
 use crate::identite::{CONTACT, EDITEUR};
-use crate::pages::page::{AC, Article, Page};
+use crate::pages::page::{AC, Article, Page, mise_a_jour};
 use yew::prelude::*;
-
-/// La date de la version en vigueur, lue dans la liste engendrée.
-///
-/// Une date par document, et non une pour tous : les textes ne changent pas
-/// ensemble, et celle de la politique de confidentialité EST la version que
-/// portent les consentements enregistrés.
-fn mise_a_jour(adresse: &str) -> &'static str {
-    contrat::PAGES_JURIDIQUES
-        .iter()
-        .find(|page| page.adresse == adresse)
-        .map(|page| page.mise_a_jour)
-        // Un `expect` et non une valeur de repli : une page juridique sans date
-        // de version est un document qu'on ne peut pas dater, donc qu'on ne
-        // doit pas publier. Mieux vaut que la construction s'arrête.
-        .expect("aucune page juridique à cette adresse")
-}
 
 /// Une ligne « Libellé : valeur à compléter ».
 fn ligne(libelle: &str, valeur: &'static str) -> Html {
