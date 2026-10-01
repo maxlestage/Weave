@@ -41,9 +41,12 @@ import {
   POLICY_UPDATED_LABEL,
   REQUESTS_PER_DAY_FLOOR,
   TIERS,
+  TIER_COPY_PAR_LANGUE,
+  UNIT_DESCRIPTIONS_PAR_LANGUE,
   UNIT_PRODUCTS,
   UNIT_SKUS,
   formatPrice,
+  type FilterDepth,
   // Le chemin relatif, et non « @weave/contracts » : cette crate est du Rust,
   // elle n'est pas membre de l'espace de travail Bun, et le lui ajouter pour un
   // seul script de génération ferait porter un `package.json` à un paquet qui
@@ -51,6 +54,19 @@ import {
 } from "../../../packages/contracts/src/index.ts";
 
 const LANGUES = ["fr", "en", "es"] as const;
+
+/**
+ * La correspondance entre les valeurs du contrat et les variantes Rust.
+ *
+ * Elle est exhaustive par le typage : `Record<FilterDepth, …>` refuse de
+ * compiler s'il manque une finesse, et une finesse ajoutée au contrat casse
+ * donc la génération au lieu de produire du Rust qui ne compile pas.
+ */
+const CRITERES: Record<FilterDepth, "Base" | "Etendus" | "Precis"> = {
+  base: "Base",
+  etendus: "Etendus",
+  precis: "Precis",
+};
 const LOCALE: Record<(typeof LANGUES)[number], string> = {
   fr: "fr-FR",
   en: "en-IE",
@@ -63,6 +79,16 @@ const r = (texte: string) => `"${texte.replace(/\\/g, "\\\\").replace(/"/g, '\\"
 /** Un tableau Rust de trois chaînes, dans l'ordre des langues. */
 const traduit = (par: Record<string, string>) =>
   `Traduit([${LANGUES.map((l) => r(par[l] ?? par.fr)).join(", ")}])`;
+
+/**
+ * Trois LISTES de chaînes, dans l'ordre des langues.
+ *
+ * Les atouts d'un palier n'ont pas forcément le même nombre d'entrées d'une
+ * langue à l'autre — ils sont rédigés, pas traduits mot à mot — d'où une
+ * tranche et non un tableau de taille fixe.
+ */
+const traduitListes = (par: Record<string, readonly string[]>) =>
+  `Traduit([${LANGUES.map((l) => `&[${(par[l] ?? par.fr).map(r).join(", ")}]`).join(", ")}])`;
 
 const lignes: string[] = [];
 const ecrire = (...l: string[]) => lignes.push(...l);
@@ -116,16 +142,34 @@ ecrire("];", "");
 ecrire(
   "// — Le catalogue ————————————————————————————————————————————————",
   "",
+  "/// La finesse des critères de recherche qu'un palier ouvre.",
+  "///",
+  "/// Une énumération, là où le contrat a une union de chaînes. Le libellé",
+  "/// affiché n'est PAS ici : il appartient à la section qui le montre, et il",
+  "/// est traduit. Ce qui est ici, c'est le fait — et un `match` dessus ne",
+  "/// compile pas s'il oublie un cas, là où une chaîne demanderait un cas par",
+  "/// défaut qui afficherait « base » tel quel au visiteur.",
+  "#[derive(Clone, Copy, PartialEq, Eq, Debug)]",
+  "pub enum Criteres {",
+  "    Base,",
+  "    Etendus,",
+  "    Precis,",
+  "}",
+  "",
   "pub struct Palier {",
   "    pub cle: &'static str,",
   "    pub nom: &'static str,",
-  "    pub accroche: &'static str,",
+  "    pub accroche: Traduit<&'static str>,",
   "    pub prix_centimes: u32,",
   "    /// Le prix mis en forme, par langue. Mis en forme ICI : `Intl` n'existe",
   "    /// pas en Rust, et deux mises en forme différentes donneraient deux prix",
   "    /// affichés différents pour un même nombre de centimes.",
   "    pub prix: Traduit<&'static str>,",
-  "    pub atouts: &'static [&'static str],",
+  "    pub atouts: Traduit<&'static [&'static str]>,",
+  "    pub demandes_par_jour: u32,",
+  "    pub jours_a_l_avance: u32,",
+  "    pub criteres: Criteres,",
+  "    pub plans_de_groupe: bool,",
   "}",
   "",
   `pub const PALIERS: [Palier; ${PLAN_TIERS.length}] = [`,
@@ -135,14 +179,25 @@ for (const cle of PLAN_TIERS) {
   const prix = Object.fromEntries(
     LANGUES.map((l) => [l, formatPrice(palier.monthlyPriceCents, LOCALE[l])]),
   );
+  const accroche = Object.fromEntries(
+    LANGUES.map((l) => [l, TIER_COPY_PAR_LANGUE[l][cle].tagline]),
+  );
+  const atouts = Object.fromEntries(
+    LANGUES.map((l) => [l, TIER_COPY_PAR_LANGUE[l][cle].highlights]),
+  );
+  const criteres = CRITERES[palier.entitlements.filters];
   ecrire(
     "    Palier {",
     `        cle: ${r(palier.tier)},`,
     `        nom: ${r(palier.name)},`,
-    `        accroche: ${r(palier.tagline)},`,
+    `        accroche: ${traduit(accroche)},`,
     `        prix_centimes: ${palier.monthlyPriceCents},`,
     `        prix: ${traduit(prix)},`,
-    `        atouts: &[${palier.highlights.map(r).join(", ")}],`,
+    `        atouts: ${traduitListes(atouts)},`,
+    `        demandes_par_jour: ${palier.entitlements.requestsPerDay},`,
+    `        jours_a_l_avance: ${palier.entitlements.daysAhead},`,
+    `        criteres: Criteres::${criteres},`,
+    `        plans_de_groupe: ${palier.entitlements.groupPlans},`,
     "    },",
   );
 }
@@ -152,7 +207,7 @@ ecrire(
   "pub struct ProduitUnite {",
   "    pub sku: &'static str,",
   "    pub nom: &'static str,",
-  "    pub description: &'static str,",
+  "    pub description: Traduit<&'static str>,",
   "    pub prix_centimes: u32,",
   "    pub prix: Traduit<&'static str>,",
   "}",
@@ -168,7 +223,9 @@ for (const sku of UNIT_SKUS) {
     "    ProduitUnite {",
     `        sku: ${r(sku)},`,
     `        nom: ${r(produit.name)},`,
-    `        description: ${r(produit.description)},`,
+    `        description: ${traduit(
+      Object.fromEntries(LANGUES.map((l) => [l, UNIT_DESCRIPTIONS_PAR_LANGUE[l][sku]])),
+    )},`,
     `        prix_centimes: ${produit.priceCents},`,
     `        prix: ${traduit(prix)},`,
     "    },",
@@ -177,5 +234,63 @@ for (const sku of UNIT_SKUS) {
 ecrire("];", "");
 
 const sortie = new URL("../src/contrat.rs", import.meta.url).pathname;
-await Bun.write(sortie, lignes.join("\n"));
-console.log(`src/contrat.rs engendré — ${lignes.length} lignes`);
+
+/*
+ * `--verifier` : engendre, et dit si le fichier du dépôt est celui qu'on
+ * vient d'engendrer — sans le remplacer.
+ *
+ * Ma première version de cette garde comparait avec `git diff --exit-code`, ce
+ * qui était faux : elle échouait sur tout fichier modifié mais pas encore
+ * validé, donc pendant exactement le travail qu'elle devait accompagner. Elle
+ * ne disait pas « le fichier a dérivé du contrat », elle disait « le fichier a
+ * changé depuis la dernière validation » — deux choses différentes, dont une
+ * seule est un défaut.
+ *
+ * On compare donc au contenu engendré, et à rien d'autre. L'état de git n'y
+ * entre pas.
+ */
+const verifier = Bun.argv.includes("--verifier");
+
+const temporaire = verifier ? `${sortie}.verification` : sortie;
+await Bun.write(temporaire, lignes.join("\n"));
+
+/*
+ * On repasse `rustfmt` dessus.
+ *
+ * Écrire du Rust déjà bien coupé depuis un script TypeScript demanderait de
+ * reproduire les règles de coupe de `rustfmt` — la largeur de ligne, le moment
+ * où un littéral de structure passe en plusieurs lignes — et de s'en écarter
+ * à la première occasion. Autant laisser l'outil qui les connaît faire le
+ * travail : sans quoi `cargo fmt` reformate le fichier engendré, le test qui
+ * vérifie qu'il est à jour échoue, et on régénère en rond.
+ */
+const miseEnForme = Bun.spawnSync(["rustfmt", "--edition", "2024", temporaire]);
+if (!miseEnForme.success) {
+  // Pas une erreur fatale : le Rust engendré est valide, seulement mal coupé.
+  // Le taire, en revanche, laisserait croire que le fichier est canonique.
+  console.warn(
+    `rustfmt n'a pas pu mettre en forme le fichier : ${new TextDecoder().decode(miseEnForme.stderr).trim()}`,
+  );
+}
+
+const relu = await Bun.file(temporaire).text();
+
+if (verifier) {
+  const dansLeDepot = await Bun.file(sortie)
+    .text()
+    .catch(() => null);
+  await Bun.file(temporaire).delete();
+
+  if (dansLeDepot === relu) {
+    console.log(`src/contrat.rs est à jour — ${relu.split("\n").length} lignes`);
+  } else {
+    console.error(
+      "src/contrat.rs a DÉRIVÉ du contrat partagé.\n" +
+        "Le site annoncerait donc autre chose que ce que le contrat dit.\n" +
+        "  bun run apps/site/outils/engendrer-contrat.ts",
+    );
+    process.exit(1);
+  }
+} else {
+  console.log(`src/contrat.rs engendré — ${relu.split("\n").length} lignes`);
+}

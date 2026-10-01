@@ -1,12 +1,5 @@
 //! Les langues du site.
 //!
-//! `locale` ne sert pas encore : elle alimentera `og:locale` quand la coquille
-//! HTML sera portée. Comme pour les briques d'interface, le silence est
-//! temporaire et dit pourquoi.
-
-#![allow(dead_code)]
-
-//!
 //! Le français reste la langue de référence : c'est celle dans laquelle les
 //! textes sont écrits et relus, et celle qui fait foi pour les pages
 //! juridiques. Les autres en sont des traductions.

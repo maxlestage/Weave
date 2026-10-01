@@ -16,7 +16,16 @@ use yew::ServerRenderer;
 
 /// Le dossier de sortie, à côté de celui de `apps/web` tant que les deux
 /// chaînes coexistent : on compare les deux rendus plutôt que d'en croire un.
-const SORTIE: &str = "dist-rs";
+///
+/// Il est résolu depuis le dossier de la crate et NON depuis le dossier
+/// courant. Lancé par `cargo run --manifest-path apps/site/Cargo.toml` depuis
+/// la racine du dépôt — ce que fait `verifier.sh` — un chemin relatif au
+/// dossier courant aurait semé le rendu à la racine, et la comparaison aurait
+/// annoncé que Yew ne rend rien. Le rendu doit arriver au même endroit quelle
+/// que soit la façon de le lancer.
+fn sortie(sous: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(sous)
+}
 
 /// La coquille HTML.
 ///
@@ -54,7 +63,7 @@ fn coquille(langue: Langue, corps: &str) -> String {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
-    let racine = std::path::Path::new(SORTIE);
+    let racine = sortie("dist-rs");
     let mut pages = Vec::new();
 
     for langue in LANGUES {
@@ -113,7 +122,7 @@ fn rapporter(pages: &[(Langue, usize, usize, usize)]) {
     let mut total = 0usize;
     let mut complet = true;
     for fichier in ["dist-wasm/weave_site_bg.wasm", "dist-wasm/weave_site.js"] {
-        match std::fs::read(fichier) {
+        match std::fs::read(sortie(fichier)) {
             Ok(octets) => {
                 let compresse = gzip(&octets);
                 total += compresse;

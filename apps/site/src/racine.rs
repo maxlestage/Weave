@@ -1,8 +1,8 @@
 //! L'arbre de l'accueil, partagé par le rendu serveur et l'hydratation.
 
-use crate::composants::{Carte, Fil, Section};
-use crate::contrat;
 use crate::langues::{LANGUES, Langue};
+use crate::sections::deroule::Deroule;
+use crate::sections::offres::Offres;
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -133,32 +133,12 @@ pub fn Accueil(p: &ProprietesLangue) -> Html {
     html! {
         <>
             <header class="sticky top-0 z-50 flex items-center justify-between px-5 py-3">
-                <span class="font-semibold">{ "Weave ‣" }</span>
+                <span class="font-semibold">{ "Weave \u{2023}" }</span>
                 <MenuTelephone />
             </header>
             <main>
-                <Section id="offres" titre="Les offres" fil={Fil::Cinq} alterne=true>
-                    <ul class="grid gap-6 sm:grid-cols-2">
-                        { for contrat::PALIERS.iter().map(|palier| html! {
-                            <li>
-                                <Carte fil={Fil::Cinq} accentuee={palier.prix_centimes == 0}>
-                                    <h3 class="text-lg font-bold">{ palier.nom }</h3>
-                                    <p class="mt-1 text-2xl font-semibold tabular-nums">
-                                        { *palier.prix.choisir(p.langue) }
-                                    </p>
-                                    <p class="mt-2" style="color: var(--texte-doux)">
-                                        { palier.accroche }
-                                    </p>
-                                    <ul class="mt-4 space-y-1 text-sm">
-                                        { for palier.atouts.iter().map(|atout| html! {
-                                            <li>{ *atout }</li>
-                                        }) }
-                                    </ul>
-                                </Carte>
-                            </li>
-                        }) }
-                    </ul>
-                </Section>
+                <Deroule langue={p.langue} />
+                <Offres langue={p.langue} />
             </main>
             <footer class="px-5 py-10 sm:px-8">
                 <ChoixDeLangue langue={p.langue} />

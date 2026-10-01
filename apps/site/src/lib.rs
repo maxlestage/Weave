@@ -13,6 +13,7 @@ pub mod composants;
 pub mod contrat;
 pub mod langues;
 pub mod racine;
+pub mod sections;
 
 #[cfg(feature = "hydration")]
 mod hydratation {

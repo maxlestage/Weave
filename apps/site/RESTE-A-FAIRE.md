@@ -10,8 +10,10 @@ site livré, et le fera jusqu'à ce que le portage soit complet et comparé.
 |---|---|
 | Yew | 0.23.0 — la dernière publiée (mars 2026), MSRV 1.84 |
 | Rendu | `ServerRenderer` natif, aucune cible wasm, aucun `trunk` |
-| Marqueurs d'hydratation | désactivés (`hydratable(false)`) |
+| Marqueurs d'hydratation | actifs ; leur coût est mesuré à chaque rendu |
 | Contrat partagé | **engendré** depuis `packages/contracts`, pas recopié |
+| Textes de palier | engendrés eux aussi, dans les trois langues |
+| Droits (demandes, horizon, critères) | engendrés ; `Criteres` est une énumération |
 | Prix | mis en forme par le vrai `formatPrice` : `4,99 €` / `€4.99` |
 
 ## Le wasm et l'hydratation, mesurés
@@ -52,14 +54,14 @@ davantage.
 
 Sections, par ordre de difficulté croissante :
 
-- [ ] `Deroule.tsx` — 137 lignes
+- [x] `Deroule.tsx` — 137 lignes
 - [ ] `PiedDePage.tsx` — 155
 - [ ] `Questions.tsx` — 153 (déjà en `<details>`, portage direct)
-- [ ] `Appareils.tsx` — 170
+- [ ] `Appareils.tsx` — 170 (section `#montre`)
 - [ ] `Confiance.tsx` — 177
-- [ ] `Entete.tsx` — 202 (le menu devient `<details>`)
+- [ ] `Entete.tsx` — 202 (section `#haut` ; le menu devient `<details>`)
 - [ ] `Principe.tsx` — 227
-- [x] `Offres.tsx` — 254 (fait : c'est la tranche qui a servi de preuve)
+- [x] `Offres.tsx` — 254
 - [ ] `Ouverture.tsx` — 284
 
 Pages juridiques — du texte dense, dont chaque caractère doit survivre :
@@ -78,17 +80,48 @@ incomplètes, mesure du poids compressé.
 
 ## Comment le portage se vérifie
 
-Pas à l'œil. Les deux chaînes rendent le même site : on compare.
+Pas à l'œil. Les deux chaînes rendent le même site, donc on compare — et c'est
+fait : `outils/comparer.ts`, branché dans `verifier.sh`.
 
-1. `apps/web` construit dans `dist/`, `apps/site` dans `dist-rs/`.
-2. Pour chaque page et chaque langue, on extrait le texte visible et on le
-   compare. C'est ce qui prouve qu'aucun mot de CGU n'a disparu.
-3. On compare aussi la structure : titres, `id`, `href`, attributs `aria`.
+    bun run apps/site/outils/comparer.ts
+
+Il relève de chaque page les balises, leurs attributs et leur texte, les
+découpe par section, et compare section par section et langue par langue.
+Celles que Yew ne rend pas encore sont listées, pas comptées comme des fautes :
+l'outil est utile pendant le portage, et non seulement à la fin.
 
 Un `style` perdu ne se voit PAS dans une comparaison de texte : ma première
 version de `composants.rs` posait `style="color-mix(…)"` sans nom de
 propriété, et les sections alternées auraient perdu leur fond en silence. La
-comparaison porte donc aussi sur les attributs.
+comparaison porte donc aussi sur les attributs — et l'outil a été éprouvé en
+cassant exprès cinq choses :
+
+| ce qu'on casse | ce que l'outil dit |
+|---|---|
+| deux mots retirés d'une étape | texte DIFFÉRENT, à la bonne phrase |
+| `style="color: …"` devenu `style="…"` | texte identique, structure différente |
+| une classe utilitaire perdue | texte identique, structure différente |
+| un `aria-hidden` retiré | texte identique, structure différente |
+| une `<Etiquette>` entière absente | texte DIFFÉRENT |
+
+Et il a lui-même été pris en défaut deux fois en une heure : il décodait les
+entités HTML d'un côté seulement — React échappe l'apostrophe, Yew non — et il
+relevait le nom des balises fermantes dans un rappel où `tagName` ne vaut plus
+rien. Les fermetures s'appelaient donc toutes `undefined`, ce qui ne faisait
+pas échouer la comparaison (les deux relevés se trompaient pareil) mais
+empêchait de trouver la fin d'une section : chacune s'étendait jusqu'au bas de
+la page, et l'outil signalait des divergences inventées.
+
+### Ce que la comparaison a trouvé du premier coup
+
+`Offres` était notée faite plus haut dans ce fichier. Elle ne l'était pas :
+c'était une liste de paliers simplifiée, sans le tableau des droits, sans les
+produits à l'unité, sans les accroches traduites, avec un mauvais fil de
+couleur et un fond alterné que React ne pose pas. Le titre affiché était « Les
+offres » quand React dit « Quatre abonnements, et tout à l'unité ».
+
+La comparaison l'a dit à sa première exécution. C'est exactement pour cela
+qu'elle vient avant les sept sections restantes, et non après.
 
 ## Les tests de contrat à rebrancher
 

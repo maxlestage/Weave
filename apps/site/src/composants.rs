@@ -1,14 +1,4 @@
 //! Briques d'interface partagées par les sections du site.
-//!
-//! ## Les briques portées d'avance
-//!
-//! Les sections qui s'en servent arrivent une à une, et clippy signale à juste
-//! titre celles qui n'ont pas encore d'emploi. Le `allow` ci-dessous est donc
-//! TEMPORAIRE, et il porte la raison de sa présence : il tombe avec la
-//! dernière section portée. Le laisser sans note en ferait un silence
-//! définitif, et c'est exactement ce qu'un avertissement tu devient.
-
-#![allow(dead_code)]
 
 use yew::prelude::*;
 
