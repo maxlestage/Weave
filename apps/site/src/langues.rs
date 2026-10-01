@@ -66,6 +66,19 @@ impl Langue {
         }
     }
 
+    /// La langue que désigne une adresse.
+    ///
+    /// Lue au démarrage côté client pour hydrater dans la MÊME langue que
+    /// celle du rendu : une page rendue en anglais qui s'hydraterait en
+    /// français remplacerait tout son texte au premier affichage.
+    pub fn du_chemin(chemin: &str) -> Langue {
+        let premier = chemin.split('/').find(|s| !s.is_empty()).unwrap_or("");
+        LANGUES
+            .into_iter()
+            .find(|l| l.code() == premier)
+            .unwrap_or(LANGUE_PAR_DEFAUT)
+    }
+
     /// L'adresse d'une page dans cette langue.
     pub fn chemin(self, slug: &str) -> String {
         let base = self.prefixe();

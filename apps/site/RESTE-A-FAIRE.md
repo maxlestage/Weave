@@ -14,17 +14,39 @@ site livré, et le fera jusqu'à ce que le portage soit complet et comparé.
 | Contrat partagé | **engendré** depuis `packages/contracts`, pas recopié |
 | Prix | mis en forme par le vrai `formatPrice` : `4,99 €` / `€4.99` |
 
-## Pourquoi aucun JavaScript n'est envoyé
+## Le wasm et l'hydratation, mesurés
 
-Toute l'interactivité du site tient en **un menu de téléphone**. Les questions
-dépliantes utilisaient déjà `<details>` natif. Le menu en devient un aussi.
+Demandés, construits, et voici ce qu'ils pèsent réellement — une seule section
+portée, la fondation complète :
 
-Le navigateur ne reçoit donc qu'un HTML et une feuille de style, là où React
-envoyait **84 Kio compressés** de JavaScript — sur un site que l'on consulte
-surtout en 4G, et dont la construction mesure ce poids à chaque passage.
+| | gzip |
+|---|---|
+| `weave_site_bg.wasm` | 98 711 |
+| `weave_site.js` (colle wasm-bindgen) | 6 357 |
+| **total téléchargé en plus** | **105 068** |
+| Pour mémoire, le paquet React remplacé | 85 237 |
 
-C'est l'inverse de ce qu'une reprise en wasm aurait donné : un binaire de
-150 à 250 Kio compressés pour animer un menu.
+Soit **+23 %**. Et ce total est un plancher : il est surtout fait du coût fixe
+de Yew, mais les treize fichiers de contenu restants s'y ajouteront.
+
+Le HTML hydratable coûte en plus **745 octets de marqueurs par page** —
+mesurés en rendant deux fois le même arbre, avec et sans.
+
+### `wasm-opt` n'est pas lancé, et c'est mesuré
+
+`-Oz`, `-Os` et `-O2` réduisent tous le fichier brut — 273 Kio tombent à 240 —
+mais ils **augmentent** le compressé : 98 730 octets deviennent 100 386, 100 554
+et 101 378. Ils réorganisent le code d'une façon qui compresse moins bien, et
+c'est le compressé que le visiteur télécharge.
+
+### Ce que le wasm apporte, et ce qu'il n'apporte pas
+
+Il n'accélère pas l'affichage : la page est rendue en HTML et lisible avant
+qu'un octet de wasm n'arrive. L'hydratation vient après, et ajoute du travail.
+
+Ce qu'il apporte est une **capacité** : de l'état côté client. Aujourd'hui elle
+sert au seul menu de téléphone ; elle sera là le jour où une page en demandera
+davantage.
 
 ## Ce qui reste à porter
 
