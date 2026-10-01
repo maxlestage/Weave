@@ -11,6 +11,7 @@
 
 use std::io::Write;
 use weave_site::langues::{LANGUES, Langue};
+use weave_site::metadonnees::metadonnees;
 use weave_site::racine::{Accueil, ProprietesLangue};
 use yew::ServerRenderer;
 
@@ -27,12 +28,48 @@ fn sortie(sous: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(sous)
 }
 
+/// Le fichier qui démarre l'hydratation.
+///
+/// Un fichier à part, et non un script en ligne : `<script type="module" src>`
+/// est exactement ce que fait la chaîne React, et une balise vide se compare —
+/// un script en ligne, non, son corps étant du JavaScript que rien n'a à
+/// relire. Surtout, un fichier qu'on écrit est un fichier dont on peut
+/// vérifier la PRÉSENCE, et une balise qui pointe vers rien donne une page qui
+/// ne s'hydratera jamais.
+const DEMARREUR: &str = "demarrer.js";
+
+/// `weave_site.js` est produit par `wasm-bindgen`, et exporte sa fonction
+/// d'initialisation par défaut. L'appeler lance la fonction marquée
+/// `#[wasm_bindgen(start)]`, donc l'hydratation.
+const DEMARREUR_CONTENU: &str = "import demarrer from \"/weave_site.js\";\ndemarrer();\n";
+
 /// La coquille HTML.
 ///
-/// Le script est en `module` et en `defer` implicite : il ne bloque pas
-/// l'affichage. La page est lisible avant qu'un octet de wasm n'arrive — c'est
-/// tout l'intérêt du rendu serveur, et l'hydratation ne vient qu'après.
-fn coquille(langue: Langue, corps: &str) -> String {
+/// Elle reprend celle qu'écrit `apps/web/build.ts`, balise pour balise : titre,
+/// description, Open Graph et données structurées viennent de
+/// `metadonnees.rs`, lui-même engendré depuis la source React. Les deux
+/// chaînes doivent dire la même chose aux moteurs — un titre français sur
+/// `/en/` ferait indexer la page anglaise comme française.
+///
+/// Le script est en `module`, donc différé : il ne bloque pas l'affichage. La
+/// page est lisible avant qu'un octet de wasm n'arrive — c'est tout l'intérêt
+/// du rendu serveur, et l'hydratation ne vient qu'après.
+fn coquille(langue: Langue, corps: &str, feuille: &str, icone: &str) -> String {
+    let m = metadonnees(langue);
+
+    // Les autres langues, dans l'ordre où `LANGUES` les déclare : c'est celui
+    // que la chaîne React emploie, et l'ordre des balises se compare.
+    let alternatives: String = LANGUES
+        .iter()
+        .filter(|&&autre| autre != langue)
+        .map(|autre| {
+            format!(
+                "    <meta property=\"og:locale:alternate\" content=\"{}\" />\n",
+                metadonnees(*autre).og_locale,
+            )
+        })
+        .collect();
+
     format!(
         // `r##` et non `r#` : le HTML contient `content="#16121f"`, et la
         // séquence `"#` refermerait une chaîne brute à un seul dièse.
@@ -43,27 +80,118 @@ fn coquille(langue: Langue, corps: &str) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#16121f" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
-    <title>Weave ‣</title>
-    <meta property="og:locale" content="{locale}" />
-    <link rel="stylesheet" href="/style.css" />
+    <title>{titre}</title>
+    <meta name="description" content="{description}" />
+
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:site_name" content="Weave" />
+    <meta property="og:title" content="{partage_titre}" />
+    <meta property="og:description" content="{partage_description}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="{og_locale}" />
+{alternatives}    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="{partage_image_alt}" />
+    <link rel="icon" href="/{icone}" type="image/svg+xml" />
+    <link rel="stylesheet" href="/{feuille}" />
+    <script type="application/ld+json">
+      {{
+        "@context": "https://schema.org",
+        "@type": "MobileApplication",
+        "name": "Weave",
+        "applicationCategory": "SocialNetworkingApplication",
+        "operatingSystem": "iOS, watchOS",
+        "inLanguage": "{bcp47}",
+        "description": "{application_description}",
+        "offers": {{
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "EUR",
+          "description": "{offre_description}"
+        }}
+      }}
+    </script>
   </head>
   <body>
     <div id="racine">{corps}</div>
-    <script type="module">
-      import demarrer from "/weave_site.js";
-      demarrer();
-    </script>
+    <script type="module" src="/{DEMARREUR}"></script>
   </body>
 </html>
 "##,
         code = langue.code(),
-        locale = langue.locale(),
+        titre = echapper(m.titre),
+        description = echapper(m.description),
+        partage_titre = echapper(m.partage_titre),
+        partage_description = echapper(m.partage_description),
+        partage_image_alt = echapper(m.partage_image_alt),
+        og_locale = m.og_locale,
+        bcp47 = m.bcp47,
+        application_description = echapper(m.application_description),
+        offre_description = echapper(m.offre_description),
     )
+}
+
+/// Échappe un texte destiné à un attribut HTML.
+///
+/// Les descriptions contiennent des apostrophes et des deux-points ; une seule
+/// a besoin d'être échappée pour tenir dans un attribut entre guillemets
+/// doubles, mais les quatre autres caractères le sont aussi — un texte de
+/// référencement se modifie, et il ne doit pas pouvoir casser la page le jour
+/// où quelqu'un y met un chevron.
+fn echapper(texte: &str) -> String {
+    texte
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Les noms des fichiers d'habillage, tels que la chaîne React les a empreints.
+///
+/// La feuille de style et l'icône portent une empreinte de leur contenu
+/// (`chunk-5jqgjvep.css`), produite par l'empaqueteur de Bun. La chaîne Rust ne
+/// sait pas la recalculer : il faudrait refaire le même empaquetage, au même
+/// octet.
+///
+/// Elle les LIT donc dans `apps/web/dist`, le temps que le portage dure. C'est
+/// un étai, et il est visible : il disparaît le jour où la chaîne Rust produira
+/// elle-même l'habillage. Sans cet étai, les deux coquilles différeraient sur
+/// deux lignes qui ne disent rien du portage.
+fn habillage() -> std::io::Result<(String, String)> {
+    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("web")
+        .join("dist");
+
+    let trouver = |prefixe: &str, extension: &str| -> std::io::Result<String> {
+        let mut noms: Vec<String> = std::fs::read_dir(&dossier)?
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|nom| nom.starts_with(prefixe) && nom.ends_with(extension))
+            .collect();
+        // Trié : `read_dir` ne promet aucun ordre, et une sortie qui change
+        // d'une exécution à l'autre ferait clignoter la comparaison.
+        noms.sort();
+        match noms.len() {
+            1 => Ok(noms.remove(0)),
+            0 => Err(std::io::Error::other(format!(
+                "aucun fichier « {prefixe}*{extension} » dans apps/web/dist — \
+                 construire le site React d'abord : bun run --filter @weave/web build"
+            ))),
+            n => Err(std::io::Error::other(format!(
+                "{n} fichiers « {prefixe}*{extension} » dans apps/web/dist : {noms:?}"
+            ))),
+        }
+    };
+
+    Ok((trouver("chunk-", ".css")?, trouver("favicon-", ".svg")?))
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
     let racine = sortie("dist-rs");
+    let (feuille, icone) = habillage()?;
     let mut pages = Vec::new();
 
     for langue in LANGUES {
@@ -78,7 +206,7 @@ async fn main() -> std::io::Result<()> {
             .render()
             .await;
 
-        let page = coquille(langue, &corps);
+        let page = coquille(langue, &corps, &feuille, &icone);
 
         let dossier = racine.join(langue.prefixe().trim_start_matches('/'));
         std::fs::create_dir_all(&dossier)?;
@@ -91,6 +219,9 @@ async fn main() -> std::io::Result<()> {
             gzip(page.as_bytes()),
         ));
     }
+
+    std::fs::create_dir_all(&racine)?;
+    std::fs::write(racine.join(DEMARREUR), DEMARREUR_CONTENU)?;
 
     rapporter(&pages);
     Ok(())

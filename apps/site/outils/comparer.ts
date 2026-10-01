@@ -31,26 +31,6 @@ const RACINE = new URL("../../../", import.meta.url).pathname;
 const REACT = `${RACINE}apps/web/dist`;
 const YEW = `${RACINE}apps/site/dist-rs`;
 
-/*
- * La coquille HTML n'est pas encore portée, et on le DIT plutôt que de la taire.
- *
- * `<head>` est produit par `apps/web/build.ts` — adresses canoniques,
- * `hreflang`, plan du site, titres et descriptions par page. Du côté Yew,
- * `rendre.rs` écrit pour l'instant une coquille de dépannage, écrite à la
- * main. Ce n'est donc pas une régression : c'est du travail qui reste, comme
- * les sections que Yew ne rend pas encore.
- *
- * On la compare quand même, et la différence s'affiche à chaque exécution :
- * c'est ainsi qu'elle reste visible. Elle ne fait pas échouer l'outil tant que
- * ce drapeau est faux — autrement la CI serait rouge en permanence, et une CI
- * rouge en permanence ne dit plus rien de personne.
- *
- * Le jour où `build.ts` est porté : passer ce drapeau à `true`. Il est ici, et
- * nommé, précisément pour qu'on ne l'oublie pas dans un `if` au fond du
- * fichier.
- */
-const LA_COQUILLE_EST_PORTEE = false;
-
 const LANGUES = [
   { code: "fr", prefixe: "" },
   { code: "en", prefixe: "/en" },
@@ -83,6 +63,19 @@ const VIDES = new Set([
 
 /** Les balises dont le contenu n'est pas du texte lu par un visiteur. */
 const MUETTES = new Set(["script", "style", "template"]);
+
+/**
+ * Les données structurées, elles, SE COMPARENT.
+ *
+ * `<script type="application/ld+json">` ne contient pas du code mais des
+ * données : le nom de l'application, sa langue, sa description, son prix. Un
+ * moteur les lit et les affiche. Les taire avec le reste des `<script>`
+ * laissait un bloc entier de texte indexable hors de toute comparaison — le
+ * prix annoncé aux moteurs pouvait passer de 0 à autre chose sans que rien ne
+ * s'en plaigne.
+ */
+const estDesDonnees = (balise: string, attributs: string) =>
+  balise === "script" && attributs.includes('type="application/ld+json"');
 
 /**
  * Normalise une liste de classes.
@@ -167,14 +160,29 @@ async function relever(html: string): Promise<Evenement[]> {
   const rewriter = new HTMLRewriter();
   rewriter.on("*", {
     element(e) {
-      if (MUETTES.has(e.tagName)) {
+      if (muet > 0) return;
+
+      /*
+       * La BALISE d'un `<script>` se compare, son CONTENU non.
+       *
+       * Première version : les `<script>` disparaissaient entièrement du
+       * relevé, balise comprise. C'était un angle mort grave. React termine le
+       * corps par `<script type="module" src="/chunk-w0zhmwrj.js">` : c'est ce
+       * fichier qui hydrate la page. Une adresse fausse, ou la balise absente,
+       * donne une page qui ne s'hydratera jamais — et l'outil annonçait
+       * « identique ».
+       *
+       * On relève donc la balise et ses attributs, et on ne tait que le corps :
+       * du JavaScript minifié n'a pas à être comparé ligne à ligne. Les données
+       * structurées font exception, elles se comparent entièrement.
+       */
+      const type = e.getAttribute("type");
+      if (MUETTES.has(e.tagName) && !estDesDonnees(e.tagName, `type="${type ?? ""}"`)) {
         muet += 1;
         e.onEndTag(() => {
           muet -= 1;
         });
-        return;
       }
-      if (muet > 0) return;
 
       const attributs = [...e.attributes]
         .map(([nom, valeur]) => [nom.toLowerCase(), normaliserAttribut(nom.toLowerCase(), valeur)])
@@ -320,6 +328,63 @@ function diverger(attendu: Evenement[], obtenu: Evenement[]): string[] | null {
 const texteSeul = (evenements: Evenement[]) =>
   evenements.filter((e): e is Texte => e.genre === "texte").map((e) => e.texte);
 
+/* — Le script d'hydratation ———————————————————————————————————— */
+
+/** Les balises de module, et leur adresse. */
+const modules = (evenements: Evenement[]) =>
+  evenements.flatMap((e, index) =>
+    e.genre === "ouvre" && e.balise === "script" && /\btype="module"/.test(e.attributs)
+      ? [{ index, src: /\bsrc="([^"]*)"/.exec(e.attributs)?.[1] ?? null }]
+      : [],
+  );
+
+/** Retire les balises de module des deux relevés, après les avoir contrôlées. */
+async function verifierLeDemarreur(
+  gauche: Evenement[],
+  droite: Evenement[],
+  racineYew: string,
+): Promise<{
+  gauche: Evenement[];
+  droite: Evenement[];
+  probleme: string | null;
+  dit: string;
+}> {
+  const aGauche = modules(gauche);
+  const aDroite = modules(droite);
+
+  // La balise fermante suit immédiatement l'ouvrante : un `<script src>` n'a
+  // pas de contenu, et son corps est de toute façon tu.
+  const sans = (evenements: Evenement[], reperes: { index: number }[]) => {
+    const aRetirer = new Set(reperes.flatMap((r) => [r.index, r.index + 1]));
+    return evenements.filter((_, i) => !aRetirer.has(i));
+  };
+  const restes = { gauche: sans(gauche, aGauche), droite: sans(droite, aDroite) };
+
+  const dire = (probleme: string | null, dit: string) => ({ ...restes, probleme, dit });
+
+  if (aGauche.length !== 1 || aDroite.length !== 1) {
+    return dire(
+      `React en a ${aGauche.length}, Yew ${aDroite.length} — il en faut exactement un de chaque`,
+      "",
+    );
+  }
+  if (aGauche[0].src === null || aDroite[0].src === null) {
+    return dire("une des deux balises n'a pas de « src » : rien ne se chargera", "");
+  }
+
+  // Le fichier de Yew doit exister. Celui de React n'est pas vérifié ici :
+  // c'est la chaîne qu'on remplace, et sa construction a ses propres gardes.
+  const chemin = `${racineYew}/${aDroite[0].src.replace(/^\//, "")}`;
+  if (!(await Bun.file(chemin).exists())) {
+    return dire(`Yew charge « ${aDroite[0].src} », et ce fichier n'existe pas`, "");
+  }
+
+  return dire(
+    null,
+    `chaînes différentes, comme prévu : React « ${aGauche[0].src} », Yew « ${aDroite[0].src} » (présent)`,
+  );
+}
+
 /* — Le déroulé ——————————————————————————————————————————————————— */
 
 const lire = async (chemin: string) => {
@@ -417,8 +482,35 @@ for (const langue of LANGUES) {
     ["body", "le corps de la page"],
     ["head", "la coquille HTML"],
   ] as const) {
-    const gauche = contenuDe(attendu, balise);
-    const droite = contenuDe(obtenu, balise);
+    let gauche = contenuDe(attendu, balise);
+    let droite = contenuDe(obtenu, balise);
+
+    /*
+     * Le script qui charge l'application est le SEUL nœud qu'on retire.
+     *
+     * Les deux chaînes chargent forcément deux paquets différents — c'est
+     * l'objet même du remplacement : React charge `/chunk-w0zhmwrj.js`, Yew
+     * charge `/demarrer.js`, qui importe le wasm. Exiger la même adresse
+     * reviendrait à exiger le même empaqueteur.
+     *
+     * Mais on ne l'ignore pas : on le VÉRIFIE, et plus sévèrement qu'une
+     * comparaison ne le ferait. Chaque côté doit avoir exactement une balise de
+     * module avec une adresse, et celle de Yew doit désigner un fichier qui
+     * existe. Une balise absente, ou qui pointe vers rien, donne une page qui
+     * ne s'hydratera jamais — et c'est le genre de panne qu'on ne voit pas en
+     * regardant la page, puisqu'elle s'affiche très bien.
+     */
+    if (balise === "body" && gauche !== null && droite !== null) {
+      const verdict = await verifierLeDemarreur(gauche, droite, YEW);
+      if (verdict.probleme !== null) {
+        divergences += 1;
+        console.log(`    le script d'hydratation — ${verdict.probleme}`);
+      } else {
+        console.log(`    le script d'hydratation — ${verdict.dit}`);
+      }
+      gauche = verdict.gauche;
+      droite = verdict.droite;
+    }
     if (gauche === null || droite === null) {
       divergences += 1;
       console.log(`    ${quoi} — <${balise}> introuvable d'un côté`);
@@ -430,11 +522,8 @@ for (const langue of LANGUES) {
       console.log(`    ${quoi} — identique (${gauche.length} nœuds)`);
       continue;
     }
-    const compte = balise === "head" ? LA_COQUILLE_EST_PORTEE : true;
-    if (compte) divergences += 1;
-    console.log(
-      `    ${quoi} — DIVERGE${compte ? "" : " (pas encore portée : voir LA_COQUILLE_EST_PORTEE)"}`,
-    );
+    divergences += 1;
+    console.log(`    ${quoi} — DIVERGE`);
     for (const ligne of ecart) console.log(ligne);
   }
 }

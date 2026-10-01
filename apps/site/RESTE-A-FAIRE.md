@@ -68,11 +68,24 @@ Son **corps entier** est identique à celui de React — 1 279 nœuds en frança
 - [x] `Questions.tsx` — section `#questions`
 - [x] `PiedDePage.tsx` — le pied de page
 
-Ce qui reste de l'accueil, c'est la **coquille HTML** : le `<head>`, produit par
-`apps/web/build.ts`. Du côté Yew, `rendre.rs` en écrit une de dépannage. La
-comparaison l'affiche à chaque exécution sans faire échouer la CI, et le
-drapeau qui le décide s'appelle `LA_COQUILLE_EST_PORTEE` — il est nommé pour
-qu'on ne l'oublie pas.
+Et sa **coquille HTML** l'est aussi : 27 nœuds identiques, titre, description,
+Open Graph et données structurées comprises. Les textes viennent de
+`metadonnees.rs`, engendré depuis `apps/web/src/pages/metadonnees.ts`.
+
+Deux choses seulement diffèrent encore, et aucune n'est du contenu :
+
+- **Le script qui charge l'application.** React charge `/chunk-w0zhmwrj.js`, Yew
+  `/demarrer.js`. Les deux chaînes chargent forcément deux paquets différents —
+  c'est l'objet du remplacement. Il n'est pas ignoré pour autant : chaque côté
+  doit avoir exactement une balise de module avec une adresse, et celle de Yew
+  doit désigner un fichier qui existe. C'est plus sévère qu'une comparaison, et
+  cela attrape la panne qu'on ne voit pas : une page qui s'affiche très bien et
+  ne s'hydrate jamais.
+- **Les noms empreints de la feuille de style et de l'icône**
+  (`chunk-5jqgjvep.css`). La chaîne Rust ne sait pas recalculer ces empreintes :
+  il faudrait refaire le même empaquetage, au même octet. Elle les **lit** donc
+  dans `apps/web/dist`. C'est un étai, dit comme tel dans `rendre.rs`, et il
+  disparaît le jour où la chaîne Rust produira elle-même l'habillage.
 
 Pages juridiques — du texte dense, dont chaque caractère doit survivre :
 
@@ -113,6 +126,19 @@ construction, l'arbre du corps des composants. Les mêler ferait d'un `hreflang`
 manquant et d'un pied de page manquant la même ligne, alors que ce ne sont pas
 les mêmes fichiers à reprendre.
 
+Deux angles morts ont été trouvés dans l'outil lui-même en l'étendant à la page
+entière, et tous deux rendaient un « identique » faux :
+
+- **les `<script>` disparaissaient du relevé, balise comprise.** React termine
+  le corps par le script qui hydrate la page. Une adresse fausse, ou la balise
+  absente, donne une page qui ne s'hydratera jamais — et l'outil annonçait
+  « identique ». On relève désormais la balise et ses attributs, et on ne tait
+  que le corps : du JavaScript minifié n'a pas à être comparé ligne à ligne.
+- **les données structurées étaient tues avec le reste des `<script>`.**
+  `application/ld+json` ne contient pas du code mais des données — nom, langue,
+  description, prix — qu'un moteur lit et affiche. Le prix annoncé aux moteurs
+  pouvait passer de 0 à autre chose sans que rien ne s'en plaigne.
+
 Un `style` perdu ne se voit PAS dans une comparaison de texte : ma première
 version de `composants.rs` posait `style="color-mix(…)"` sans nom de
 propriété, et les sections alternées auraient perdu leur fond en silence. La
@@ -129,6 +155,10 @@ cassant exprès cinq choses :
 | un `aria-current` retiré du choix de langue | le corps de la page diverge |
 | une ancre de pied de page sans préfixe de langue | le corps diverge (`/#principe` contre `#principe`) |
 | l'avis « documents en français seulement » retiré | **le français reste identique**, l'anglais et l'espagnol divergent |
+| deux mots retirés de la description de référencement | la coquille diverge, sur la bonne balise |
+| le prix des données structurées passé de 0 à 4,99 | la coquille diverge |
+| le fichier `demarrer.js` jamais écrit | « Yew charge « /demarrer.js », et ce fichier n'existe pas » |
+| la balise de script retirée | « React en a 1, Yew 0 » |
 
 Le dernier mérite un mot : cet avis n'existe pas en français — il n'y a rien à
 prévenir à qui lit déjà la langue du texte. L'outil le sait sans qu'on le lui
