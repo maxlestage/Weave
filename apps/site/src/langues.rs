@@ -40,15 +40,6 @@ impl Langue {
         }
     }
 
-    /// L'étiquette de locale pour `og:locale`.
-    pub const fn locale(self) -> &'static str {
-        match self {
-            Langue::Fr => "fr_FR",
-            Langue::En => "en_US",
-            Langue::Es => "es_ES",
-        }
-    }
-
     /// Le préfixe d'adresse. Le français n'en a pas : il occupe la racine, et
     /// lui en donner un casserait les adresses déjà publiées.
     pub fn prefixe(self) -> String {
