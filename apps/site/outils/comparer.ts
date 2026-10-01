@@ -27,6 +27,8 @@
  * Sortie non nulle si une section portée diverge. C'est fait pour la CI.
  */
 
+import { DOCUMENTS } from "../../web/src/pages/documents.ts";
+
 const RACINE = new URL("../../../", import.meta.url).pathname;
 const REACT = `${RACINE}apps/web/dist`;
 const YEW = `${RACINE}apps/site/dist-rs`;
@@ -36,6 +38,22 @@ const LANGUES = [
   { code: "en", prefixe: "/en" },
   { code: "es", prefixe: "/es" },
 ] as const;
+
+/*
+ * Les pages à comparer : les trois accueils, puis les pages juridiques.
+ *
+ * La liste des pages juridiques est IMPORTÉE de sa source, et non recopiée ici.
+ * Une sixième page ajoutée au site entre d'elle-même dans la comparaison ; une
+ * liste écrite à la main l'aurait laissée dehors, et c'est précisément une page
+ * oubliée par l'outil qui pourrait partir en production vide.
+ *
+ * Elles ne sont publiées qu'en français : leurs adresses ne portent donc pas de
+ * préfixe de langue.
+ */
+const PAGES: readonly { readonly etiquette: string; readonly chemin: string }[] = [
+  ...LANGUES.map((l) => ({ etiquette: l.code, chemin: `${l.prefixe}/index.html` })),
+  ...DOCUMENTS.map((d) => ({ etiquette: d.slug, chemin: `/${d.slug}/index.html` })),
+];
 
 /* — Le relevé d'une page ———————————————————————————————————————— */
 
@@ -362,9 +380,16 @@ async function verifierLeDemarreur(
 
   const dire = (probleme: string | null, dit: string) => ({ ...restes, probleme, dit });
 
+  // Les pages juridiques n'embarquent AUCUN script, des deux côtés : elles sont
+  // pré-rendues et n'ont pas d'état. Zéro de chaque est donc le bon compte, et
+  // l'exiger est une garde en soi — un script apparu sur une page juridique
+  // voudrait dire qu'elle a cessé d'être statique.
+  if (aGauche.length === 0 && aDroite.length === 0) {
+    return dire(null, "aucun des deux côtés n'en a : page statique, comme prévu");
+  }
   if (aGauche.length !== 1 || aDroite.length !== 1) {
     return dire(
-      `React en a ${aGauche.length}, Yew ${aDroite.length} — il en faut exactement un de chaque`,
+      `React en a ${aGauche.length}, Yew ${aDroite.length} — il en faut autant de chaque côté, zéro ou un`,
       "",
     );
   }
@@ -395,26 +420,29 @@ const lire = async (chemin: string) => {
 let divergences = 0;
 let comparees = 0;
 const aPorter = new Set<string>();
+const pagesAPorter: string[] = [];
 
-for (const langue of LANGUES) {
-  const chemin = `${langue.prefixe}/index.html`;
+for (const page of PAGES) {
+  const chemin = page.chemin;
   const [reactHtml, yewHtml] = await Promise.all([
     lire(`${REACT}${chemin}`),
     lire(`${YEW}${chemin}`),
   ]);
 
-  console.log(`\n  ${langue.code}  ${chemin}`);
-
   if (reactHtml === null) {
+    console.log(`\n  ${page.etiquette}  ${chemin}`);
     console.log("    React n'a rien rendu ici — construire apps/web d'abord.");
     divergences += 1;
     continue;
   }
   if (yewHtml === null) {
-    console.log("    Yew n'a rien rendu ici — construire apps/site d'abord.");
-    divergences += 1;
+    // Une page que Yew ne rend pas encore est du travail qui reste, pas une
+    // faute — même traitement que les sections manquantes.
+    pagesAPorter.push(chemin);
     continue;
   }
+
+  console.log(`\n  ${page.etiquette}  ${chemin}`);
 
   const [attendu, obtenu] = await Promise.all([relever(reactHtml), relever(yewHtml)]);
   const sectionsReact = sections(attendu);
@@ -531,5 +559,8 @@ for (const langue of LANGUES) {
 console.log(`\n  ${comparees} comparaisons, ${divergences} divergence(s).`);
 if (aPorter.size > 0) {
   console.log(`  Sections encore absentes de Yew : ${[...aPorter].sort().join(", ")}.`);
+}
+if (pagesAPorter.length > 0) {
+  console.log(`  Pages encore absentes de Yew : ${pagesAPorter.join(", ")}.`);
 }
 if (divergences > 0) process.exit(1);

@@ -10,6 +10,7 @@
 //! bas les compte.
 
 use std::io::Write;
+use weave_site::contrat;
 use weave_site::langues::{LANGUES, Langue};
 use weave_site::metadonnees::metadonnees;
 use weave_site::racine::{Accueil, ProprietesLangue};
@@ -132,6 +133,60 @@ fn coquille(langue: Langue, corps: &str, feuille: &str, icone: &str) -> String {
     )
 }
 
+/// La coquille d'une page juridique.
+///
+/// Elle diffère de celle de l'accueil, et pas par accident :
+///
+/// * `og:type` vaut `article` et non `website` ;
+/// * une adresse canonique est déclarée — ces pages existent à une seule
+///   adresse, sans variante de langue ;
+/// * aucune donnée structurée, aucun `apple-touch-icon`, aucun manifeste : ce
+///   n'est pas l'application qu'on présente, c'est un texte qu'on lit ;
+/// * AUCUN SCRIPT. Ces pages n'ont pas d'état, donc rien à hydrater. Leur en
+///   envoyer un ferait télécharger le wasm à qui vient lire des CGU.
+fn coquille_juridique(
+    page: &contrat::PageJuridique,
+    corps: &str,
+    feuille: &str,
+    icone: &str,
+) -> String {
+    format!(
+        r##"<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#16121f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
+    <title>{titre}</title>
+    <meta name="description" content="{description}" />
+    <link rel="canonical" href="/{adresse}" />
+    <meta property="og:site_name" content="Weave" />
+    <meta property="og:title" content="{titre}" />
+    <meta property="og:description" content="{description}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="fr_FR" />
+    <link rel="icon" href="/{icone}" type="image/svg+xml" />
+    <link rel="stylesheet" href="/{feuille}" />
+  </head>
+  <body>
+    <div id="racine">{corps}</div>
+  </body>
+</html>
+"##,
+        // « Mentions légales — Weave », et non « Mentions légales » seul.
+        //
+        // Le nom du site suit le titre du document : c'est ce qui s'affiche dans
+        // un onglet et dans un résultat de recherche, où « Mentions légales »
+        // seul ne dirait pas de quel site. `documents.ts` ne porte que le titre
+        // du document, et la chaîne de construction y ajoute le suffixe — on
+        // fait pareil, au même endroit du titre.
+        titre = echapper(&format!("{} — Weave", page.titre)),
+        description = echapper(page.description),
+        adresse = page.adresse,
+    )
+}
+
 /// Échappe un texte destiné à un attribut HTML.
 ///
 /// Les descriptions contiennent des apostrophes et des deux-points ; une seule
@@ -223,8 +278,58 @@ async fn main() -> std::io::Result<()> {
     std::fs::create_dir_all(&racine)?;
     std::fs::write(racine.join(DEMARREUR), DEMARREUR_CONTENU)?;
 
+    // Les pages juridiques, en français seulement. Rendues SANS marqueurs
+    // d'hydratation : rien ne les hydratera, et les marqueurs ne seraient que
+    // du poids sur des pages déjà denses en texte.
+    let mut juridiques = Vec::new();
+    for page in contrat::PAGES_JURIDIQUES.iter() {
+        let Some(corps) = rendre_page_juridique(page.adresse).await else {
+            // Une page encore à porter n'arrête pas la construction : la
+            // comparaison la listera comme absente, et c'est le bon message.
+            continue;
+        };
+        let entier = coquille_juridique(page, &corps, &feuille, &icone);
+        let dossier = racine.join(page.adresse);
+        std::fs::create_dir_all(&dossier)?;
+        std::fs::write(dossier.join("index.html"), entier.as_bytes())?;
+        juridiques.push((page.adresse, entier.len(), gzip(entier.as_bytes())));
+    }
+    rapporter_juridiques(&juridiques);
+
     rapporter(&pages);
     Ok(())
+}
+
+/// Rend le corps d'une page juridique, ou `None` si elle n'est pas portée.
+///
+/// L'association entre une adresse et son composant se fait ICI, à un seul
+/// endroit. Les pages arrivent une à une, et une adresse sans composant doit se
+/// voir — pas se deviner.
+async fn rendre_page_juridique(adresse: &str) -> Option<String> {
+    use weave_site::pages::mentions_legales::MentionsLegales;
+    match adresse {
+        "mentions-legales" => Some(
+            ServerRenderer::<MentionsLegales>::new()
+                .hydratable(false)
+                .render()
+                .await,
+        ),
+        _ => None,
+    }
+}
+
+fn rapporter_juridiques(pages: &[(&str, usize, usize)]) {
+    if pages.is_empty() {
+        return;
+    }
+    println!("\n  Pages juridiques (français seulement, sans hydratation)");
+    for (adresse, octets, compresse) in pages {
+        println!("    {adresse:<22} {octets:>7} octets   gzip {compresse:>6}");
+    }
+    let manquantes = contrat::PAGES_JURIDIQUES.len() - pages.len();
+    if manquantes > 0 {
+        println!("    {manquantes} page(s) encore à porter.");
+    }
 }
 
 /// Ce que le visiteur télécharge réellement.
