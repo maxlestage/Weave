@@ -908,7 +908,10 @@ dependencies = [
 name = "weave-site"
 version = "0.1.0"
 dependencies = [
+ "console_error_panic_hook",
  "tokio",
+ "wasm-bindgen",
+ "web-sys",
  "yew",
 ]
 

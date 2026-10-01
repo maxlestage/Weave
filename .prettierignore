@@ -6,3 +6,7 @@ bun.lock
 # Artefacts de compilation Rust : ni écrits ni relus à la main.
 apps/api-rs/target
 apps/site/target
+
+# Sorties de construction du site Rust.
+apps/site/dist-rs
+apps/site/dist-wasm
