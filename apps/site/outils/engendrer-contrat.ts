@@ -40,6 +40,7 @@ import {
   PLAN_TIERS,
   POLICY_UPDATED_LABEL,
   REQUESTS_PER_DAY_FLOOR,
+  REQUEST_MIN_CHARS,
   TIERS,
   TIER_COPY_PAR_LANGUE,
   UNIT_DESCRIPTIONS_PAR_LANGUE,
@@ -52,6 +53,12 @@ import {
   // seul script de génération ferait porter un `package.json` à un paquet qui
   // n'en a pas besoin.
 } from "../../../packages/contracts/src/index.ts";
+// La liste des pages juridiques vit encore du côté React, et c'est la seule
+// source de leurs adresses, de leurs libellés et de leurs dates de version.
+// L'engendrer évite d'en écrire une seconde : les dates, en particulier, ne
+// supportent pas d'être recopiées — celle de la politique de confidentialité
+// EST la version que portent les consentements enregistrés.
+import { DOCUMENTS } from "../../web/src/pages/documents.ts";
 
 const LANGUES = ["fr", "en", "es"] as const;
 
@@ -114,6 +121,7 @@ for (const [nom, valeur] of [
   ["REQUESTS_PER_DAY_FLOOR", REQUESTS_PER_DAY_FLOOR],
   ["MAX_OPEN_PLANS", MAX_OPEN_PLANS],
   ["PLAN_MIN_LEAD_MINUTES", PLAN_MIN_LEAD_MINUTES],
+  ["REQUEST_MIN_CHARS", REQUEST_MIN_CHARS],
   ["MIN_AGE", MIN_AGE],
   ["MESSAGE_RETENTION_DAYS", MESSAGE_RETENTION_DAYS],
   ["ACCOUNT_PURGE_DAYS", ACCOUNT_PURGE_DAYS],
@@ -121,21 +129,59 @@ for (const [nom, valeur] of [
   ecrire(`pub const ${nom}: u32 = ${valeur};`);
 }
 
+/** « benevolat » devient « Benevolat » : les clés sont des mots simples. */
+const variante = (cle: string) => cle[0]!.toUpperCase() + cle.slice(1);
+
 ecrire(
   "",
   `pub const POLICY_UPDATED_LABEL: &str = ${r(POLICY_UPDATED_LABEL)};`,
   "",
   "// — Les catégories de plan ——————————————————————————————————————",
   "",
-  "/// Les libellés de catégorie, dans les trois langues.",
-  "pub const CATEGORIES: [(&str, Traduit<&str>); " + PLAN_CATEGORIES.length + "] = [",
+  "/// Une catégorie de plan.",
+  "///",
+  "/// Une énumération, et non une clé à rapprocher d'une table. Les sections du",
+  "/// site nomment une catégorie pour afficher son libellé ; avec une chaîne,",
+  "/// une faute de frappe compilait et affichait `sport` tel quel au visiteur,",
+  "/// ou demandait un cas par défaut qui revenait au même. Ici, elle ne compile",
+  "/// pas.",
+  "#[derive(Clone, Copy, PartialEq, Eq, Debug)]",
+  "pub enum Categorie {",
+);
+for (const categorie of PLAN_CATEGORIES) ecrire(`    ${variante(categorie)},`);
+ecrire(
+  "}",
+  "",
+  "impl Categorie {",
+  "    /// La clé telle que l'API et le contrat la portent.",
+  "    pub const fn cle(self) -> &'static str {",
+  "        match self {",
+);
+for (const categorie of PLAN_CATEGORIES) {
+  ecrire(`            Categorie::${variante(categorie)} => ${r(categorie)},`);
+}
+ecrire(
+  "        }",
+  "    }",
+  "",
+  "    /// Le libellé affiché, dans les trois langues.",
+  "    pub const fn libelle(self) -> Traduit<&'static str> {",
+  "        match self {",
 );
 for (const categorie of PLAN_CATEGORIES) {
   const par = Object.fromEntries(
     LANGUES.map((l) => [l, PLAN_CATEGORY_LABELS_PAR_LANGUE[l][categorie]]),
   );
-  ecrire(`    (${r(categorie)}, ${traduit(par)}),`);
+  ecrire(`            Categorie::${variante(categorie)} => ${traduit(par)},`);
 }
+ecrire("        }", "    }", "}", "");
+
+ecrire(
+  "/// Les catégories, dans l'ordre où le contrat les déclare — c'est celui dans",
+  "/// lequel le site les montre.",
+  `pub const CATEGORIES: [Categorie; ${PLAN_CATEGORIES.length}] = [`,
+);
+for (const categorie of PLAN_CATEGORIES) ecrire(`    Categorie::${variante(categorie)},`);
 ecrire("];", "");
 
 // — Le catalogue ————————————————————————————————————————————————
@@ -228,6 +274,44 @@ for (const sku of UNIT_SKUS) {
     )},`,
     `        prix_centimes: ${produit.priceCents},`,
     `        prix: ${traduit(prix)},`,
+    "    },",
+  );
+}
+ecrire("];", "");
+
+// — Les pages juridiques ————————————————————————————————————————
+ecrire(
+  "// — Les pages juridiques ————————————————————————————————————————",
+  "",
+  "/// Une page juridique.",
+  "///",
+  "/// Elles ne sont publiées QU'EN FRANÇAIS, et leurs adresses ne portent donc",
+  "/// pas de préfixe de langue. Traduire des conditions générales n'est pas un",
+  "/// travail de langue : une traduction non relue engagerait sur un texte que",
+  "/// personne n'a validé.",
+  "pub struct PageJuridique {",
+  "    /// Adresse de la page, sans barre oblique initiale.",
+  "    pub adresse: &'static str,",
+  "    /// Titre de l'onglet et du partage.",
+  "    pub titre: &'static str,",
+  "    /// Description de référencement — celle que les moteurs affichent.",
+  "    pub description: &'static str,",
+  "    /// Libellé court, pour le pied de page.",
+  "    pub lien: &'static str,",
+  "    /// Date de la version en vigueur DE CE DOCUMENT, et non des quatre.",
+  "    pub mise_a_jour: &'static str,",
+  "}",
+  "",
+  `pub const PAGES_JURIDIQUES: [PageJuridique; ${DOCUMENTS.length}] = [`,
+);
+for (const doc of DOCUMENTS) {
+  ecrire(
+    "    PageJuridique {",
+    `        adresse: ${r(doc.slug)},`,
+    `        titre: ${r(doc.titre)},`,
+    `        description: ${r(doc.description)},`,
+    `        lien: ${r(doc.lien)},`,
+    `        mise_a_jour: ${r(doc.miseAJour)},`,
     "    },",
   );
 }

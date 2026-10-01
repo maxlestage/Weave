@@ -16,6 +16,12 @@ publish = false
 # demandent des arbres de dépendances différents, et les activer ensemble
 # ferait entrer le DOM dans le binaire natif.
 
+# `chrono` est une dépendance de CONSTRUCTION seulement : elle sert à figer
+# l'année du droit d'auteur, et n'entre ni dans le binaire natif ni dans le
+# wasm livré.
+[build-dependencies]
+chrono = "0.4.45"
+
 [lib]
 # `cdylib` pour le wasm, `rlib` pour que le binaire natif lie la bibliothèque.
 crate-type = ["cdylib", "rlib"]
