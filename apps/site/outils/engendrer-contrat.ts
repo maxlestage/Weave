@@ -59,6 +59,10 @@ import {
 // supportent pas d'être recopiées — celle de la politique de confidentialité
 // EST la version que portent les consentements enregistrés.
 import { DOCUMENTS } from "../../web/src/pages/documents.ts";
+// Ce qu'un moteur, un réseau social et un navigateur lisent de l'accueil. Même
+// raison : une seconde copie de ces textes en Rust indexerait un jour la page
+// anglaise avec un titre français.
+import { METADONNEES } from "../../web/src/pages/metadonnees.ts";
 
 const LANGUES = ["fr", "en", "es"] as const;
 
@@ -317,11 +321,9 @@ for (const doc of DOCUMENTS) {
 }
 ecrire("];", "");
 
-const sortie = new URL("../src/contrat.rs", import.meta.url).pathname;
-
 /*
- * `--verifier` : engendre, et dit si le fichier du dépôt est celui qu'on
- * vient d'engendrer — sans le remplacer.
+ * `--verifier` : engendre, et dit si les fichiers du dépôt sont ceux qu'on
+ * vient d'engendrer — sans les remplacer.
  *
  * Ma première version de cette garde comparait avec `git diff --exit-code`, ce
  * qui était faux : elle échouait sur tout fichier modifié mais pas encore
@@ -333,48 +335,122 @@ const sortie = new URL("../src/contrat.rs", import.meta.url).pathname;
  * On compare donc au contenu engendré, et à rien d'autre. L'état de git n'y
  * entre pas.
  */
-const verifier = Bun.argv.includes("--verifier");
+/* — Les métadonnées de l'accueil ——————————————————————————————— */
 
-const temporaire = verifier ? `${sortie}.verification` : sortie;
-await Bun.write(temporaire, lignes.join("\n"));
-
-/*
- * On repasse `rustfmt` dessus.
- *
- * Écrire du Rust déjà bien coupé depuis un script TypeScript demanderait de
- * reproduire les règles de coupe de `rustfmt` — la largeur de ligne, le moment
- * où un littéral de structure passe en plusieurs lignes — et de s'en écarter
- * à la première occasion. Autant laisser l'outil qui les connaît faire le
- * travail : sans quoi `cargo fmt` reformate le fichier engendré, le test qui
- * vérifie qu'il est à jour échoue, et on régénère en rond.
- */
-const miseEnForme = Bun.spawnSync(["rustfmt", "--edition", "2024", temporaire]);
-if (!miseEnForme.success) {
-  // Pas une erreur fatale : le Rust engendré est valide, seulement mal coupé.
-  // Le taire, en revanche, laisserait croire que le fichier est canonique.
-  console.warn(
-    `rustfmt n'a pas pu mettre en forme le fichier : ${new TextDecoder().decode(miseEnForme.stderr).trim()}`,
+const metadonnees: string[] = [
+  "//! Ce qu'un moteur, un réseau social et un navigateur lisent de l'accueil.",
+  "//! ENGENDRÉ. Ne pas modifier à la main.",
+  "//!",
+  "//! Produit par `apps/site/outils/engendrer-contrat.ts` à partir de",
+  "//! `apps/web/src/pages/metadonnees.ts`, qui en reste la source.",
+  "",
+  "use crate::langues::Langue;",
+  "",
+  "pub struct Metadonnees {",
+  "    /// Titre de l'onglet et des résultats de recherche.",
+  "    pub titre: &'static str,",
+  "    /// Description de référencement.",
+  "    pub description: &'static str,",
+  "    /// Titre du partage — plus court, et sans le nom du site répété.",
+  "    pub partage_titre: &'static str,",
+  "    pub partage_description: &'static str,",
+  "    /// Texte de remplacement de l'image de partage.",
+  "    pub partage_image_alt: &'static str,",
+  "    /// Étiquette Open Graph : langue ET région, séparées par un tiret bas.",
+  "    ///",
+  "    /// Ce n'est PAS `fr`/`en`/`es` avec une région devinée : l'anglais du",
+  "    /// site est `en_GB`, et ses prix se mettent en forme en `en-IE`. Trois",
+  "    /// étiquettes pour trois usages, et aucune ne se déduit des autres.",
+  "    pub og_locale: &'static str,",
+  "    /// Étiquette BCP 47, pour les données structurées.",
+  "    pub bcp47: &'static str,",
+  "    /// Description de l'application, dans les données structurées.",
+  "    pub application_description: &'static str,",
+  "    pub offre_description: &'static str,",
+  "}",
+  "",
+  "/// Les métadonnées d'une langue.",
+  "pub const fn metadonnees(langue: Langue) -> &'static Metadonnees {",
+  "    match langue {",
+];
+for (const l of LANGUES) {
+  const variante = { fr: "Fr", en: "En", es: "Es" }[l];
+  metadonnees.push(`        Langue::${variante} => &${variante.toUpperCase()},`);
+}
+metadonnees.push("    }", "}", "");
+for (const l of LANGUES) {
+  const m = METADONNEES[l];
+  metadonnees.push(
+    `const ${l.toUpperCase()}: Metadonnees = Metadonnees {`,
+    `    titre: ${r(m.titre)},`,
+    `    description: ${r(m.description)},`,
+    `    partage_titre: ${r(m.partageTitre)},`,
+    `    partage_description: ${r(m.partageDescription)},`,
+    `    partage_image_alt: ${r(m.partageImageAlt)},`,
+    `    og_locale: ${r(m.ogLocale)},`,
+    `    bcp47: ${r(m.bcp47)},`,
+    `    application_description: ${r(m.applicationDescription)},`,
+    `    offre_description: ${r(m.offreDescription)},`,
+    "};",
+    "",
   );
 }
 
-const relu = await Bun.file(temporaire).text();
+const verifier = Bun.argv.includes("--verifier");
 
-if (verifier) {
+let aDerive = false;
+
+/** Écrit un fichier engendré, ou vérifie que celui du dépôt lui est égal. */
+async function poser(nom: string, contenu: string[]) {
+  const sortie = new URL(`../src/${nom}`, import.meta.url).pathname;
+  const temporaire = verifier ? `${sortie}.verification` : sortie;
+  await Bun.write(temporaire, contenu.join("\n"));
+
+  /*
+   * On repasse `rustfmt` dessus.
+   *
+   * Écrire du Rust déjà bien coupé depuis un script TypeScript demanderait de
+   * reproduire les règles de coupe de `rustfmt` — la largeur de ligne, le
+   * moment où un littéral de structure passe en plusieurs lignes — et de s'en
+   * écarter à la première occasion. Autant laisser l'outil qui les connaît
+   * faire le travail : sans quoi `cargo fmt` reformate le fichier engendré, la
+   * garde qui vérifie qu'il est à jour échoue, et on régénère en rond.
+   */
+  const miseEnForme = Bun.spawnSync(["rustfmt", "--edition", "2024", temporaire]);
+  if (!miseEnForme.success) {
+    // Pas une erreur fatale : le Rust engendré est valide, seulement mal
+    // coupé. Le taire, en revanche, laisserait croire qu'il est canonique.
+    console.warn(
+      `rustfmt n'a pas pu mettre en forme ${nom} : ${new TextDecoder().decode(miseEnForme.stderr).trim()}`,
+    );
+  }
+
+  const relu = await Bun.file(temporaire).text();
+  const lignesLues = relu.split("\n").length;
+
+  if (!verifier) {
+    console.log(`src/${nom} engendré — ${lignesLues} lignes`);
+    return;
+  }
+
   const dansLeDepot = await Bun.file(sortie)
     .text()
     .catch(() => null);
   await Bun.file(temporaire).delete();
 
   if (dansLeDepot === relu) {
-    console.log(`src/contrat.rs est à jour — ${relu.split("\n").length} lignes`);
+    console.log(`src/${nom} est à jour — ${lignesLues} lignes`);
   } else {
     console.error(
-      "src/contrat.rs a DÉRIVÉ du contrat partagé.\n" +
-        "Le site annoncerait donc autre chose que ce que le contrat dit.\n" +
+      `src/${nom} a DÉRIVÉ de sa source.\n` +
+        "Le site annoncerait donc autre chose que ce que la source dit.\n" +
         "  bun run apps/site/outils/engendrer-contrat.ts",
     );
-    process.exit(1);
+    aDerive = true;
   }
-} else {
-  console.log(`src/contrat.rs engendré — ${relu.split("\n").length} lignes`);
 }
+
+await poser("contrat.rs", lignes);
+await poser("metadonnees.rs", metadonnees);
+
+if (aDerive) process.exit(1);

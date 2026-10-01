@@ -33,3 +33,13 @@ wasm-bindgen --target web --no-typescript --out-dir dist-wasm \
 
 etape "Le HTML, rendu au serveur"
 cargo run --release --features ssr --bin rendre
+
+# Le wasm rejoint le HTML.
+#
+# `dist-rs/demarrer.js` importe « /weave_site.js » : une adresse servie depuis
+# la racine du site. Laisser le wasm dans `dist-wasm` donnerait un site qui
+# s'affiche parfaitement et ne s'hydrate jamais — une panne qu'on ne voit pas
+# en regardant la page.
+etape "Le wasm rejoint le HTML"
+cp dist-wasm/weave_site.js dist-wasm/weave_site_bg.wasm dist-rs/
+ls -l dist-rs/weave_site.js dist-rs/weave_site_bg.wasm dist-rs/demarrer.js
