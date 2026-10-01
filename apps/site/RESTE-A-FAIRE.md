@@ -53,7 +53,12 @@ Ce qu'il apporte est une **capacité** : de l'état côté client. Aujourd'hui e
 sert au seul menu de téléphone ; elle sera là le jour où une page en demandera
 davantage.
 
-## La page d'accueil est portée
+## Tout le site est porté, et prouvé
+
+**81 comparaisons, 0 divergence** : les trois accueils et les cinq pages
+juridiques, corps et coquille, texte et attributs.
+
+## La page d'accueil
 
 Son **corps entier** est identique à celui de React — 1 279 nœuds en français,
 1 291 en anglais et en espagnol, attributs compris :
@@ -87,20 +92,51 @@ Deux choses seulement diffèrent encore, et aucune n'est du contenu :
   dans `apps/web/dist`. C'est un étai, dit comme tel dans `rendre.rs`, et il
   disparaît le jour où la chaîne Rust produira elle-même l'habillage.
 
-Pages juridiques — du texte dense, dont chaque caractère doit survivre :
+## Les pages juridiques sont portées
 
-- [ ] `MentionsLegales.tsx` — 153
-- [ ] `SuppressionCompte.tsx` — 154
-- [ ] `Cgv.tsx` — 229
-- [ ] `Page.tsx` — 246 (la coquille commune)
-- [ ] `Cgu.tsx` — 300
-- [ ] `Confidentialite.tsx` — 456
+Du texte dense, dont chaque caractère devait survivre. Il a survécu :
 
-Et la chaîne de construction, `apps/web/build.ts`, 700 lignes dont une
-quinzaine de gardes à reprendre : adresses canoniques, `hreflang`, plan du
-site, refus du domaine de remplacement, refus des mentions légales
-incomplètes, mesure du poids compressé. C'est elle qui produit le `<head>`,
-donc la dernière divergence de l'accueil.
+| page | corps | coquille |
+|---|---|---|
+| `Confidentialite.tsx` — 456 lignes | **920 nœuds identiques** | 18 |
+| `Cgv.tsx` — 229 | **579 identiques** | 18 |
+| `Cgu.tsx` — 300 | **542 identiques** | 18 |
+| `MentionsLegales.tsx` — 153 | **399 identiques** | 18 |
+| `SuppressionCompte.tsx` — 154 | **357 identiques** | 18 |
+| `Page.tsx` — 246 (la charpente) | — | — |
+
+Les tableaux compris : celui des données de la politique de confidentialité
+fait quatorze lignes et quatre colonnes, et ses 237 nœuds coïncident.
+
+Ces pages n'embarquent **aucun script**, des deux côtés. Elles n'ont pas
+d'état, donc rien à hydrater ; leur envoyer un script ferait télécharger cent
+kilo-octets de wasm à qui vient lire des CGU. L'outil l'exige : zéro balise de
+module de chaque côté, et un script apparu là voudrait dire que la page a cessé
+d'être statique.
+
+**Les quinze valeurs à compléter restent surlignées**, et viennent d'un
+`identite.rs` engendré depuis `apps/web/src/pages/identite.ts` — le seul fichier
+à remplir. Une mention légale qui annoncerait un SIREN différent de celui du
+site React serait une fausse déclaration, et personne ne s'en apercevrait,
+puisqu'elle aurait l'air complète.
+
+## Ce qui reste : la chaîne de construction
+
+Les huit pages du site sont portées et prouvées identiques — **81
+comparaisons, 0 divergence**. Ce qui reste n'est plus du contenu, c'est
+`apps/web/build.ts` : 700 lignes dont une quinzaine de gardes.
+
+- l'**habillage empreint** : la feuille de style et l'icône portent une
+  empreinte de contenu que la chaîne Rust ne sait pas recalculer. Elle les lit
+  dans `apps/web/dist`, et c'est le dernier étai ;
+- `robots.txt`, `site.webmanifest`, les images de partage ;
+- les **adresses canoniques** et les `hreflang`, qui n'apparaissent que si
+  `SITE_ORIGINE` est posé ;
+- le **plan du site** ;
+- le **refus du domaine de remplacement** : mieux vaut ne rien déclarer que de
+  désigner une adresse morte, qu'un moteur suivrait pour désindexer les pages ;
+- le **refus des mentions légales incomplètes** : c'est lui qui empêche une
+  mise en ligne sans SIREN, et il n'a pas d'équivalent ailleurs.
 
 ## Comment le portage se vérifie
 

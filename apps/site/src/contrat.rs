@@ -14,6 +14,7 @@ use crate::langues::Traduit;
 
 pub const REQUESTS_PER_DAY_FLOOR: u32 = 5;
 pub const MAX_OPEN_PLANS: u32 = 3;
+pub const PLAN_CAPACITY_GROUP_MAX: u32 = 4;
 pub const PLAN_MIN_LEAD_MINUTES: u32 = 60;
 pub const REQUEST_MIN_CHARS: u32 = 20;
 pub const MIN_AGE: u32 = 18;
