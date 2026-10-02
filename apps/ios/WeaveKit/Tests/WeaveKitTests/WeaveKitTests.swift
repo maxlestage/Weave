@@ -1037,3 +1037,26 @@ struct MontreStoreTests {
         #expect(montre.demandes.map(\.id) == ["d1"])
     }
 }
+
+@Suite("Les personnes bloquées")
+@MainActor
+struct BlocagesTests {
+    @Test("La liste se lit, y compris un compte parti depuis")
+    func liste() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/blocks", #"""
+        {"blocks":[
+          {"accountId":"u1","displayName":"Théo","blockedAt":"2026-10-01T10:00:00.000Z"},
+          {"accountId":"u2","displayName":null,"blockedAt":"2026-09-01T10:00:00.000Z"}]}
+        """#)
+        let api = await serveur.api()
+
+        let bloques = try await api.blocks()
+
+        #expect(bloques.map(\.id) == ["u1", "u2"])
+        #expect(bloques[0].displayName == "Théo")
+        // Un compte parti reste dans la liste : sinon on ne pourrait plus
+        // lever le blocage.
+        #expect(bloques[1].displayName == nil)
+    }
+}

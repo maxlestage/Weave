@@ -597,6 +597,13 @@ public actor WeaveAPI {
         )
     }
 
+    /// Les personnes qu'on a bloquées — jamais celles qui nous ont bloqué.
+    public func blocks() async throws -> [BlockedAccount] {
+        struct Page: Decodable { let blocks: [BlockedAccount] }
+        let page: Page = try await request(.get, "/v1/blocks")
+        return page.blocks
+    }
+
     /// Lève un blocage posé plus tôt.
     ///
     /// Ne rouvre rien de ce que le blocage a coupé : les conversations closes
