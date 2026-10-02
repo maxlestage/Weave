@@ -105,7 +105,7 @@ pub fn notification_signee(
 ) -> String {
     let mut donnees = serde_json::json!({
         "appAppleId": 1_234_567_890_u64,
-        "bundleId": "com.weave.app",
+        "bundleId": "com.weave.maxlestage",
         "bundleVersion": "1",
         "environment": "sandbox",
         "signedTransactionInfo": transaction_signee(transaction),
@@ -149,7 +149,7 @@ pub fn transaction_signee(mut claims: Value) -> String {
     let objet = claims.as_object_mut().expect("un objet JSON");
     objet
         .entry("bundleId")
-        .or_insert_with(|| Value::String("com.weave.app".to_string()));
+        .or_insert_with(|| Value::String("com.weave.maxlestage".to_string()));
     objet
         .entry("environment")
         .or_insert_with(|| Value::String("sandbox".to_string()));

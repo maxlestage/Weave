@@ -53,7 +53,7 @@ export interface Tier {
   readonly highlights: readonly string[];
 }
 
-const BUNDLE = "com.weave.app";
+const BUNDLE = "com.weave.maxlestage";
 
 export const TIERS: Readonly<Record<PlanTier, Tier>> = {
   depart: {

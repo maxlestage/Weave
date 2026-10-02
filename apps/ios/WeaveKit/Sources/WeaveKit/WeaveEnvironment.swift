@@ -27,5 +27,5 @@ public enum WeaveEnvironment {
         Bundle.main.object(forInfoDictionaryKey: "WEAVE_KEYCHAIN_GROUP") as? String
 
     /// Groupe d'application, pour les préférences partagées avec les extensions.
-    public static let appGroup = "group.com.weave.app"
+    public static let appGroup = "group.com.weave.maxlestage"
 }
