@@ -1060,3 +1060,32 @@ struct BlocagesTests {
         #expect(bloques[1].displayName == nil)
     }
 }
+
+// MARK: - La complication
+
+@Suite("Le résumé laissé à la complication")
+struct ResumeComplicationTests {
+    @Test("Le résumé déposé par la montre se relit, et le dernier remplace le précédent")
+    func depotEtRelecture() {
+        let premier = WatchSummary(
+            pendingRequests: 1,
+            awaitingReply: 0,
+            nextPlan: nil,
+            generatedAt: Date(timeIntervalSince1970: 1_789_000_000)
+        )
+        let second = WatchSummary(
+            pendingRequests: 3,
+            awaitingReply: 2,
+            nextPlan: .init(title: "Pique-nique", startsAt: Date(timeIntervalSince1970: 1_790_000_000), city: "Nantes"),
+            generatedAt: Date(timeIntervalSince1970: 1_789_500_000)
+        )
+
+        ResumeComplication.deposer(premier, accessGroup: nil)
+        #expect(ResumeComplication.lire(accessGroup: nil) == premier)
+
+        // Une mise à jour, pas un second élément : sinon la complication
+        // pourrait relire l'ancien.
+        ResumeComplication.deposer(second, accessGroup: nil)
+        #expect(ResumeComplication.lire(accessGroup: nil) == second)
+    }
+}

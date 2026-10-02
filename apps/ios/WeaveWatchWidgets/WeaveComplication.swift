@@ -51,13 +51,7 @@ struct Fournisseur: TimelineProvider {
     }
 
     private static func lire() -> WatchSummary {
-        guard let defaults = UserDefaults(suiteName: WeaveEnvironment.appGroup),
-              let data = defaults.data(forKey: "watchSummary")
-        else { return .empty }
-
-        let decodeur = JSONDecoder()
-        decodeur.dateDecodingStrategy = .iso8601
-        return (try? decodeur.decode(WatchSummary.self, from: data)) ?? .empty
+        ResumeComplication.lire(accessGroup: WeaveEnvironment.keychainAccessGroup)
     }
 }
 
