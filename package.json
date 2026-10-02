@@ -18,6 +18,8 @@
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "cargo test --manifest-path apps/api-rs/Cargo.toml",
+    "comparer": "bun run apps/site/outils/comparer.ts",
+    "comparer:refus": "bun run apps/site/outils/comparer-les-refus.ts",
     "lint": "bunx --bun prettier --check .",
     "verifier": "./verifier.sh",
     "format": "bunx --bun prettier --write .",

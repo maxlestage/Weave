@@ -39,18 +39,18 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
 
     public var userMessage: String {
         switch self {
-        case .unauthorized: "Votre session a expiré. Reconnectez-vous."
+        case .unauthorized: NSLocalizedString("Votre session a expiré. Reconnectez-vous.", comment: "")
         case .forbidden(let message): message
-        case .notFound: "Introuvable."
+        case .notFound: NSLocalizedString("Introuvable.", comment: "")
         case .validation(let message): message
         case .rateLimited(let message): message
         case .noRequestsLeft(let message): message
         case .tooManyPlans(let message): message
         case .planClosed(let message): message
-        case .alreadyRequested: "Vous avez déjà demandé à venir."
+        case .alreadyRequested: NSLocalizedString("Vous avez déjà demandé à venir.", comment: "")
         case .entitlementRequired(let message, _, _): message
         case .server(_, let message): message
-        case .transport: "Connexion impossible. Réessayez."
+        case .transport: NSLocalizedString("Connexion impossible. Réessayez.", comment: "")
         }
     }
 }
@@ -424,6 +424,34 @@ public actor WeaveAPI {
         await store.clear()
     }
 
+    /// Obtient une session PROPRE à la montre, sans toucher à celle-ci.
+    ///
+    /// La montre ne peut pas se connecter elle-même : pas d'écran de saisie de
+    /// code, et un trousseau qui n'est pas celui de l'iPhone. Elle ne doit pas
+    /// non plus recevoir une copie de cette session — les jetons de
+    /// renouvellement tournent, et deux appareils qui en partagent un se font
+    /// prendre l'un pour le voleur de l'autre : le serveur coupe alors TOUTES
+    /// les sessions du compte.
+    ///
+    /// Le jeton de renouvellement est lu APRÈS avoir obtenu un accès valide :
+    /// obtenir cet accès peut renouveler la session, donc remplacer le jeton.
+    /// Le lire avant enverrait un jeton qui vient d'être tourné, et le serveur
+    /// le refuserait.
+    public func watchSession() async throws -> Session {
+        let acces = try await validToken()
+        guard let renouvellement = await store.current?.refreshToken else {
+            throw WeaveAPIError.unauthorized
+        }
+        struct Enveloppe: Decodable { let session: Session }
+        let reponse: Enveloppe = try await send(
+            .post,
+            "/v1/auth/watch-session",
+            token: acces,
+            payload: encoder.encode(["refreshToken": renouvellement])
+        )
+        return reponse.session
+    }
+
     /// Dépose ou met à jour sa fiche : une ville, un genre, une phrase.
     ///
     /// C'est l'étape qui manquait. L'inscription ne demandait que le prénom et
@@ -567,6 +595,13 @@ public actor WeaveAPI {
         let _: EmptyResponse = try await request(
             .post, "/v1/blocks", body: ["accountId": accountID]
         )
+    }
+
+    /// Les personnes qu'on a bloquées — jamais celles qui nous ont bloqué.
+    public func blocks() async throws -> [BlockedAccount] {
+        struct Page: Decodable { let blocks: [BlockedAccount] }
+        let page: Page = try await request(.get, "/v1/blocks")
+        return page.blocks
     }
 
     /// Lève un blocage posé plus tôt.

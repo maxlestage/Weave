@@ -82,6 +82,25 @@ jobs:
         # Le .xcodeproj n'est pas versionné : `project.yml` en fait foi.
         run: xcodegen generate
 
+      # ----------------------------------------------------------------
+      # Le projet généré, téléchargeable
+      #
+      # `.xcodeproj` n'est pas versionné — c'est le choix de ce dépôt, et il
+      # évite les conflits de fusion illisibles sur le format pbxproj. Mais il
+      # faut alors un Mac avec XcodeGen pour en obtenir un, ce que tout le
+      # monde n'a pas sous la main.
+      #
+      # Celui-ci est produit par le vrai XcodeGen sur un vrai macOS, à chaque
+      # passage. Il se récupère depuis l'onglet Actions, y compris depuis un
+      # téléphone.
+      # ----------------------------------------------------------------
+      - name: Conserver le projet généré
+        uses: actions/upload-artifact@v4
+        with:
+          name: Weave-xcodeproj
+          path: apps/ios/Weave ‣.xcodeproj
+          retention-days: 14
+
       - name: Compiler
         working-directory: apps/ios
         # `generic/platform=iOS Simulator` évite d'allumer un simulateur : on
@@ -94,8 +113,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build \
-            -project Weave.xcodeproj \
-            -scheme Weave \
+            -project 'Weave ‣.xcodeproj' \
+            -scheme 'Weave ‣' \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -skipPackagePluginValidation \
@@ -138,8 +157,8 @@ jobs:
           echo "Simulateur : $udid"
 
           xcodebuild test \
-            -project Weave.xcodeproj \
-            -scheme Weave \
+            -project 'Weave ‣.xcodeproj' \
+            -scheme 'Weave ‣' \
             -configuration Debug \
             -destination "id=$udid" \
             -skipPackagePluginValidation \

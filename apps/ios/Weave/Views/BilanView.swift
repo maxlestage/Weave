@@ -104,7 +104,19 @@ private struct LignePlan: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(plan.titre)
-            Text("\(plan.categorie.displayName) · \(plan.demandes) demande\(plan.demandes > 1 ? "s" : "") · publié \(plan.publieJoursAvant) jour\(plan.publieJoursAvant > 1 ? "s" : "") avant")
+            // Trois morceaux traduits chacun, plutôt qu'une phrase où un
+            // « s » se collait à la main : le pluriel ne se fait pas pareil
+            // dans toutes les langues, et une phrase assemblée ne se traduit
+            // pas d'un bloc.
+            Text(verbatim: [
+                plan.categorie.displayName,
+                plan.demandes == 1
+                    ? String(localized: "1 demande")
+                    : String(localized: "\(plan.demandes) demandes"),
+                plan.publieJoursAvant == 1
+                    ? String(localized: "publié 1 jour avant")
+                    : String(localized: "publié \(plan.publieJoursAvant) jours avant"),
+            ].joined(separator: " · "))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

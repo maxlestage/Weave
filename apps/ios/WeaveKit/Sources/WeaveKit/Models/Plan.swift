@@ -15,14 +15,14 @@ public enum PlanCategory: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .sortie: "Sortir"
-        case .sport: "Bouger"
-        case .culture: "Voir quelque chose"
-        case .repas: "Manger"
-        case .musique: "Écouter"
-        case .jeux: "Jouer"
-        case .balade: "Marcher"
-        case .benevolat: "Donner un coup de main"
+        case .sortie: NSLocalizedString("Sortir", comment: "")
+        case .sport: NSLocalizedString("Bouger", comment: "")
+        case .culture: NSLocalizedString("Voir quelque chose", comment: "")
+        case .repas: NSLocalizedString("Manger", comment: "")
+        case .musique: NSLocalizedString("Écouter", comment: "")
+        case .jeux: NSLocalizedString("Jouer", comment: "")
+        case .balade: NSLocalizedString("Marcher", comment: "")
+        case .benevolat: NSLocalizedString("Donner un coup de main", comment: "")
         }
     }
 
@@ -193,9 +193,9 @@ public struct Feed: Codable, Hashable, Sendable {
     /// plus du serveur, il a été retouché ici, et l'écran doit pouvoir le dire.
     /// `generatedAt` ne bouge pas — c'est l'heure de composition du fil, et la
     /// retoucher ferait croire à une composition qui n'a pas eu lieu.
-    public func remplacant(plans: [Plan], requestsLeftToday: Int? = nil) -> Feed {
+    public func remplacant(plans: [Plan]? = nil, requestsLeftToday: Int? = nil) -> Feed {
         Feed(
-            plans: plans,
+            plans: plans ?? self.plans,
             requestsLeftToday: requestsLeftToday ?? self.requestsLeftToday,
             fromCache: true,
             generatedAt: generatedAt
@@ -248,12 +248,12 @@ public enum RequestState: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .envoyee: "En attente"
-        case .acceptee: "Acceptée"
-        case .refusee: "Sans suite"
-        case .expiree: "Close"
-        case .retiree: "Retirée"
-        case .desistee: "Place rendue"
+        case .envoyee: NSLocalizedString("En attente", comment: "")
+        case .acceptee: NSLocalizedString("Acceptée", comment: "")
+        case .refusee: NSLocalizedString("Sans suite", comment: "")
+        case .expiree: NSLocalizedString("Close", comment: "")
+        case .retiree: NSLocalizedString("Retirée", comment: "")
+        case .desistee: NSLocalizedString("Place rendue", comment: "")
         }
     }
 }
@@ -310,6 +310,11 @@ public enum MessageAuthor: String, Codable, Sendable {
 /// Le serveur refuse au-delà. L'application l'ignorait : on pouvait écrire
 /// sans fin, et perdre son texte à l'envoi.
 public let conversationMaxChars = 2000
+
+/// Jours pendant lesquels les messages d'une conversation fermée restent
+/// lisibles, avant leur effacement. Le serveur pose la date de purge à la
+/// fermeture ; l'application le dit au moment de fermer, et pas après.
+public let messageRetentionDays = 90
 
 public struct Message: Codable, Identifiable, Hashable, Sendable {
     public let id: String

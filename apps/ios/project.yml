@@ -5,7 +5,13 @@
 # fusion illisibles sur le format pbxproj, et rend la configuration du projet
 # relisible comme du code.
 
-name: Weave
+# Le projet porte « ‣ », comme la cible iPhone et comme le nom affiché : le
+# fichier généré s'appelle donc « Weave ‣.xcodeproj ».
+#
+# Les cibles de la montre et ses extensions gardent leurs noms — ce sont elles
+# qui apparaissent séparément sur l'appareil. C'est le CONTENEUR qui est
+# renommé, pas ce qu'il contient.
+name: "Weave ‣"
 options:
   bundleIdPrefix: com.weave
   deploymentTarget:
@@ -35,7 +41,10 @@ settings:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
       WEAVE_API_URL: http:/$()/localhost:3000
     Release:
-      WEAVE_API_URL: https:/$()/api.weave.app
+      # L'API en ligne sur Heroku. Le jour où un domaine à vous pointe dessus,
+      # remplacez cette adresse : le workflow TestFlight refuse tout
+      # « weave.app », domaine de remplacement qui ne répond pas.
+      WEAVE_API_URL: https:/$()/weave-c9f3a59e2f02.herokuapp.com
 
 packages:
   WeaveKit:
@@ -44,8 +53,15 @@ packages:
 targets:
   # ------------------------------------------------------------------
   # Application iPhone
+  #
+  # Le nom de la cible porte « ‣ », comme le nom affiché. Il devient donc
+  # aussi celui du SCHÉMA et celui du produit (« Weave ‣.app ») : c'est ce qui
+  # oblige à citer le schéma entre guillemets partout où on l'invoque.
+  #
+  # Le répertoire des sources reste « Weave/ » : rien ne bouge sur le disque,
+  # et aucun chemin d'`INFOPLIST_FILE` n'est touché.
   # ------------------------------------------------------------------
-  Weave:
+  "Weave ‣":
     type: application
     platform: iOS
     sources:
@@ -73,6 +89,12 @@ targets:
     platform: iOS
     sources:
       - path: WeaveActivity
+      # Le catalogue de traductions de l'iPhone, partagé. Sans lui, cette
+      # cible n'avait AUCUNE traduction : ses textes restaient en français sur
+      # un appareil réglé en anglais ou en espagnol, quel que soit le contenu
+      # du catalogue. Une seule source pour toutes les cibles : une phrase
+      # traduite pour l'iPhone l'est aussi au poignet.
+      - path: Weave/Localizable.xcstrings
     dependencies:
       - package: WeaveKit
     settings:
@@ -89,6 +111,12 @@ targets:
     platform: watchOS
     sources:
       - path: WeaveWatch
+      # Le catalogue de traductions de l'iPhone, partagé. Sans lui, cette
+      # cible n'avait AUCUNE traduction : ses textes restaient en français sur
+      # un appareil réglé en anglais ou en espagnol, quel que soit le contenu
+      # du catalogue. Une seule source pour toutes les cibles : une phrase
+      # traduite pour l'iPhone l'est aussi au poignet.
+      - path: Weave/Localizable.xcstrings
     dependencies:
       - package: WeaveKit
       - target: WeaveWatchWidgets
@@ -108,6 +136,12 @@ targets:
     platform: watchOS
     sources:
       - path: WeaveWatchWidgets
+      # Le catalogue de traductions de l'iPhone, partagé. Sans lui, cette
+      # cible n'avait AUCUNE traduction : ses textes restaient en français sur
+      # un appareil réglé en anglais ou en espagnol, quel que soit le contenu
+      # du catalogue. Une seule source pour toutes les cibles : une phrase
+      # traduite pour l'iPhone l'est aussi au poignet.
+      - path: Weave/Localizable.xcstrings
     dependencies:
       - package: WeaveKit
     settings:
@@ -117,10 +151,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: WeaveWatchWidgets/WeaveWatchWidgets.entitlements
 
 schemes:
-  Weave:
+  "Weave ‣":
     build:
       targets:
-        Weave: all
+        "Weave ‣": all
     run:
       config: Debug
     test:

@@ -1,0 +1,621 @@
+/*
+ * Compare le site rendu par React (`apps/web/dist`) et celui rendu par Yew
+ * (`apps/site/dist-rs`), section par section et langue par langue.
+ *
+ * ## Pourquoi un outil, et pas un coup d'œil
+ *
+ * Le portage déplace des milliers de mots — dont ceux des CGU, où chaque
+ * caractère engage. Relire deux rendus à l'œil pour s'assurer qu'aucune phrase
+ * n'a sauté ne marche pas : on voit ce qu'on cherche, pas ce qui manque.
+ *
+ * Et la comparaison ne peut pas porter sur le seul texte. Ma première version
+ * de `composants.rs` posait `style="color-mix(…)"` sans nom de propriété : les
+ * sections alternées perdaient leur fond, et le texte, lui, était intact. Un
+ * contrôle textuel aurait déclaré le portage parfait. On compare donc AUSSI la
+ * structure : l'imbrication des balises et leurs attributs.
+ *
+ * ## Pourquoi par section
+ *
+ * Le portage avance une section à la fois. Comparer les pages entières ne
+ * dirait qu'une chose — « elles diffèrent » — pendant tout le portage, et ne
+ * deviendrait utile qu'au dernier jour. Comparer par `id` de section donne un
+ * verdict par section : celles qui sont portées sont tenues dès maintenant,
+ * celles qui restent sont listées.
+ *
+ *     bun run apps/site/outils/comparer.ts
+ *
+ * Sortie non nulle si une section portée diverge. C'est fait pour la CI.
+ */
+
+import { DOCUMENTS } from "../../web/src/pages/documents.ts";
+
+const RACINE = new URL("../../../", import.meta.url).pathname;
+const REACT = `${RACINE}apps/web/dist`;
+const YEW = `${RACINE}apps/site/dist-rs`;
+
+const LANGUES = [
+  { code: "fr", prefixe: "" },
+  { code: "en", prefixe: "/en" },
+  { code: "es", prefixe: "/es" },
+] as const;
+
+/*
+ * Les pages à comparer : les trois accueils, puis les pages juridiques.
+ *
+ * La liste des pages juridiques est IMPORTÉE de sa source, et non recopiée ici.
+ * Une sixième page ajoutée au site entre d'elle-même dans la comparaison ; une
+ * liste écrite à la main l'aurait laissée dehors, et c'est précisément une page
+ * oubliée par l'outil qui pourrait partir en production vide.
+ *
+ * Elles ne sont publiées qu'en français : leurs adresses ne portent donc pas de
+ * préfixe de langue.
+ */
+const PAGES: readonly { readonly etiquette: string; readonly chemin: string }[] = [
+  ...LANGUES.map((l) => ({ etiquette: l.code, chemin: `${l.prefixe}/index.html` })),
+  ...DOCUMENTS.map((d) => ({ etiquette: d.slug, chemin: `/${d.slug}/index.html` })),
+];
+
+/* — Le relevé d'une page ———————————————————————————————————————— */
+
+type Ouverture = { readonly genre: "ouvre"; readonly balise: string; readonly attributs: string };
+type Fermeture = { readonly genre: "ferme"; readonly balise: string };
+type Texte = { readonly genre: "texte"; readonly texte: string };
+type Evenement = Ouverture | Fermeture | Texte;
+
+/** Les balises sans contenu : elles n'ont pas de fermeture à attendre. */
+const VIDES = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "source",
+  "track",
+  "wbr",
+]);
+
+/** Les balises dont le contenu n'est pas du texte lu par un visiteur. */
+const MUETTES = new Set(["script", "style", "template"]);
+
+/**
+ * Les données structurées, elles, SE COMPARENT.
+ *
+ * `<script type="application/ld+json">` ne contient pas du code mais des
+ * données : le nom de l'application, sa langue, sa description, son prix. Un
+ * moteur les lit et les affiche. Les taire avec le reste des `<script>`
+ * laissait un bloc entier de texte indexable hors de toute comparaison — le
+ * prix annoncé aux moteurs pouvait passer de 0 à autre chose sans que rien ne
+ * s'en plaigne.
+ */
+const estDesDonnees = (balise: string, attributs: string) =>
+  balise === "script" && attributs.includes('type="application/ld+json"');
+
+/**
+ * Normalise une liste de classes.
+ *
+ * L'ordre des classes utilitaires ne change rien au rendu, et les deux
+ * chaînes ne les écrivent pas forcément dans le même ordre : `classes!` de Yew
+ * concatène ses morceaux comme il les reçoit. On trie donc avant de comparer,
+ * sans quoi l'outil signalerait des différences qui n'en sont pas — et un
+ * outil qui crie à tort finit par ne plus être lu.
+ */
+const normaliserClasses = (valeur: string) => valeur.split(/\s+/).filter(Boolean).sort().join(" ");
+
+/**
+ * Normalise une déclaration de style.
+ *
+ * React sérialise son objet de style sans espace après le deux-points, Yew
+ * écrit la chaîne qu'on lui donne. Même déclaration, deux écritures. On
+ * compare donc des déclarations, pas des chaînes.
+ */
+const normaliserStyle = (valeur: string) =>
+  valeur
+    .split(";")
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((d) => {
+      const coupure = d.indexOf(":");
+      if (coupure < 0) return d.toLowerCase();
+      const propriete = d.slice(0, coupure).trim().toLowerCase();
+      const contenu = d
+        .slice(coupure + 1)
+        .trim()
+        .replace(/\s+/g, " ");
+      return `${propriete}:${contenu}`;
+    })
+    .sort()
+    .join("; ");
+
+/**
+ * Décode les entités HTML.
+ *
+ * Indispensable, et pas cosmétique : React échappe l'apostrophe en `&#x27;`,
+ * Yew l'écrit telle quelle. Sans décodage, chaque apostrophe du site — il y en
+ * a des centaines — serait signalée comme une divergence, et l'outil
+ * deviendrait illisible le jour où il aurait quelque chose à dire.
+ */
+const NOMMEES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: "\u00a0",
+};
+
+const decoder = (texte: string) =>
+  texte.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entier, corps: string) => {
+    const bas = corps.toLowerCase();
+    if (bas.startsWith("#x")) return String.fromCodePoint(parseInt(bas.slice(2), 16));
+    if (bas.startsWith("#")) return String.fromCodePoint(Number(bas.slice(1)));
+    return NOMMEES[bas] ?? entier;
+  });
+
+const normaliserAttribut = (nom: string, valeur: string) => {
+  if (nom === "class") return normaliserClasses(decoder(valeur));
+  if (nom === "style") return normaliserStyle(decoder(valeur));
+  return decoder(valeur).trim().replace(/\s+/g, " ");
+};
+
+/**
+ * Relève une page : la suite de ses balises, de leurs attributs et de son
+ * texte, dans l'ordre du document.
+ *
+ * Les commentaires ne produisent aucun événement — et c'est exactement ce
+ * qu'il faut, puisque le HTML de Yew est semé de marqueurs d'hydratation que
+ * React n'a pas. Deux morceaux de texte séparés par un marqueur reviennent
+ * donc collés, comme ils s'affichent.
+ */
+async function relever(html: string): Promise<Evenement[]> {
+  const evenements: Evenement[] = [];
+  let muet = 0;
+
+  const rewriter = new HTMLRewriter();
+  rewriter.on("*", {
+    element(e) {
+      if (muet > 0) return;
+
+      /*
+       * La BALISE d'un `<script>` se compare, son CONTENU non.
+       *
+       * Première version : les `<script>` disparaissaient entièrement du
+       * relevé, balise comprise. C'était un angle mort grave. React termine le
+       * corps par `<script type="module" src="/chunk-w0zhmwrj.js">` : c'est ce
+       * fichier qui hydrate la page. Une adresse fausse, ou la balise absente,
+       * donne une page qui ne s'hydratera jamais — et l'outil annonçait
+       * « identique ».
+       *
+       * On relève donc la balise et ses attributs, et on ne tait que le corps :
+       * du JavaScript minifié n'a pas à être comparé ligne à ligne. Les données
+       * structurées font exception, elles se comparent entièrement.
+       */
+      const type = e.getAttribute("type");
+      if (MUETTES.has(e.tagName) && !estDesDonnees(e.tagName, `type="${type ?? ""}"`)) {
+        muet += 1;
+        e.onEndTag(() => {
+          muet -= 1;
+        });
+      }
+
+      const attributs = [...e.attributes]
+        .map(([nom, valeur]) => [nom.toLowerCase(), normaliserAttribut(nom.toLowerCase(), valeur)])
+        .filter(([, valeur]) => valeur !== "")
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([nom, valeur]) => `${nom}="${valeur}"`)
+        .join(" ");
+
+      // Le nom est relevé MAINTENANT, et non dans la fermeture : à ce
+      // moment-là, `e` ne désigne plus la balise ouvrante et `e.tagName` vaut
+      // `undefined`. Toutes les fermetures s'appelaient donc `undefined`, ce
+      // qui n'empêchait pas les deux relevés de se comparer — ils se
+      // trompaient pareil — mais rendait le découpage par section incapable de
+      // trouver la fin d'une section. Chaque section s'étendait jusqu'au bas
+      // de la page, et l'outil signalait des divergences inventées.
+      const balise = e.tagName;
+      evenements.push({ genre: "ouvre", balise, attributs });
+      if (!VIDES.has(balise) && !e.selfClosing) {
+        e.onEndTag(() => {
+          evenements.push({ genre: "ferme", balise });
+        });
+      }
+    },
+    text(t) {
+      if (muet > 0) return;
+      const precedent = evenements.at(-1);
+      // Deux morceaux de suite appartiennent au même passage de texte : ils
+      // n'étaient séparés que par un commentaire. On les recolle.
+      if (precedent?.genre === "texte") {
+        evenements[evenements.length - 1] = {
+          genre: "texte",
+          texte: precedent.texte + t.text,
+        };
+      } else {
+        evenements.push({ genre: "texte", texte: t.text });
+      }
+    },
+  });
+
+  await rewriter.transform(new Response(html)).text();
+
+  // L'espacement se normalise à la fin, une fois les morceaux recollés : le
+  // faire avant écraserait l'espace qui sépare deux mots de part et d'autre
+  // d'un marqueur.
+  return evenements.flatMap((e) => {
+    if (e.genre !== "texte") return [e];
+    const texte = decoder(e.texte).replace(/\s+/g, " ").trim();
+    return texte === "" ? [] : [{ genre: "texte", texte } as Evenement];
+  });
+}
+
+/* — Les sections ————————————————————————————————————————————————— */
+
+/**
+ * Le contenu d'une balise unique, fermeture comprise.
+ *
+ * `<head>` et `<body>` relèvent de deux travaux différents : la coquille HTML
+ * est produite par la chaîne de construction (adresses canoniques, `hreflang`,
+ * plan du site), l'arbre du corps par les composants. Les comparer ensemble
+ * ferait d'un `hreflang` manquant et d'un pied de page manquant la même
+ * ligne, alors que ce ne sont pas les mêmes fichiers à reprendre.
+ */
+function contenuDe(evenements: Evenement[], balise: string): Evenement[] | null {
+  const debut = evenements.findIndex((e) => e.genre === "ouvre" && e.balise === balise);
+  if (debut < 0) return null;
+  let profondeur = 0;
+  for (let i = debut; i < evenements.length; i += 1) {
+    const e = evenements[i];
+    if (e.genre === "ouvre" && e.balise === balise) profondeur += 1;
+    else if (e.genre === "ferme" && e.balise === balise) {
+      profondeur -= 1;
+      if (profondeur === 0) return evenements.slice(debut, i + 1);
+    }
+  }
+  return evenements.slice(debut);
+}
+
+/** Découpe le relevé en sections, par `id`, fermeture comprise. */
+function sections(evenements: Evenement[]): Map<string, Evenement[]> {
+  const trouvees = new Map<string, Evenement[]>();
+
+  for (let i = 0; i < evenements.length; i += 1) {
+    const e = evenements[i];
+    if (e.genre !== "ouvre" || e.balise !== "section") continue;
+    const id = /\bid="([^"]*)"/.exec(e.attributs)?.[1];
+    if (id === undefined) continue;
+
+    // La fermeture de CETTE section, et non la première rencontrée : une
+    // section peut en contenir une autre, et s'arrêter trop tôt comparerait
+    // des moitiés de section en déclarant le reste absent.
+    let profondeur = 0;
+    let fin = evenements.length;
+    for (let j = i; j < evenements.length; j += 1) {
+      const f = evenements[j];
+      if (f.genre === "ouvre" && f.balise === "section") profondeur += 1;
+      else if (f.genre === "ferme" && f.balise === "section") {
+        profondeur -= 1;
+        if (profondeur === 0) {
+          fin = j + 1;
+          break;
+        }
+      }
+    }
+    trouvees.set(id, evenements.slice(i, fin));
+  }
+
+  return trouvees;
+}
+
+/* — La comparaison ——————————————————————————————————————————————— */
+
+const ecrire = (e: Evenement) =>
+  e.genre === "texte"
+    ? `« ${e.texte} »`
+    : e.genre === "ferme"
+      ? `</${e.balise}>`
+      : `<${e.balise}${e.attributs ? ` ${e.attributs}` : ""}>`;
+
+/** La première divergence, et son voisinage. Rien de plus : une liste de cent
+ * différences toutes issues d'un même décalage ne renseigne pas. */
+function diverger(attendu: Evenement[], obtenu: Evenement[]): string[] | null {
+  const commun = Math.min(attendu.length, obtenu.length);
+  for (let i = 0; i < commun; i += 1) {
+    const a = ecrire(attendu[i]);
+    const b = ecrire(obtenu[i]);
+    if (a !== b) {
+      const avant = attendu.slice(Math.max(0, i - 2), i).map(ecrire);
+      return [...avant.map((l) => `      … ${l}`), `      React : ${a}`, `      Yew   : ${b}`];
+    }
+  }
+  if (attendu.length !== obtenu.length) {
+    const manque = attendu.length > obtenu.length;
+    const reste = (manque ? attendu : obtenu).slice(commun, commun + 3).map(ecrire);
+    return [
+      `      ${manque ? "Yew s'arrête" : "React s'arrête"} après ${commun} nœuds ;`,
+      `      ${manque ? "React" : "Yew"} continue par :`,
+      ...reste.map((l) => `      … ${l}`),
+    ];
+  }
+  return null;
+}
+
+const texteSeul = (evenements: Evenement[]) =>
+  evenements.filter((e): e is Texte => e.genre === "texte").map((e) => e.texte);
+
+/* — Le script d'hydratation ———————————————————————————————————— */
+
+/** Les balises de module, et leur adresse. */
+const modules = (evenements: Evenement[]) =>
+  evenements.flatMap((e, index) =>
+    e.genre === "ouvre" && e.balise === "script" && /\btype="module"/.test(e.attributs)
+      ? [{ index, src: /\bsrc="([^"]*)"/.exec(e.attributs)?.[1] ?? null }]
+      : [],
+  );
+
+/** Retire les balises de module des deux relevés, après les avoir contrôlées. */
+async function verifierLeDemarreur(
+  gauche: Evenement[],
+  droite: Evenement[],
+  racineYew: string,
+): Promise<{
+  gauche: Evenement[];
+  droite: Evenement[];
+  probleme: string | null;
+  dit: string;
+}> {
+  const aGauche = modules(gauche);
+  const aDroite = modules(droite);
+
+  // La balise fermante suit immédiatement l'ouvrante : un `<script src>` n'a
+  // pas de contenu, et son corps est de toute façon tu.
+  const sans = (evenements: Evenement[], reperes: { index: number }[]) => {
+    const aRetirer = new Set(reperes.flatMap((r) => [r.index, r.index + 1]));
+    return evenements.filter((_, i) => !aRetirer.has(i));
+  };
+  const restes = { gauche: sans(gauche, aGauche), droite: sans(droite, aDroite) };
+
+  const dire = (probleme: string | null, dit: string) => ({ ...restes, probleme, dit });
+
+  // Les pages juridiques n'embarquent AUCUN script, des deux côtés : elles sont
+  // pré-rendues et n'ont pas d'état. Zéro de chaque est donc le bon compte, et
+  // l'exiger est une garde en soi — un script apparu sur une page juridique
+  // voudrait dire qu'elle a cessé d'être statique.
+  if (aGauche.length === 0 && aDroite.length === 0) {
+    return dire(null, "aucun des deux côtés n'en a : page statique, comme prévu");
+  }
+  if (aGauche.length !== 1 || aDroite.length !== 1) {
+    return dire(
+      `React en a ${aGauche.length}, Yew ${aDroite.length} — il en faut autant de chaque côté, zéro ou un`,
+      "",
+    );
+  }
+  if (aGauche[0].src === null || aDroite[0].src === null) {
+    return dire("une des deux balises n'a pas de « src » : rien ne se chargera", "");
+  }
+
+  // Le fichier de Yew doit exister. Celui de React n'est pas vérifié ici :
+  // c'est la chaîne qu'on remplace, et sa construction a ses propres gardes.
+  const chemin = `${racineYew}/${aDroite[0].src.replace(/^\//, "")}`;
+  if (!(await Bun.file(chemin).exists())) {
+    return dire(`Yew charge « ${aDroite[0].src} », et ce fichier n'existe pas`, "");
+  }
+
+  return dire(
+    null,
+    `chaînes différentes, comme prévu : React « ${aGauche[0].src} », Yew « ${aDroite[0].src} » (présent)`,
+  );
+}
+
+/* — Le déroulé ——————————————————————————————————————————————————— */
+
+const lire = async (chemin: string) => {
+  const fichier = Bun.file(chemin);
+  return (await fichier.exists()) ? await fichier.text() : null;
+};
+
+let divergences = 0;
+let comparees = 0;
+const aPorter = new Set<string>();
+const pagesAPorter: string[] = [];
+
+for (const page of PAGES) {
+  const chemin = page.chemin;
+  const [reactHtml, yewHtml] = await Promise.all([
+    lire(`${REACT}${chemin}`),
+    lire(`${YEW}${chemin}`),
+  ]);
+
+  if (reactHtml === null) {
+    console.log(`\n  ${page.etiquette}  ${chemin}`);
+    console.log("    React n'a rien rendu ici — construire apps/web d'abord.");
+    divergences += 1;
+    continue;
+  }
+  if (yewHtml === null) {
+    // Une page que Yew ne rend pas encore est du travail qui reste, pas une
+    // faute — même traitement que les sections manquantes.
+    pagesAPorter.push(chemin);
+    continue;
+  }
+
+  console.log(`\n  ${page.etiquette}  ${chemin}`);
+
+  const [attendu, obtenu] = await Promise.all([relever(reactHtml), relever(yewHtml)]);
+  const sectionsReact = sections(attendu);
+  const sectionsYew = sections(obtenu);
+
+  for (const [id, aGauche] of sectionsReact) {
+    const aDroite = sectionsYew.get(id);
+    if (aDroite === undefined) {
+      aPorter.add(id);
+      continue;
+    }
+
+    comparees += 1;
+    const structure = diverger(aGauche, aDroite);
+    if (structure === null) {
+      console.log(`    #${id} — identique (${aGauche.length} nœuds)`);
+      continue;
+    }
+
+    divergences += 1;
+    // Le texte d'abord : un mot perdu est plus grave qu'un attribut déplacé,
+    // et le dire séparément évite de chercher une phrase manquante dans un
+    // écart de classes.
+    const motsReact = texteSeul(aGauche);
+    const motsYew = texteSeul(aDroite);
+    const memeTexte = motsReact.join("\u0000") === motsYew.join("\u0000");
+    console.log(
+      `    #${id} — DIVERGE  (texte ${memeTexte ? "identique" : "DIFFÉRENT"}, structure différente)`,
+    );
+    if (!memeTexte) {
+      const ecart = diverger(
+        motsReact.map((texte) => ({ genre: "texte", texte }) as Evenement),
+        motsYew.map((texte) => ({ genre: "texte", texte }) as Evenement),
+      );
+      console.log("      — texte —");
+      for (const ligne of ecart ?? []) console.log(ligne);
+      console.log("      — structure —");
+    }
+    for (const ligne of structure) console.log(ligne);
+  }
+
+  for (const id of sectionsYew.keys()) {
+    if (!sectionsReact.has(id)) {
+      divergences += 1;
+      console.log(`    #${id} — rendue par Yew seul : React n'a pas cette section.`);
+    }
+  }
+
+  /*
+   * La page entière, dès que plus aucune section ne manque.
+   *
+   * La comparaison par section ne voit ni l'en-tête, ni le pied de page, ni le
+   * lien d'évitement, ni l'ORDRE dans lequel les sections se suivent : chacune
+   * est comparée à sa jumelle, où qu'elle soit. Tant qu'il manque des sections
+   * la page entière diffère forcément, et l'exiger ne dirait rien d'utile.
+   * Dès qu'elles sont toutes là, c'est la seule comparaison qui prouve
+   * vraiment que les deux chaînes rendent le même site.
+   *
+   * Elle s'allume donc d'elle-même, sans qu'on ait à y penser le bon jour.
+   */
+  const toutesLesSections = [...sectionsReact.keys()].every((id) => sectionsYew.has(id));
+  if (!toutesLesSections) continue;
+
+  for (const [balise, quoi] of [
+    ["body", "le corps de la page"],
+    ["head", "la coquille HTML"],
+  ] as const) {
+    let gauche = contenuDe(attendu, balise);
+    let droite = contenuDe(obtenu, balise);
+
+    /*
+     * Le script qui charge l'application est le SEUL nœud qu'on retire.
+     *
+     * Les deux chaînes chargent forcément deux paquets différents — c'est
+     * l'objet même du remplacement : React charge `/chunk-w0zhmwrj.js`, Yew
+     * charge `/demarrer.js`, qui importe le wasm. Exiger la même adresse
+     * reviendrait à exiger le même empaqueteur.
+     *
+     * Mais on ne l'ignore pas : on le VÉRIFIE, et plus sévèrement qu'une
+     * comparaison ne le ferait. Chaque côté doit avoir exactement une balise de
+     * module avec une adresse, et celle de Yew doit désigner un fichier qui
+     * existe. Une balise absente, ou qui pointe vers rien, donne une page qui
+     * ne s'hydratera jamais — et c'est le genre de panne qu'on ne voit pas en
+     * regardant la page, puisqu'elle s'affiche très bien.
+     */
+    if (balise === "body" && gauche !== null && droite !== null) {
+      const verdict = await verifierLeDemarreur(gauche, droite, YEW);
+      if (verdict.probleme !== null) {
+        divergences += 1;
+        console.log(`    le script d'hydratation — ${verdict.probleme}`);
+      } else {
+        console.log(`    le script d'hydratation — ${verdict.dit}`);
+      }
+      gauche = verdict.gauche;
+      droite = verdict.droite;
+    }
+    if (gauche === null || droite === null) {
+      divergences += 1;
+      console.log(`    ${quoi} — <${balise}> introuvable d'un côté`);
+      continue;
+    }
+    const ecart = diverger(gauche, droite);
+    if (ecart === null) {
+      comparees += 1;
+      console.log(`    ${quoi} — identique (${gauche.length} nœuds)`);
+      continue;
+    }
+    divergences += 1;
+    console.log(`    ${quoi} — DIVERGE`);
+    for (const ligne of ecart) console.log(ligne);
+  }
+}
+
+/* — Les fichiers qui ne sont pas des pages ————————————————————— */
+
+/*
+ * `robots.txt`, le manifeste, le plan du site, et les ressources à adresse
+ * fixe.
+ *
+ * Ils ne contiennent pas de balises, donc le relevé ne les voit pas — et c'est
+ * pourtant par eux qu'un moteur commence. `robots.txt` est le PREMIER fichier
+ * demandé ; s'il manquait du côté Rust, la comparaison des huit pages serait
+ * restée au vert et le site n'aurait plus été explorable.
+ *
+ * Les images et le manifeste se comparent octet par octet : ils sont copiés
+ * tels quels des deux côtés, et toute différence serait une copie manquée.
+ */
+const FICHIERS = [
+  "robots.txt",
+  "site.webmanifest",
+  "favicon.svg",
+  "apple-touch-icon.png",
+  "partage.png",
+  // Le plan du site n'existe que si l'origine est posée. Absent des deux
+  // côtés, c'est le bon état ; absent d'un seul, c'est une divergence.
+  "sitemap.xml",
+] as const;
+
+console.log("\n  Fichiers hors pages");
+for (const nom of FICHIERS) {
+  const [gauche, droite] = await Promise.all([
+    Bun.file(`${REACT}/${nom}`)
+      .bytes()
+      .catch(() => null),
+    Bun.file(`${YEW}/${nom}`)
+      .bytes()
+      .catch(() => null),
+  ]);
+
+  if (gauche === null && droite === null) {
+    console.log(`    ${nom} — absent des deux côtés`);
+    continue;
+  }
+  if (gauche === null || droite === null) {
+    divergences += 1;
+    console.log(`    ${nom} — présent chez ${gauche ? "React" : "Yew"} seulement`);
+    continue;
+  }
+
+  comparees += 1;
+  if (gauche.length === droite.length && gauche.every((octet, i) => octet === droite[i])) {
+    console.log(`    ${nom} — identique (${gauche.length} octets)`);
+  } else {
+    divergences += 1;
+    console.log(`    ${nom} — DIVERGE (${gauche.length} octets contre ${droite.length})`);
+  }
+}
+
+console.log(`\n  ${comparees} comparaisons, ${divergences} divergence(s).`);
+if (aPorter.size > 0) {
+  console.log(`  Sections encore absentes de Yew : ${[...aPorter].sort().join(", ")}.`);
+}
+if (pagesAPorter.length > 0) {
+  console.log(`  Pages encore absentes de Yew : ${pagesAPorter.join(", ")}.`);
+}
+if (divergences > 0) process.exit(1);

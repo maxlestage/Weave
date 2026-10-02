@@ -1,48 +1,82 @@
 import SwiftUI
 import WeaveKit
 
-/// Ce que la montre montre : le prochain plan, et ce qui attend une réponse.
+/// L'écran d'accueil de la montre : le prochain plan, et ce qui attend.
 ///
-/// Elle ne reçoit ni nom, ni photo, ni message — un titre, une heure, deux
-/// compteurs. Le résumé complet fait quelques centaines d'octets.
+/// Rien de nominatif ici : un titre, une heure, des compteurs. Les prénoms et
+/// les messages n'apparaissent qu'un geste plus loin.
 struct MontreRacineView: View {
     @Environment(ModeleMontre.self) private var modele
+
+    private var magasin: MontreStore { modele.magasin }
 
     var body: some View {
         NavigationStack {
             List {
-                if modele.resume.nextPlan == nil, modele.resume.pendingRequests == 0 {
-                    VidePlaceholder(chargement: modele.chargement, erreur: modele.erreur)
+                if !magasin.aUneSession {
+                    PasEncoreRelie()
+                } else if magasin.resume.nextPlan == nil,
+                          magasin.resume.pendingRequests == 0,
+                          magasin.resume.awaitingReply == 0
+                {
+                    VidePlaceholder(chargement: magasin.chargement, erreur: magasin.erreur)
                 } else {
-                    if let plan = modele.resume.nextPlan {
+                    if let plan = magasin.resume.nextPlan {
                         Section("Prochain plan") {
                             ProchainPlan(plan: plan)
                         }
                     }
 
-                    if modele.resume.pendingRequests > 0 || modele.resume.awaitingReply > 0 {
-                        Section("En cours") {
-                            if modele.resume.pendingRequests > 0 {
+                    Section("En cours") {
+                        if magasin.resume.pendingRequests > 0 {
+                            NavigationLink {
+                                DemandesMontreView()
+                            } label: {
                                 Compteur(
-                                    valeur: modele.resume.pendingRequests,
+                                    valeur: magasin.resume.pendingRequests,
                                     libelle: "veulent venir",
                                     accentue: true
                                 )
                             }
-                            if modele.resume.awaitingReply > 0 {
-                                Compteur(
-                                    valeur: modele.resume.awaitingReply,
-                                    libelle: "demandes sans réponse",
-                                    accentue: false
-                                )
-                            }
+                        }
+                        NavigationLink {
+                            ConversationsMontreView()
+                        } label: {
+                            Label("Conversations", systemImage: "bubble.left.and.bubble.right")
+                        }
+                        if magasin.resume.awaitingReply > 0 {
+                            Compteur(
+                                valeur: magasin.resume.awaitingReply,
+                                libelle: "demandes sans réponse",
+                                accentue: false
+                            )
                         }
                     }
                 }
             }
             .navigationTitle("Weave")
-            .refreshable { await modele.charger() }
+            .refreshable { await modele.rafraichir() }
         }
+    }
+}
+
+/// La montre n'a pas encore sa session : elle ne la tient que de l'iPhone.
+private struct PasEncoreRelie: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "iphone.and.arrow.forward")
+                .font(.title2)
+                .foregroundStyle(Color.weaveCuivreMontre)
+            Text("Ouvrez Weave sur votre iPhone")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Text("La montre se relie toute seule à votre compte, dès que l'iPhone est à portée.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
     }
 }
 
@@ -68,7 +102,7 @@ private struct ProchainPlan: View {
 
 private struct Compteur: View {
     let valeur: Int
-    let libelle: String
+    let libelle: LocalizedStringKey
     let accentue: Bool
 
     var body: some View {

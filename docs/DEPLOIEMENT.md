@@ -300,11 +300,11 @@ Sur **appstoreconnect.apple.com** → **Users and Access** → **Integrations** 
 2. Notez le **Key ID** et l'**Issuer ID**
 3. Téléchargez le fichier `.p8` — **il n'est téléchargeable qu'une fois**
 
-Le fichier `.p8` doit être converti en base64 pour être déposé dans GitHub.
-Depuis un téléphone, le plus simple est d'ouvrir le fichier dans une
-application de notes, de copier son contenu, puis d'utiliser un encodeur
-base64 hors ligne. **N'utilisez pas un service d'encodage en ligne** : cette
-clé donne accès à votre compte développeur.
+Ouvrez le fichier `.p8` dans une application de notes et copiez **tout** son
+contenu, lignes `-----BEGIN PRIVATE KEY-----` et `-----END PRIVATE KEY-----`
+comprises : c'est la valeur du secret, telle quelle. (Une version encodée en
+base64 est aussi acceptée.) **Ne la collez dans aucun service en ligne** :
+cette clé donne accès à votre compte développeur.
 
 ### B2. Le dépôt des certificats
 
@@ -324,7 +324,7 @@ privé. C'est ce qui permet à une machine neuve de signer sans Mac de référen
 | --- | --- |
 | `ASC_KEY_ID` | Le Key ID de l'étape B1 |
 | `ASC_ISSUER_ID` | L'Issuer ID de l'étape B1 |
-| `ASC_KEY_CONTENT` | Le fichier `.p8` encodé en base64 |
+| `ASC_KEY_CONTENT` | Le contenu du fichier `.p8`, tel quel (ou en base64) |
 | `ASC_TEAM_ID` | Votre identifiant d'équipe Apple |
 | `MATCH_PASSWORD` | Une phrase secrète que vous choisissez — elle chiffre les certificats, **notez-la** |
 | `MATCH_GIT_TOKEN` | `identifiant:jeton` en base64, de l'étape B2 |

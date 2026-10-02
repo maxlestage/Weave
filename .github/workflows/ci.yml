@@ -57,7 +57,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             apps/api-rs/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('apps/api-rs/Cargo.lock') }}
+            apps/site/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('apps/api-rs/Cargo.lock', 'apps/site/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Tests de l'API
@@ -69,6 +70,46 @@ jobs:
 
       - name: Compiler l'API
         run: cargo build --release --manifest-path apps/api-rs/Cargo.toml
+
+      # ----------------------------------------------------------------
+      # Le portage du site en Yew
+      #
+      # `apps/site` n'était pas vérifié ici du tout : la chaîne Rust du site se
+      # compilait sur ma machine et nulle part ailleurs. Un outil qui compare
+      # les deux rendus n'a pourtant d'intérêt que s'il tourne à chaque
+      # poussée — une garde que personne ne lance n'en est pas une.
+      #
+      # La comparaison porte section par section. Celles que Yew ne rend pas
+      # encore sont listées et non comptées comme des fautes : l'étape sert
+      # pendant le portage, et pas seulement le jour où il finit.
+      # ----------------------------------------------------------------
+      - name: Le contrat engendré est-il à jour
+        # Le fichier `src/contrat.rs` est engendré depuis `packages/contracts`.
+        # Son en-tête annonce qu'« un test vérifie qu'il est à jour » — et
+        # c'était faux : rien ne le vérifiait. Un prix changé dans le contrat
+        # sans régénération ferait mentir le site, et c'est la seule chose que
+        # cette garde sert à empêcher.
+        run: bun run apps/site/outils/engendrer-contrat.ts --verifier
+
+      - name: Rendre le site en Yew
+        run: cargo run --manifest-path apps/site/Cargo.toml --features ssr --bin rendre
+
+      - name: Tests de la chaîne de construction du site
+        run: cargo test --manifest-path apps/site/Cargo.toml --features ssr
+
+      - name: Les deux chaînes refusent-elles pareil
+        # Ce que `build.ts` refuse de produire est la moitié de sa valeur : une
+        # origine morte, une adresse non chiffrée, des mentions légales
+        # incomplètes qui partiraient pour un vrai domaine. Une page jamais
+        # écrite ne se compare pas — on compare donc le refus. C'est la seule
+        # chose qui empêche une mise en ligne sans SIREN, et l'article 6-III de
+        # la LCEN la rend obligatoire.
+        #
+        # L'étape laisse aussi les deux sorties propres pour la comparaison.
+        run: bun run apps/site/outils/comparer-les-refus.ts
+
+      - name: React et Yew rendent-ils la même chose
+        run: bun run apps/site/outils/comparer.ts
 
       # ----------------------------------------------------------------
       # WeaveKit, en Swift
