@@ -662,3 +662,378 @@ private func plan(
     """
     return try! decodeur.decode(Plan.self, from: Data(json.utf8))
 }
+
+// MARK: - Le Renfort
+
+@Suite("Le Renfort")
+@MainActor
+struct RenfortTests {
+    @Test("Un Renfort acheté se dépense, et le compteur suit le serveur")
+    func depenser() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/billing/entitlement", #"""
+        {"tier":"depart","renewsAt":null,"credits":{"renfort":2},
+         "requestsLeftToday":0,"inGracePeriod":false}
+        """#)
+        serveur.repondre("POST", "/v1/requests/renfort", #"""
+        {"ok":true,"granted":5,"requestsLeftToday":5}
+        """#)
+        let plans = PlansStore(api: await serveur.api())
+
+        await plans.refreshCredits()
+        #expect(plans.renfortsDisponibles == 2)
+        #expect(plans.requestsLeftToday == 0)
+
+        let applique = await plans.useRenfort()
+
+        #expect(applique)
+        // La route qui manquait à l'application : c'est elle qui donne les
+        // cinq demandes. Sans cet appel, le Renfort reste crédité et inutile.
+        #expect(serveur.requetes.contains("POST /v1/requests/renfort"))
+        #expect(plans.requestsLeftToday == 5)
+        #expect(plans.renfortsDisponibles == 1)
+    }
+
+    @Test("Un Renfort refusé ne décompte rien")
+    func refuse() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/billing/entitlement", #"""
+        {"tier":"depart","renewsAt":null,"credits":{"renfort":1},
+         "requestsLeftToday":0,"inGracePeriod":false}
+        """#)
+        // Le plafond quotidien de renforts est atteint : le serveur refuse.
+        serveur.repondre("POST", "/v1/requests/renfort", statut: 422, #"""
+        {"error":"validation","message":"Deux renforts par jour au plus."}
+        """#)
+        let plans = PlansStore(api: await serveur.api())
+        await plans.refreshCredits()
+
+        let applique = await plans.useRenfort()
+
+        #expect(!applique)
+        #expect(plans.renfortsDisponibles == 1)
+        #expect(plans.requestsLeftToday == 0)
+        #expect(plans.alert != nil)
+    }
+
+    @Test("Relire les crédits garde les plans du fil")
+    func creditsSansToucherAuFil() {
+        // `remplacant(requestsLeftToday:)` sert à mettre le compteur à jour
+        // sans recomposer le fil : il ne doit pas vider la liste au passage.
+        let origine = Feed(
+            plans: [],
+            requestsLeftToday: 3,
+            fromCache: false,
+            generatedAt: .now
+        )
+        #expect(origine.remplacant(requestsLeftToday: 8).requestsLeftToday == 8)
+        #expect(origine.remplacant(requestsLeftToday: 8).plans.count == origine.plans.count)
+    }
+}
+
+// MARK: - Les conversations
+
+@Suite("Les conversations")
+@MainActor
+struct ConversationsStoreTests {
+    private func liste(fermee: Bool) -> String {
+        #"""
+        [{"id":"c1","planId":"p1","planTitle":"Marché puis brunch",
+          "planStartsAt":"2026-10-10T10:00:00.000Z",
+          "other":{"id":"u2","displayName":"Alex","age":24,"photoUrl":null,"verified":false},
+          "lastMessage":"À samedi","lastMessageAt":"2026-10-09T18:00:00.000Z",
+          "unread":2,"closed":\#(fermee)}]
+        """#
+    }
+
+    @Test("Fermer une conversation passe par le serveur, et la liste le reflète")
+    func fermer() async {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/conversations", liste(fermee: false))
+        let magasin = ConversationsStore(api: await serveur.api())
+        await magasin.refresh()
+        #expect(magasin.ouvertes.count == 1)
+        #expect(magasin.nonLus == 2)
+
+        // Le serveur ferme, puis renvoie la conversation close.
+        serveur.repondre("DELETE", "/v1/conversations/c1", #"{"ok":true}"#)
+        serveur.repondre("GET", "/v1/conversations", liste(fermee: true))
+        let fermee = await magasin.close("c1")
+
+        #expect(fermee)
+        #expect(serveur.requetes.contains("DELETE /v1/conversations/c1"))
+        #expect(magasin.ouvertes.isEmpty)
+    }
+
+    @Test("Un message refusé le dit, au lieu de disparaître")
+    func refusVisible() async {
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/conversations/c1/messages", statut: 409, #"""
+        {"error":"forbidden","message":"Cette conversation est fermée."}
+        """#)
+        let magasin = ConversationsStore(api: await serveur.api())
+
+        let parti = await magasin.send("Bonjour", in: "c1")
+
+        #expect(!parti)
+        #expect(magasin.alert != nil)
+        #expect(magasin.messages["c1"] == nil)
+    }
+
+    @Test("Un message envoyé rejoint le fil de la conversation")
+    func envoi() async {
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/conversations/c1/messages", #"""
+        {"id":"m1","conversationId":"c1","author":"moi","body":"J'arrive à 10 h",
+         "sentAt":"2026-10-09T18:00:00.000Z","readAt":null}
+        """#)
+        let magasin = ConversationsStore(api: await serveur.api())
+
+        let parti = await magasin.send("  J'arrive à 10 h  ", in: "c1")
+
+        #expect(parti)
+        #expect(magasin.messages["c1"]?.map(\.body) == ["J'arrive à 10 h"])
+    }
+
+    @Test("Un message vide ou trop long ne part pas")
+    func bornes() {
+        #expect(ConversationsStore.texteEnvoyable("   \n ") == nil)
+        #expect(ConversationsStore.texteEnvoyable(String(repeating: "a", count: conversationMaxChars + 1)) == nil)
+        #expect(ConversationsStore.texteEnvoyable(String(repeating: "a", count: conversationMaxChars)) != nil)
+        #expect(ConversationsStore.texteEnvoyable("  Oui  ") == "Oui")
+    }
+}
+
+// MARK: - La montre
+
+@Suite("Ce que l'iPhone et la montre se disent")
+struct MessageMontreTests {
+    @Test("Une session envoyée à la montre se relit à l'identique")
+    func session() throws {
+        let envoyee = Session(
+            accessToken: "acces",
+            refreshToken: "renouvellement-de-la-montre",
+            expiresAt: Date(timeIntervalSince1970: 1_790_000_000.25)
+        )
+        let recu = try #require(MessageMontre(try MessageMontre.session(envoyee).dictionnaire()))
+        guard case .session(let relue) = recu else {
+            Issue.record("relu comme autre chose qu'une session : \(recu)")
+            return
+        }
+        #expect(relue.accessToken == envoyee.accessToken)
+        #expect(relue.refreshToken == envoyee.refreshToken)
+        // À la milliseconde près : c'est cette heure qui décide du
+        // renouvellement, et une seconde tronquée le ferait partir trop tard.
+        #expect(abs(relue.expiresAt.timeIntervalSince(envoyee.expiresAt)) < 0.001)
+    }
+
+    @Test("Un résumé envoyé à la montre se relit à l'identique")
+    func resume() throws {
+        let envoye = WatchSummary(
+            pendingRequests: 2,
+            awaitingReply: 1,
+            nextPlan: .init(title: "Marché puis brunch", startsAt: Date(timeIntervalSince1970: 1_790_000_000), city: "Lyon"),
+            generatedAt: Date(timeIntervalSince1970: 1_789_990_000)
+        )
+        let recu = try #require(MessageMontre(try MessageMontre.resume(envoye).dictionnaire()))
+        guard case .resume(let relu) = recu else {
+            Issue.record("relu comme autre chose qu'un résumé : \(recu)")
+            return
+        }
+        #expect(relu == envoye)
+    }
+
+    @Test("Les messages sans charge font l'aller-retour")
+    func sansCharge() throws {
+        guard case .deconnexion = try #require(MessageMontre(try MessageMontre.deconnexion.dictionnaire())) else {
+            Issue.record("la déconnexion ne se relit pas")
+            return
+        }
+        guard case .demandeDeSession = try #require(MessageMontre(try MessageMontre.demandeDeSession.dictionnaire())) else {
+            Issue.record("la demande de session ne se relit pas")
+            return
+        }
+    }
+
+    @Test("Un message inconnu ou abîmé est ignoré, sans faire tomber l'appareil")
+    func illisible() {
+        #expect(MessageMontre([:]) == nil)
+        #expect(MessageMontre(["genre": "venuDuFutur"]) == nil)
+        #expect(MessageMontre(["genre": "session", "charge": Data("pas du json".utf8)]) == nil)
+        #expect(MessageMontre(["genre": "resume"]) == nil)
+    }
+}
+
+@Suite("La session de la montre")
+@MainActor
+struct SessionMontreTests {
+    @Test("La montre reçoit une session à elle, demandée avec le jeton de cet appareil")
+    func sessionPropre() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/auth/watch-session", #"""
+        {"session":{"accessToken":"acces-montre","refreshToken":"renouv-montre",
+                    "expiresAt":"2026-10-02T20:00:00.000Z"}}
+        """#)
+        let api = await serveur.api()
+
+        let session = try await api.watchSession()
+
+        #expect(session.refreshToken == "renouv-montre")
+        #expect(serveur.requetes == ["POST /v1/auth/watch-session"])
+    }
+
+    @Test("Si la session de l'iPhone doit d'abord être renouvelée, c'est le NOUVEAU jeton qui part")
+    func apresRenouvellement() async throws {
+        // Lire le jeton avant d'obtenir un accès valide enverrait celui qui
+        // vient d'être tourné : le serveur le refuserait, et la montre
+        // resterait sans session sans que personne ne comprenne pourquoi.
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/auth/refresh", #"""
+        {"session":{"accessToken":"acces-neuf","refreshToken":"renouv-neuf",
+                    "expiresAt":"2030-01-01T00:00:00.000Z"}}
+        """#)
+        serveur.repondre("POST", "/v1/auth/watch-session", #"""
+        {"session":{"accessToken":"acces-montre","refreshToken":"renouv-montre",
+                    "expiresAt":"2030-01-01T00:00:00.000Z"}}
+        """#)
+        let api = await serveur.api(expireDans: 10, renouvellement: "renouv-ancien")
+
+        _ = try await api.watchSession()
+
+        #expect(serveur.requetes == ["POST /v1/auth/refresh", "POST /v1/auth/watch-session"])
+        let envoye = try #require(serveur.corpsRecu("POST", "/v1/auth/watch-session"))
+        #expect(envoye.contains("renouv-neuf"))
+        #expect(!envoye.contains("renouv-ancien"))
+    }
+}
+
+@Suite("L'état de la montre")
+@MainActor
+struct MontreStoreTests {
+    private func resume(attente: Int, compose: TimeInterval) -> String {
+        #"{"pendingRequests":\#(attente),"awaitingReply":0,"nextPlan":null,"generatedAt":"\#(DateWeave.avecFractions.format(Date(timeIntervalSince1970: compose)))"}"#
+    }
+
+    @Test("Une montre neuve n'a pas de session, et ne va pas au réseau")
+    func sansSession() async {
+        let serveur = FauxServeur()
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: false)
+        let montre = MontreStore(api: api, magasin: magasin)
+
+        await montre.demarrer()
+
+        #expect(!montre.aUneSession)
+        #expect(serveur.requetes.isEmpty)
+    }
+
+    @Test("La session reçue de l'iPhone est gardée, et la montre se charge seule ensuite")
+    func sessionRecue() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/watch/summary", resume(attente: 3, compose: 2_000))
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: false)
+        let montre = MontreStore(api: api, magasin: magasin)
+
+        await montre.recevoir(.session(Session(
+            accessToken: "acces-montre",
+            refreshToken: "renouv-montre",
+            expiresAt: .now.addingTimeInterval(3600)
+        )))
+
+        #expect(montre.aUneSession)
+        #expect(await magasin.current?.refreshToken == "renouv-montre")
+        #expect(montre.resume.pendingRequests == 3)
+    }
+
+    @Test("Le résumé le plus récent l'emporte, quel que soit son chemin")
+    func plusRecent() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/watch/summary", resume(attente: 5, compose: 2_000))
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: true)
+        let montre = MontreStore(api: api, magasin: magasin)
+        await montre.demarrer()
+        #expect(montre.resume.pendingRequests == 5)
+
+        // Un résumé plus ANCIEN arrive ensuite par l'iPhone : il ne doit pas
+        // faire reculer l'écran.
+        let ancien = try WeaveAPI.decoder.decode(
+            WatchSummary.self, from: Data(resume(attente: 1, compose: 1_000).utf8))
+        await montre.recevoir(.resume(ancien))
+        #expect(montre.resume.pendingRequests == 5)
+
+        // Un plus récent, lui, s'affiche.
+        let recent = try WeaveAPI.decoder.decode(
+            WatchSummary.self, from: Data(resume(attente: 0, compose: 3_000).utf8))
+        await montre.recevoir(.resume(recent))
+        #expect(montre.resume.pendingRequests == 0)
+    }
+
+    @Test("Une déconnexion sur l'iPhone efface tout sur la montre")
+    func deconnexion() async {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/watch/summary", resume(attente: 2, compose: 2_000))
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: true)
+        let montre = MontreStore(api: api, magasin: magasin)
+        await montre.demarrer()
+
+        await montre.recevoir(.deconnexion)
+
+        #expect(!montre.aUneSession)
+        #expect(await magasin.current == nil)
+        #expect(montre.resume.pendingRequests == 0)
+    }
+
+    @Test("Une session révoquée côté serveur se voit sur la montre")
+    func revoquee() async {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/watch/summary", statut: 401, #"{"error":"unauthorized","message":"Session expirée."}"#)
+        // Le renouvellement échoue aussi : la session a été révoquée.
+        serveur.repondre("POST", "/v1/auth/refresh", statut: 401, #"{"error":"unauthorized","message":"Session expirée."}"#)
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: true)
+        let montre = MontreStore(api: api, magasin: magasin)
+
+        await montre.demarrer()
+
+        #expect(!montre.aUneSession)
+    }
+
+    @Test("Les demandes de tous ses plans se listent, et s'acceptent depuis le poignet")
+    func accepter() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/watch/summary", resume(attente: 2, compose: 2_000))
+        serveur.repondre("GET", "/v1/plans/mine", #"""
+        [{"id":"p1","title":"Marché puis brunch","note":"","category":"repas",
+          "startsAt":"2026-10-10T10:00:00.000Z","city":"Lyon","capacity":2,"seatsLeft":2,
+          "state":"ouvert","pendingRequests":1},
+         {"id":"p2","title":"Bloc","note":"","category":"sport",
+          "startsAt":"2026-10-11T19:00:00.000Z","city":"Lyon","capacity":1,"seatsLeft":1,
+          "state":"ouvert","pendingRequests":1},
+         {"id":"p3","title":"Rien de neuf","note":"","category":"jeux",
+          "startsAt":"2026-10-12T19:00:00.000Z","city":"Lyon","capacity":1,"seatsLeft":1,
+          "state":"ouvert","pendingRequests":0}]
+        """#)
+        let auteur = #"{"id":"u9","displayName":"Sofia","age":21,"photoUrl":null,"verified":false}"#
+        serveur.repondre("GET", "/v1/plans/p1/requests", #"""
+        [{"id":"d1","message":"J'adore les marchés du dimanche","sentAt":"2026-10-08T09:00:00.000Z","author":\#(auteur)}]
+        """#)
+        serveur.repondre("GET", "/v1/plans/p2/requests", #"""
+        [{"id":"d2","message":"Je grimpe aussi, très mal","sentAt":"2026-10-07T09:00:00.000Z","author":\#(auteur)}]
+        """#)
+        serveur.repondre("POST", "/v1/requests/d2/accept", #"{"conversationId":"c7"}"#)
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: true)
+        let montre = MontreStore(api: api, magasin: magasin)
+        await montre.demarrer()
+
+        await montre.chargerDemandes()
+
+        // La plus ancienne d'abord ; le plan sans demande n'est pas interrogé.
+        #expect(montre.demandes.map(\.id) == ["d2", "d1"])
+        #expect(montre.demandes.first?.planTitle == "Bloc")
+        #expect(!serveur.requetes.contains("GET /v1/plans/p3/requests"))
+
+        let conversation = await montre.accepter(try #require(montre.demandes.first))
+
+        #expect(conversation == "c7")
+        #expect(serveur.requetes.contains("POST /v1/requests/d2/accept"))
+        #expect(montre.demandes.map(\.id) == ["d1"])
+    }
+}

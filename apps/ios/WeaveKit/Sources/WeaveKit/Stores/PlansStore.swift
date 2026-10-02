@@ -41,6 +41,15 @@ public final class PlansStore {
     /// ressource rare du produit, et la cacher reviendrait à la rendre injuste.
     public var requestsLeftToday: Int { feed.requestsLeftToday }
 
+    /// Crédits à l'unité détenus, par référence (« renfort », « tablee »…).
+    ///
+    /// Lus à part du fil : ils ne changent qu'à l'achat ou à l'usage, et le
+    /// fil se recompose bien plus souvent qu'eux.
+    public private(set) var credits: [String: Int] = [:]
+
+    /// Renforts achetés et pas encore utilisés.
+    public var renfortsDisponibles: Int { credits[UnitSku.renfort.rawValue] ?? 0 }
+
     /// Demandes reçues sur ses propres plans, en attente de décision.
     public var pendingRequests: Int { myPlans.reduce(0) { $0 + $1.pendingRequests } }
 
@@ -58,6 +67,49 @@ public final class PlansStore {
             phase = feed.plans.isEmpty ? .failed(error.userMessage) : .ready
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Relit les droits du compte : crédits à l'unité et demandes du jour.
+    public func refreshCredits() async {
+        do {
+            let droits = try await api.entitlement()
+            credits = droits.credits
+            feed = feed.remplacant(requestsLeftToday: droits.requestsLeftToday)
+        } catch let error as WeaveAPIError {
+            handle(error)
+        } catch {
+            alert = .transport(error.localizedDescription)
+        }
+    }
+
+    /// Utilise un Renfort : cinq demandes de plus pour aujourd'hui.
+    ///
+    /// ## Pourquoi cette méthode manquait
+    ///
+    /// Acheter un Renfort créditait le compte, et rien ne le dépensait :
+    /// `applyRenfort` existait dans le client et n'avait aucun appelant. Le
+    /// produit était vendu, encaissé, et sans effet — celui qui l'achetait
+    /// parce qu'il n'avait plus de demandes n'en avait toujours pas.
+    ///
+    /// Le décompte local suit la réponse du serveur, et non une addition faite
+    /// ici : le nombre de renforts applicables par jour est lui-même borné, et
+    /// seul le serveur sait si celui-ci a compté.
+    @discardableResult
+    public func useRenfort() async -> Bool {
+        do {
+            let resultat = try await api.applyRenfort()
+            feed = feed.remplacant(requestsLeftToday: resultat.requestsLeftToday)
+            if let reste = credits[UnitSku.renfort.rawValue], reste > 0 {
+                credits[UnitSku.renfort.rawValue] = reste - 1
+            }
+            return true
+        } catch let error as WeaveAPIError {
+            handle(error)
+            return false
+        } catch {
+            alert = .transport(error.localizedDescription)
+            return false
         }
     }
 
