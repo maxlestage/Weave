@@ -199,7 +199,7 @@ fn configuration() -> Env {
             key_id: None,
             team_id: None,
             key_path: None,
-            bundle_id: "com.weave.app".to_string(),
+            bundle_id: "com.weave.maxlestage".to_string(),
             environnement: "sandbox".to_string(),
             configure: false,
         },

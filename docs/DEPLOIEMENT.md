@@ -335,14 +335,39 @@ Onglet **Variables** :
 | --- | --- |
 | `MATCH_GIT_URL` | L'adresse du dépôt privé, par exemple `https://github.com/vous/weave-certificats.git` |
 
-### B4. Déclarer l'application sur App Store Connect
+### B4. Déclarer l'application chez Apple
 
-Créez sur App Store Connect une application avec l'identifiant
-`com.weave.app`, ainsi que les trois identifiants d'extension :
+L'identifiant est `com.weave.maxlestage` (`com.weave.app` n'était pas libre).
+App Store Connect ne propose un identifiant dans sa liste que s'il a d'abord
+été enregistré côté développeur. Trois temps, depuis le navigateur :
 
-- `com.weave.app.activity` — la Live Activity
-- `com.weave.app.watchkitapp` — l'application montre
-- `com.weave.app.watchkitapp.widgets` — la complication
+**1. Le groupe d'application** — developer.apple.com → **Account** →
+**Certificates, Identifiers & Profiles** → **Identifiers** → **+** →
+**App Groups** → description `Weave`, identifiant `group.com.weave.maxlestage`.
+
+**2. Les quatre identifiants** — **Identifiers** → **+** → **App IDs** →
+**App**, identifiant **Explicit** :
+
+| Bundle ID | Description | Capacités à cocher |
+| --- | --- | --- |
+| `com.weave.maxlestage` | Weave | **Push Notifications** |
+| `com.weave.maxlestage.activity` | Weave Live Activity | aucune |
+| `com.weave.maxlestage.watchkitapp` | Weave Watch | **App Groups** |
+| `com.weave.maxlestage.watchkitapp.widgets` | Weave Complication | **App Groups** |
+
+Pour les deux qui ont **App Groups** : une fois enregistrés, rouvrez-les,
+**Configure** à côté de App Groups, cochez `group.com.weave.maxlestage`,
+**Save**. Seuls la montre et sa complication partagent ce groupe ; l'iPhone et
+la Live Activity n'en ont pas besoin.
+
+Le partage du trousseau ne demande rien : il est permis par défaut entre les
+applications d'une même équipe.
+
+**3. L'application** — App Store Connect → **Apps** → **+** → **Nouvelle app**,
+plateforme iOS, identifiant de lot `com.weave.maxlestage`. Les produits
+intégrés (abonnements et unités) se créent ensuite dans cette application,
+avec les identifiants de `packages/contracts/src/catalog.ts`
+(`com.weave.maxlestage.sub.viree.monthly`, `com.weave.maxlestage.unit.renfort`…).
 
 ### B5. Première construction
 

@@ -49,7 +49,7 @@ public enum PlanTier: String, Codable, CaseIterable, Sendable {
     /// qu'à celui qui l'encaisse.
     public var productID: String? {
         guard self != .depart else { return nil }
-        return "com.weave.app.sub.\(rawValue).monthly"
+        return "com.weave.maxlestage.sub.\(rawValue).monthly"
     }
 
     /// Ce palier donne-t-il droit au filtre par jour ?
@@ -103,7 +103,7 @@ public enum UnitSku: String, Codable, CaseIterable, Sendable {
     }
 
     /// Identifiant StoreKit correspondant, aligné sur le catalogue serveur.
-    public var productID: String { "com.weave.app.unit.\(rawValue)" }
+    public var productID: String { "com.weave.maxlestage.unit.\(rawValue)" }
 }
 
 public struct Session: Codable, Sendable {

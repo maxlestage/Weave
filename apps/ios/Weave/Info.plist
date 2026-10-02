@@ -6,9 +6,11 @@
   <!--
     Le nom sous l'icône, et lui seul.
 
-    `PRODUCT_BUNDLE_IDENTIFIER` ne bouge PAS : changer `com.weave.app` ferait
-    une nouvelle application aux yeux d'Apple, et ni TestFlight, ni les
-    abonnements, ni les achats déjà faits ne suivraient.
+    `PRODUCT_BUNDLE_IDENTIFIER` ne bouge PAS : changer `com.weave.maxlestage`
+    ferait une nouvelle application aux yeux d'Apple, et ni TestFlight, ni les
+    abonnements, ni les achats déjà faits ne suivraient. (Il a remplacé
+    `com.weave.app` une seule fois, avant toute publication : ce nom-là
+    n'était pas libre chez Apple.)
 
     Le caractère « ‣ » (U+2023, puce triangulaire) fait partie du nom. Il est
     écrit ici en clair, en UTF-8, et non en entité XML : `&#8227;` serait
@@ -24,7 +26,7 @@
   <key>WEAVE_API_URL</key>
   <string>$(WEAVE_API_URL)</string>
   <key>WEAVE_KEYCHAIN_GROUP</key>
-  <string>$(AppIdentifierPrefix)com.weave.app.shared</string>
+  <string>$(AppIdentifierPrefix)com.weave.maxlestage.shared</string>
 
   <!-- Live Activities : requis pour ActivityKit. -->
   <key>NSSupportsLiveActivities</key>
@@ -51,7 +53,7 @@
   <array>
     <dict>
       <key>CFBundleURLName</key>
-      <string>com.weave.app</string>
+      <string>com.weave.maxlestage</string>
       <key>CFBundleURLSchemes</key>
       <array><string>weave</string></array>
     </dict>

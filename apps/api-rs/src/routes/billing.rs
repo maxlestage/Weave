@@ -26,7 +26,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-const BUNDLE: &str = "com.weave.app";
+const BUNDLE: &str = "com.weave.maxlestage";
 
 /// Les unités achetables, telles que `packages/contracts` les décrit.
 /// (sku, nom, identifiant StoreKit sans le préfixe, prix en centimes, dotation)
@@ -688,7 +688,7 @@ struct Notification {
 /// Pas de `bundleId`, pas d'`environment`, pas de `productId`.
 ///
 /// Le contrôle du paquet lisait donc une chaîne vide, la comparait à
-/// `com.weave.app`, et refusait. **Aucune notification réelle d'Apple n'a
+/// `com.weave.maxlestage`, et refusait. **Aucune notification réelle d'Apple n'a
 /// jamais pu être traitée** : ni renouvellement, ni expiration, ni
 /// remboursement, ni période de grâce. Les tests ne le voyaient pas — ils
 /// envoyaient à cette route une transaction, la forme qu'elle savait lire.
