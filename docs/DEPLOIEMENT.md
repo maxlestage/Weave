@@ -296,9 +296,14 @@ incontournable, aucune application ne peut être distribuée sans.
 Sur **appstoreconnect.apple.com** → **Users and Access** → **Integrations** →
 **App Store Connect API** :
 
-1. **+** pour créer une clé, rôle **App Manager**
+1. **+** pour créer une clé, rôle **Admin**
 2. Notez le **Key ID** et l'**Issuer ID**
 3. Téléchargez le fichier `.p8` — **il n'est téléchargeable qu'une fois**
+
+Le rôle **Admin** est nécessaire : la signature est entièrement automatique, et
+seul ce rôle permet à Xcode d'utiliser les certificats de distribution gérés
+par Apple. Avec une clé « App Manager », la construction échoue à la
+signature.
 
 Ouvrez le fichier `.p8` dans une application de notes et copiez **tout** son
 contenu, lignes `-----BEGIN PRIVATE KEY-----` et `-----END PRIVATE KEY-----`
@@ -306,81 +311,48 @@ comprises : c'est la valeur du secret, telle quelle. (Une version encodée en
 base64 est aussi acceptée.) **Ne la collez dans aucun service en ligne** :
 cette clé donne accès à votre compte développeur.
 
-### B2. Le dépôt des certificats
+### B2. Déposer les valeurs dans GitHub
 
-`fastlane match` conserve certificats et profils, **chiffrés**, dans un dépôt
-privé. C'est ce qui permet à une machine neuve de signer sans Mac de référence.
-
-1. Créez un dépôt GitHub **privé** et **vide**, par exemple `weave-certificats`
-2. Créez un jeton d'accès personnel ayant le droit `repo` sur ce dépôt
-   (**Settings → Developer settings → Personal access tokens**)
-3. Encodez `votre-identifiant:le-jeton` en base64
-
-### B3. Déposer les valeurs dans GitHub
-
-**Settings → Secrets and variables → Actions**, onglet **Secrets** :
+**Settings → Secrets and variables → Actions** → **New repository secret** :
 
 | Nom | Valeur |
 | --- | --- |
 | `ASC_KEY_ID` | Le Key ID de l'étape B1 |
 | `ASC_ISSUER_ID` | L'Issuer ID de l'étape B1 |
 | `ASC_KEY_CONTENT` | Le contenu du fichier `.p8`, tel quel (ou en base64) |
-| `ASC_TEAM_ID` | Votre identifiant d'équipe Apple |
-| `MATCH_PASSWORD` | Une phrase secrète que vous choisissez — elle chiffre les certificats, **notez-la** |
-| `MATCH_GIT_TOKEN` | `identifiant:jeton` en base64, de l'étape B2 |
+| `ASC_TEAM_ID` | *Facultatif.* Votre identifiant d'équipe Apple. Sans lui, il est lu sur vos identifiants enregistrés |
 
-Onglet **Variables** :
+C'est tout. Pas de dépôt de certificats, pas de phrase secrète : Xcode
+enregistre les identifiants, active leurs capacités (notifications, groupe
+d'application), crée le groupe `group.com.weave.maxlestage`, et obtient
+certificats et profils lui-même.
 
-| Nom | Valeur |
-| --- | --- |
-| `MATCH_GIT_URL` | L'adresse du dépôt privé, par exemple `https://github.com/vous/weave-certificats.git` |
+### B3. Première exécution : les identifiants
 
-### B4. Déclarer l'application chez Apple
+**Actions** → **« iOS — envoyer à TestFlight »** → **Run workflow**.
 
-L'identifiant est `com.weave.maxlestage` (`com.weave.app` n'était pas libre).
-App Store Connect ne propose un identifiant dans sa liste que s'il a d'abord
-été enregistré côté développeur. Trois temps, depuis le navigateur :
+Elle enregistre chez Apple les quatre identifiants — `com.weave.maxlestage`
+(`com.weave.app` n'était pas libre), `.activity`, `.watchkitapp` et
+`.watchkitapp.widgets` —, puis **s'arrête** si
+l'application n'existe pas encore dans App Store Connect. C'est voulu : Apple
+ne permet pas de créer une application par l'API, et sans cette vérification
+on l'apprendrait après vingt minutes de construction.
 
-**1. Le groupe d'application** — developer.apple.com → **Account** →
-**Certificates, Identifiers & Profiles** → **Identifiers** → **+** →
-**App Groups** → description `Weave`, identifiant `group.com.weave.maxlestage`.
+### B4. Créer l'application dans App Store Connect
 
-**2. Les quatre identifiants** — **Identifiers** → **+** → **App IDs** →
-**App**, identifiant **Explicit** :
+**Apps** → **+** → **Nouvelle app** : plateforme iOS, nom `Weave ‣`, identifiant
+de lot `com.weave.maxlestage` (il apparaît dans la liste depuis l'étape B3 —
+rechargez la page si elle était déjà ouverte), UGS au choix, par exemple
+`weave`.
 
-| Bundle ID | Description | Capacités à cocher |
-| --- | --- | --- |
-| `com.weave.maxlestage` | Weave | **Push Notifications** |
-| `com.weave.maxlestage.activity` | Weave Live Activity | aucune |
-| `com.weave.maxlestage.watchkitapp` | Weave Watch | **App Groups** |
-| `com.weave.maxlestage.watchkitapp.widgets` | Weave Complication | **App Groups** |
-
-Pour les deux qui ont **App Groups** : une fois enregistrés, rouvrez-les,
-**Configure** à côté de App Groups, cochez `group.com.weave.maxlestage`,
-**Save**. Seuls la montre et sa complication partagent ce groupe ; l'iPhone et
-la Live Activity n'en ont pas besoin.
-
-Le partage du trousseau ne demande rien : il est permis par défaut entre les
-applications d'une même équipe.
-
-**3. L'application** — App Store Connect → **Apps** → **+** → **Nouvelle app**,
-plateforme iOS, identifiant de lot `com.weave.maxlestage`. Les produits
-intégrés (abonnements et unités) se créent ensuite dans cette application,
-avec les identifiants de `packages/contracts/src/catalog.ts`
+Les produits intégrés (abonnements et unités) se créent ensuite dans cette
+application, avec les identifiants de `packages/contracts/src/catalog.ts`
 (`com.weave.maxlestage.sub.viree.monthly`, `com.weave.maxlestage.unit.renfort`…).
 
-### B5. Première construction
+### B5. Construire et envoyer
 
-1. **Actions** → **« iOS — envoyer à TestFlight »** → **Run workflow**
-2. Cochez **« Première exécution : autoriser la création des certificats »**
-3. **Run workflow**
-
-Cette première exécution crée les certificats et les dépose, chiffrés, dans le
-dépôt privé. **Ne cochez plus cette case ensuite** : les exécutions suivantes
-réutilisent ce qui a été créé, au lieu d'accumuler des certificats — Apple en
-limite le nombre par compte.
-
-Comptez vingt à quarante minutes. Ensuite, la version apparaît dans TestFlight.
+Relancez **« iOS — envoyer à TestFlight »**. Comptez vingt à quarante minutes ;
+la version apparaît ensuite dans TestFlight.
 
 ### B6. Les fois suivantes
 
@@ -421,8 +393,9 @@ Par honnêteté sur ce qui est testé et ce qui ne l'est pas :
 | `H10 App crashed` juste après un déploiement réussi | La configuration est incomplète. Le journal du dyno (**More → View logs**, lignes `app[web.1]`) liste les variables manquantes. Lancez « Heroku — configurer les variables » |
 | Le déploiement réussit mais `/health` reste muet | Journaux dans le tableau de bord Heroku, onglet **More → View logs** |
 | `"cache":{"ok":false}` | Le magasin clé-valeur n'est pas branché. Sans lui, le quota de demandes ne peut pas être compté : c'est une dépendance dure, pas un confort |
-| « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B3 manque |
-| Échec de signature iOS | Relancez avec la case « créer les certificats » cochée, **une seule fois** |
+| « Publication ignorée : configuration Apple absente » | Un des secrets de l'étape B2 manque |
+| « L'application n'existe pas encore dans App Store Connect » | Étape B4, puis relancez |
+| Échec de signature iOS (« Cloud signing permission error », « No signing certificate ») | La clé d'API n'a pas le rôle **Admin** (étape B1) |
 
 ## La purge : rien à planifier
 
