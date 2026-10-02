@@ -31,11 +31,17 @@ platform :ios do
 
   desc "Construit et envoie une version à TestFlight"
   lane :beta do
+    # La clé est acceptée telle quelle (le contenu du `.p8`, collé avec ses
+    # lignes « BEGIN/END PRIVATE KEY ») ou encodée en base64. Depuis un
+    # téléphone, encoder en base64 sans passer par un site en ligne est
+    # pénible — et un site en ligne verrait la clé.
+    contenu = ENV.fetch("ASC_KEY_CONTENT").strip
+    en_clair = contenu.include?("BEGIN PRIVATE KEY")
     cle = app_store_connect_api_key(
       key_id: ENV.fetch("ASC_KEY_ID"),
       issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-      key_content: ENV.fetch("ASC_KEY_CONTENT"),
-      is_key_content_base64: true,
+      key_content: en_clair ? "#{contenu}\n" : contenu,
+      is_key_content_base64: !en_clair,
       in_house: false,
     )
 
