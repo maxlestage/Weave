@@ -10,6 +10,7 @@
 //! bas les compte.
 
 use std::io::Write;
+use weave_site::chaine;
 use weave_site::contrat;
 use weave_site::langues::{LANGUES, Langue};
 use weave_site::metadonnees::metadonnees;
@@ -55,7 +56,13 @@ const DEMARREUR_CONTENU: &str = "import demarrer from \"/weave_site.js\";\ndemar
 /// Le script est en `module`, donc différé : il ne bloque pas l'affichage. La
 /// page est lisible avant qu'un octet de wasm n'arrive — c'est tout l'intérêt
 /// du rendu serveur, et l'hydratation ne vient qu'après.
-fn coquille(langue: Langue, corps: &str, feuille: &str, icone: &str) -> String {
+fn coquille(
+    langue: Langue,
+    corps: &str,
+    feuille: &str,
+    icone: &str,
+    origine: Option<&str>,
+) -> String {
     let m = metadonnees(langue);
 
     // Les autres langues, dans l'ordre où `LANGUES` les déclare : c'est celui
@@ -83,8 +90,7 @@ fn coquille(langue: Langue, corps: &str, feuille: &str, icone: &str) -> String {
     <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
     <title>{titre}</title>
     <meta name="description" content="{description}" />
-
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+{canonique}{alternatives_de_langue}    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta property="og:site_name" content="Weave" />
     <meta property="og:title" content="{partage_titre}" />
@@ -93,7 +99,7 @@ fn coquille(langue: Langue, corps: &str, feuille: &str, icone: &str) -> String {
     <meta property="og:locale" content="{og_locale}" />
 {alternatives}    <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="{partage_image_alt}" />
+    <meta property="og:image:alt" content="{partage_image_alt}" />{absolues}
     <link rel="icon" href="/{icone}" type="image/svg+xml" />
     <link rel="stylesheet" href="/{feuille}" />
     <script type="application/ld+json">
@@ -128,6 +134,9 @@ fn coquille(langue: Langue, corps: &str, feuille: &str, icone: &str) -> String {
         partage_image_alt = echapper(m.partage_image_alt),
         og_locale = m.og_locale,
         bcp47 = m.bcp47,
+        canonique = chaine::canonique_accueil(origine, langue),
+        alternatives_de_langue = chaine::alternatives(origine),
+        absolues = chaine::balises_absolues(origine, langue.chemin("").trim_start_matches('/')),
         application_description = echapper(m.application_description),
         offre_description = echapper(m.offre_description),
     )
@@ -149,7 +158,16 @@ fn coquille_juridique(
     corps: &str,
     feuille: &str,
     icone: &str,
+    origine: Option<&str>,
 ) -> String {
+    // La canonique d'une page juridique est déclarée MÊME sans origine : le
+    // format relatif y est valide et se résout contre l'adresse de la page.
+    // Celle de l'accueil, elle, est omise — trois adresses y désignent la même
+    // page, et une relative n'y dirait rien de plus que la page elle-même.
+    let canonique = match origine {
+        Some(origine) => format!("{origine}/{}", page.adresse),
+        None => format!("/{}", page.adresse),
+    };
     format!(
         r##"<!doctype html>
 <html lang="fr">
@@ -160,12 +178,12 @@ fn coquille_juridique(
     <meta name="theme-color" content="#fffdf9" media="(prefers-color-scheme: light)" />
     <title>{titre}</title>
     <meta name="description" content="{description}" />
-    <link rel="canonical" href="/{adresse}" />
+    <link rel="canonical" href="{canonique}" />
     <meta property="og:site_name" content="Weave" />
     <meta property="og:title" content="{titre}" />
     <meta property="og:description" content="{description}" />
     <meta property="og:type" content="article" />
-    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:locale" content="fr_FR" />{absolues}
     <link rel="icon" href="/{icone}" type="image/svg+xml" />
     <link rel="stylesheet" href="/{feuille}" />
   </head>
@@ -183,7 +201,7 @@ fn coquille_juridique(
         // fait pareil, au même endroit du titre.
         titre = echapper(&format!("{} — Weave", page.titre)),
         description = echapper(page.description),
-        adresse = page.adresse,
+        absolues = chaine::balises_absolues(origine, page.adresse),
     )
 }
 
@@ -246,6 +264,32 @@ fn habillage() -> std::io::Result<(String, String)> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> std::io::Result<()> {
     let racine = sortie("dist-rs");
+
+    // Le dossier de sortie est VIDÉ d'abord, comme le fait `build.ts`.
+    //
+    // Sans cela, un fichier qui cesse d'être produit survit et continue d'être
+    // servi. La comparaison l'a trouvé : une construction lancée avec une
+    // origine avait écrit `sitemap.xml`, puis refusé pour mentions légales
+    // incomplètes — et le plan du site restait là, annonçant une adresse qui
+    // n'était plus la bonne, à travers toutes les constructions suivantes.
+    if racine.exists() {
+        std::fs::remove_dir_all(&racine)?;
+    }
+    std::fs::create_dir_all(&racine)?;
+
+    // L'origine d'abord, et son refus avant tout rendu.
+    //
+    // Écrire huit pages canoniques à une adresse morte, puis s'arrêter, laisse
+    // derrière soi un `dist-rs` qu'on pourrait servir. Mieux vaut ne rien
+    // produire.
+    let origine = chaine::origine();
+    if let Some(origine) = &origine
+        && let Some(raison) = chaine::pourquoi_inhabitable(origine)
+    {
+        refuser_l_origine(origine, raison);
+    }
+    let origine = origine.as_deref();
+
     let (feuille, icone) = habillage()?;
     let mut pages = Vec::new();
 
@@ -261,7 +305,7 @@ async fn main() -> std::io::Result<()> {
             .render()
             .await;
 
-        let page = coquille(langue, &corps, &feuille, &icone);
+        let page = coquille(langue, &corps, &feuille, &icone, origine);
 
         let dossier = racine.join(langue.prefixe().trim_start_matches('/'));
         std::fs::create_dir_all(&dossier)?;
@@ -288,7 +332,7 @@ async fn main() -> std::io::Result<()> {
             // comparaison la listera comme absente, et c'est le bon message.
             continue;
         };
-        let entier = coquille_juridique(page, &corps, &feuille, &icone);
+        let entier = coquille_juridique(page, &corps, &feuille, &icone, origine);
         let dossier = racine.join(page.adresse);
         std::fs::create_dir_all(&dossier)?;
         std::fs::write(dossier.join("index.html"), entier.as_bytes())?;
@@ -296,8 +340,210 @@ async fn main() -> std::io::Result<()> {
     }
     rapporter_juridiques(&juridiques);
 
+    copier_les_ressources_publiques(&racine)?;
+    ecrire_les_fichiers_de_referencement(&racine, origine)?;
+    verifier_qu_aucune_adresse_n_est_ecrite_en_dur(&racine, origine)?;
+    avertir_des_mentions_incompletes(origine);
+
     rapporter(&pages);
     Ok(())
+}
+
+fn refuser_l_origine(origine: &str, raison: &str) -> ! {
+    eprintln!();
+    eprintln!("  ✗ SITE_ORIGINE vaut « {origine} ».");
+    eprintln!("    {raison}");
+    eprintln!();
+    eprintln!("    Les pages se déclareraient canoniques à cette adresse, et le plan");
+    eprintln!("    du site n'énumérerait qu'elle. Mieux vaut ne rien poser du tout :");
+    eprintln!("    les adresses absolues sont alors simplement omises.");
+    std::process::exit(1);
+}
+
+/// Les fichiers demandés par une adresse FIXE, écrite ailleurs que dans nos
+/// pages.
+///
+/// Un réseau social récupère `partage.png` depuis l'extérieur, iOS demande
+/// `apple-touch-icon.png` à la racine, et un navigateur ou un robot demande
+/// `favicon.svg` sans avoir lu la moindre balise. Aucune ne doit donc porter
+/// d'empreinte — l'adresse partagée serait périmée à la construction suivante.
+fn copier_les_ressources_publiques(racine: &std::path::Path) -> std::io::Result<()> {
+    let public = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("web")
+        .join("public");
+    for fichier in [
+        "partage.png",
+        "apple-touch-icon.png",
+        "favicon.svg",
+        "site.webmanifest",
+    ] {
+        std::fs::copy(public.join(fichier), racine.join(fichier))?;
+    }
+    Ok(())
+}
+
+/// `robots.txt` et `sitemap.xml`.
+///
+/// Sans eux, rien n'indique aux moteurs quelles pages existent : le site n'a
+/// pas de liens entrants et ses pages juridiques ne sont atteignables que
+/// depuis le pied de page.
+fn ecrire_les_fichiers_de_referencement(
+    racine: &std::path::Path,
+    origine: Option<&str>,
+) -> std::io::Result<()> {
+    std::fs::write(racine.join("robots.txt"), chaine::robots(origine))?;
+
+    let jour = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    match chaine::sitemap(origine, &jour) {
+        Some(plan) => std::fs::write(racine.join("sitemap.xml"), plan)?,
+        None => {
+            println!();
+            println!("  ↳ pas de sitemap.xml : SITE_ORIGINE n'est pas posée, et un plan");
+            println!("    du site n'accepte que des adresses absolues.");
+        }
+    }
+    Ok(())
+}
+
+/// Refuse si une page nomme notre propre adresse en dur.
+///
+/// L'accueil portait « https://weave.app » dans `canonical`, `og:url` et
+/// `og:image` — un domaine qui n'est pas le nôtre. Un lien partagé aurait
+/// montré l'image d'un autre site, et `canonical` aurait désigné ce domaine
+/// comme l'adresse véritable de nos pages : de quoi remettre à quelqu'un
+/// d'autre le référencement du site.
+///
+/// Le contrôle ne porte QUE sur les balises dont le rôle est de nommer notre
+/// adresse. Les liens sortants d'une page — la CNIL, l'assistance d'Apple —
+/// sont du contenu : ils désignent autrui, et c'est bien ce qu'on leur demande.
+fn verifier_qu_aucune_adresse_n_est_ecrite_en_dur(
+    racine: &std::path::Path,
+    origine: Option<&str>,
+) -> std::io::Result<()> {
+    let mut fautes = Vec::new();
+
+    for adresse in chaine::adresses() {
+        let chemin = racine.join(&adresse).join("index.html");
+        let html = std::fs::read_to_string(&chemin)?;
+        for valeur in adresses_declarees(&html) {
+            if !valeur.starts_with("http") {
+                continue;
+            }
+            if origine.is_some_and(|o| valeur.starts_with(o)) {
+                continue;
+            }
+            fautes.push(format!("{adresse}index.html : {valeur}"));
+        }
+    }
+
+    if !fautes.is_empty() {
+        eprintln!();
+        eprintln!("  ✗ Ces balises nomment notre adresse sans passer par SITE_ORIGINE :");
+        for faute in &fautes {
+            eprintln!("      {faute}");
+        }
+        eprintln!("    Une adresse partagée se déduit de l'origine, elle ne s'écrit pas.");
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Les valeurs des balises dont le rôle est de dire « où cette page vit-elle ».
+///
+/// Une petite lecture à la main plutôt qu'une expression rationnelle : les
+/// attributs peuvent arriver dans n'importe quel ordre, et une expression
+/// qui en suppose un finit par ne plus rien trouver le jour où on en ajoute
+/// un — sans échouer, ce qui est le pire des deux.
+fn adresses_declarees(html: &str) -> Vec<String> {
+    const PORTEUSES: [&str; 5] = [
+        "canonical",
+        "alternate",
+        "og:url",
+        "og:image",
+        "twitter:image",
+    ];
+    let mut trouvees = Vec::new();
+    for balise in html.split('<').skip(1) {
+        let Some(fin) = balise.find('>') else {
+            continue;
+        };
+        let balise = &balise[..fin];
+        if !(balise.starts_with("link ") || balise.starts_with("meta ")) {
+            continue;
+        }
+        let role = attribut(balise, "rel")
+            .or_else(|| attribut(balise, "property"))
+            .or_else(|| attribut(balise, "name"));
+        if !role.is_some_and(|r| PORTEUSES.contains(&r)) {
+            continue;
+        }
+        // `og:image:alt` et `og:image:width` portent un texte et un nombre, pas
+        // une adresse : leur rôle complet ne figure pas dans la liste, et
+        // c'est ce qui les écarte.
+        if let Some(valeur) = attribut(balise, "href").or_else(|| attribut(balise, "content")) {
+            trouvees.push(valeur.to_string());
+        }
+    }
+    trouvees
+}
+
+fn attribut<'a>(balise: &'a str, nom: &str) -> Option<&'a str> {
+    let motif = format!(" {nom}=\"");
+    let debut = balise.find(&motif)? + motif.len();
+    let reste = &balise[debut..];
+    let fin = reste.find('\"')?;
+    Some(&reste[..fin])
+}
+
+/// Ce qu'il reste à renseigner dans les mentions légales.
+///
+/// Une construction POUR UN VRAI DOMAINE s'arrête ; une construction locale
+/// avertit seulement. La distinction tient à `SITE_ORIGINE` : on ne le pose que
+/// pour mettre en ligne. Bloquer toute construction obligerait à remplir un
+/// SIREN pour lancer le site en local, ce qui n'a aucun sens — et finirait par
+/// faire poser des valeurs bidon pour avancer, c'est-à-dire exactement ce que
+/// cette garde existe pour empêcher.
+///
+/// Mais mettre en ligne SANS elles n'est pas une négligence rattrapable plus
+/// tard : l'article 6-III de la LCEN rend ces mentions obligatoires, et les
+/// pages s'afficheraient avec « [à compléter : SIREN et RCS] » surligné. Un
+/// avertissement dans un journal de construction ne se voit pas ; une page
+/// juridique publiée, si.
+fn avertir_des_mentions_incompletes(origine: Option<&str>) {
+    let manquantes = chaine::valeurs_manquantes();
+    if manquantes.is_empty() {
+        return;
+    }
+
+    if origine.is_some() {
+        eprintln!();
+        eprintln!(
+            "  ✗ {} mentions légales manquent, et le site part pour un vrai domaine.",
+            manquantes.len()
+        );
+        eprintln!("    Renseignez-les dans apps/web/src/pages/identite.ts :");
+        for champ in &manquantes {
+            eprintln!("      • {champ}");
+        }
+        eprintln!();
+        eprintln!("    L'article 6-III de la LCEN les rend obligatoires. Publiées telles");
+        eprintln!("    quelles, elles s'afficheraient surlignées « [à compléter : … ] ».");
+        std::process::exit(1);
+    }
+
+    println!();
+    println!("  ⚠ {} valeurs restent à renseigner", manquantes.len());
+    println!("    dans apps/web/src/pages/identite.ts :");
+    for champ in &manquantes {
+        println!("      • {champ}");
+    }
+    println!("    Les mentions légales manquantes apparaissent surlignées");
+    println!("    sur les pages publiées.");
+    println!();
+    println!("  ⚠ SITE_ORIGINE n'est pas posée : les liens partagés sortiront nus.");
+    println!("    Pas de vignette, pas de titre, pas de description — le protocole");
+    println!("    Open Graph ne résout aucune adresse relative. Ni plan du site.");
 }
 
 /// Rend le corps d'une page juridique, ou `None` si elle n'est pas portée.

@@ -28,7 +28,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
-ssr = ["yew/ssr", "dep:tokio"]
+ssr = ["yew/ssr", "dep:tokio", "dep:chrono"]
 hydration = [
   "yew/hydration",
   "dep:wasm-bindgen",
@@ -39,6 +39,9 @@ hydration = [
 [dependencies]
 yew = "0.23"
 tokio = { version = "1", features = ["rt", "macros"], optional = true }
+# La date du jour, pour le plan du site. Optionnelle et liée au trait `ssr` :
+# elle n'entre pas dans le wasm, qui n'écrit aucun plan du site.
+chrono = { version = "0.4.45", optional = true }
 wasm-bindgen = { version = "0.2.129", optional = true }
 # Une panique dans le wasm sort autrement en « unreachable executed », sans
 # fichier ni ligne. Ce crochet la fait apparaître dans la console du
