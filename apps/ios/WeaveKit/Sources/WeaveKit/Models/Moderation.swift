@@ -23,12 +23,12 @@ public enum ReportReason: String, CaseIterable, Identifiable, Sendable {
     /// Ce qui s'affiche dans le menu.
     public var libelle: String {
         switch self {
-        case .mineur: "Il s'agit d'un mineur"
-        case .harcelement: "Harcèlement ou menaces"
-        case .contenuSexuel: "Contenu sexuel"
-        case .fauxProfil: "Faux profil"
-        case .arnaque: "Arnaque ou sollicitation"
-        case .autre: "Autre"
+        case .mineur: NSLocalizedString("Il s'agit d'un mineur", comment: "")
+        case .harcelement: NSLocalizedString("Harcèlement ou menaces", comment: "")
+        case .contenuSexuel: NSLocalizedString("Contenu sexuel", comment: "")
+        case .fauxProfil: NSLocalizedString("Faux profil", comment: "")
+        case .arnaque: NSLocalizedString("Arnaque ou sollicitation", comment: "")
+        case .autre: NSLocalizedString("Autre", comment: "")
         }
     }
 

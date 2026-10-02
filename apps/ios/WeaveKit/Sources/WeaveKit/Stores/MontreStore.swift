@@ -97,7 +97,7 @@ public final class MontreStore {
         } catch let probleme as WeaveAPIError {
             erreur = probleme.userMessage
         } catch {
-            erreur = "Connexion impossible."
+            erreur = NSLocalizedString("Connexion impossible.", comment: "")
         }
     }
 
@@ -120,7 +120,7 @@ public final class MontreStore {
         } catch let probleme as WeaveAPIError {
             erreur = probleme.userMessage
         } catch {
-            erreur = "Connexion impossible."
+            erreur = NSLocalizedString("Connexion impossible.", comment: "")
         }
     }
 
@@ -136,7 +136,7 @@ public final class MontreStore {
             erreur = probleme.userMessage
             return nil
         } catch {
-            erreur = "Connexion impossible."
+            erreur = NSLocalizedString("Connexion impossible.", comment: "")
             return nil
         }
     }
@@ -150,7 +150,7 @@ public final class MontreStore {
         } catch let probleme as WeaveAPIError {
             erreur = probleme.userMessage
         } catch {
-            erreur = "Connexion impossible."
+            erreur = NSLocalizedString("Connexion impossible.", comment: "")
         }
     }
 

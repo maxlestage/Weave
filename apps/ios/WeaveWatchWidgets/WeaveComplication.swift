@@ -69,12 +69,14 @@ private struct ComplicationVue: View {
     private var ligne: String {
         if resume.pendingRequests > 0 {
             return resume.pendingRequests > 1
-                ? "\(resume.pendingRequests) veulent venir"
-                : "Quelqu'un veut venir"
+                ? String(localized: "\(resume.pendingRequests) veulent venir")
+                : String(localized: "Quelqu'un veut venir")
         }
         if let plan = resume.nextPlan { return plan.city }
-        if resume.awaitingReply > 0 { return "\(resume.awaitingReply) en attente" }
-        return "Rien de prévu"
+        if resume.awaitingReply > 0 {
+            return String(localized: "\(resume.awaitingReply) en attente")
+        }
+        return String(localized: "Rien de prévu")
     }
 
     var body: some View {
@@ -93,7 +95,9 @@ private struct ComplicationVue: View {
 
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 2) {
-                Text(resume.nextPlan?.title ?? "Aucun plan")
+                // `?? "…"` ferait un `String`, affiché tel quel : la valeur de repli
+                // passe par le catalogue elle aussi.
+                Text(resume.nextPlan?.title ?? String(localized: "Aucun plan"))
                     .font(.headline)
                     .lineLimit(1)
                 Text(ligne).font(.caption)

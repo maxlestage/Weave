@@ -86,6 +86,12 @@ targets:
     platform: iOS
     sources:
       - path: WeaveActivity
+      # Le catalogue de traductions de l'iPhone, partagé. Sans lui, cette
+      # cible n'avait AUCUNE traduction : ses textes restaient en français sur
+      # un appareil réglé en anglais ou en espagnol, quel que soit le contenu
+      # du catalogue. Une seule source pour toutes les cibles : une phrase
+      # traduite pour l'iPhone l'est aussi au poignet.
+      - path: Weave/Localizable.xcstrings
     dependencies:
       - package: WeaveKit
     settings:
@@ -102,6 +108,12 @@ targets:
     platform: watchOS
     sources:
       - path: WeaveWatch
+      # Le catalogue de traductions de l'iPhone, partagé. Sans lui, cette
+      # cible n'avait AUCUNE traduction : ses textes restaient en français sur
+      # un appareil réglé en anglais ou en espagnol, quel que soit le contenu
+      # du catalogue. Une seule source pour toutes les cibles : une phrase
+      # traduite pour l'iPhone l'est aussi au poignet.
+      - path: Weave/Localizable.xcstrings
     dependencies:
       - package: WeaveKit
       - target: WeaveWatchWidgets
@@ -121,6 +133,12 @@ targets:
     platform: watchOS
     sources:
       - path: WeaveWatchWidgets
+      # Le catalogue de traductions de l'iPhone, partagé. Sans lui, cette
+      # cible n'avait AUCUNE traduction : ses textes restaient en français sur
+      # un appareil réglé en anglais ou en espagnol, quel que soit le contenu
+      # du catalogue. Une seule source pour toutes les cibles : une phrase
+      # traduite pour l'iPhone l'est aussi au poignet.
+      - path: Weave/Localizable.xcstrings
     dependencies:
       - package: WeaveKit
     settings:

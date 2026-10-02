@@ -81,11 +81,9 @@ struct ReglagesView: View {
                     Text("Rendez-vous")
                 } footer: {
                     // Ce que le réglage fait, et ce qu'il ne dit à personne.
-                    Text(
-                        "Deux heures avant, une notification vous le remet en mémoire — "
-                            + "à vous comme aux personnes que vous attendez. Elle ne dit ni "
-                            + "le plan, ni avec qui : elle s'affiche sur un écran verrouillé."
-                    )
+                    // Une seule phrase : `"…" + "…"` ferait un `String`, que
+                    // SwiftUI affiche tel quel sans jamais le traduire.
+                    Text("Deux heures avant, une notification vous le remet en mémoire — à vous comme aux personnes que vous attendez. Elle ne dit ni le plan, ni avec qui : elle s'affiche sur un écran verrouillé.")
                 }
 
                 Section {
@@ -217,7 +215,9 @@ struct ReglagesView: View {
                 Section {
                     LabeledContent(
                         "Live Activity",
-                        value: modele.activites.isEnabled ? "Autorisée" : "Désactivée"
+                        value: modele.activites.isEnabled
+                            ? String(localized: "Autorisée")
+                            : String(localized: "Désactivée")
                     )
                     LabeledContent("Notifications", value: etatNotifications)
                 } footer: {
@@ -464,9 +464,9 @@ struct ReglagesView: View {
         if let etat = verification {
             Section {
                 if etat.verified {
-                    LabeledContent("Profil vérifié", value: "Oui")
+                    LabeledContent("Profil vérifié", value: String(localized: "Oui"))
                 } else if etat.enAttente {
-                    LabeledContent("Demande", value: "En cours d'examen")
+                    LabeledContent("Demande", value: String(localized: "En cours d'examen"))
                 } else {
                     TextField("Un mot, si vous voulez (facultatif)", text: $motVerification, axis: .vertical)
                         .lineLimit(1...3)
@@ -515,7 +515,7 @@ struct ReglagesView: View {
         } catch let souci as WeaveAPIError {
             erreur = souci.userMessage
         } catch {
-            erreur = "La demande n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "La demande n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -560,7 +560,7 @@ struct ReglagesView: View {
                 // retenu : laisser la case cochée après un refus mentirait.
                 await chargerCriteresDeForce()
             } catch {
-                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+                erreur = String(localized: "Le réglage n'a pas abouti. Réessayez dans un moment.")
             }
         }
     }
@@ -588,7 +588,7 @@ struct ReglagesView: View {
                 erreur = souci.userMessage
                 await chargerCriteresDeForce()
             } catch {
-                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+                erreur = String(localized: "Le réglage n'a pas abouti. Réessayez dans un moment.")
             }
         }
     }
@@ -613,7 +613,7 @@ struct ReglagesView: View {
                 erreur = souci.userMessage
                 await chargerCriteresDeForce()
             } catch {
-                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+                erreur = String(localized: "Le réglage n'a pas abouti. Réessayez dans un moment.")
             }
         }
     }
@@ -638,7 +638,7 @@ struct ReglagesView: View {
         } catch let souci as WeaveAPIError {
             erreur = souci.userMessage
         } catch {
-            erreur = "L'escale n'a pas pu être ouverte. Réessayez dans un moment."
+            erreur = String(localized: "L'escale n'a pas pu être ouverte. Réessayez dans un moment.")
         }
     }
 
@@ -650,7 +650,7 @@ struct ReglagesView: View {
             escaleEnCours = false
             await modele.plans.refresh()
         } catch {
-            erreur = "La fermeture n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "La fermeture n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -666,7 +666,7 @@ struct ReglagesView: View {
             // que d'en inventer un : c'est lui qui connaît le compte.
             erreur = souci.userMessage
         } catch {
-            erreur = "Le bilan n'a pas pu être établi. Réessayez dans un moment."
+            erreur = String(localized: "Le bilan n'a pas pu être établi. Réessayez dans un moment.")
         }
     }
 
@@ -684,7 +684,7 @@ struct ReglagesView: View {
             try donnees.write(to: cible, options: .atomic)
             fichierExporte = cible
         } catch {
-            erreur = "L'export n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "L'export n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -713,7 +713,7 @@ struct ReglagesView: View {
             await modele.seDeconnecter()
             dismiss()
         } catch {
-            erreur = "La suppression n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "La suppression n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -736,9 +736,9 @@ struct ReglagesView: View {
     /// à annoncer : afficher « désactivées » laisserait croire à un refus.
     private var etatNotifications: String {
         switch modele.notifications.autorise {
-        case .some(true): "Autorisées"
-        case .some(false): "Refusées"
-        case nil: "Pas encore demandées"
+        case .some(true): String(localized: "Autorisées")
+        case .some(false): String(localized: "Refusées")
+        case nil: String(localized: "Pas encore demandées")
         }
     }
 
