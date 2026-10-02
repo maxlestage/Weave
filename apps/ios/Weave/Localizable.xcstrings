@@ -103,19 +103,19 @@
         }
       }
     },
-    "Au-delà d'une, il faut les plans de groupe — compris à partir d'Escapade, ou à l'unité avec une « Tablée ».": {
+    "Au-delà d'une, il faut les plans de groupe — compris à partir de Virée, ou à l'unité avec une « Tablée ».": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beyond one, you need group plans — included from Escapade upwards, or singly with a Tablée."
+            "value": "Beyond one, you need group plans — included from Virée upwards, or singly with a Tablée."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Más de una requiere planes de grupo — incluidos a partir de Escapade, o por unidades con una Tablée."
+            "value": "Más de una requiere planes de grupo — incluidos a partir de Virée, o por unidades con una Tablée."
           }
         }
       }

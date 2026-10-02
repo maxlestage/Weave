@@ -23,6 +23,7 @@ struct ReglagesView: View {
     /// s'allumer serait pire que d'attendre une seconde.
     @State private var rappels = true
     @State private var jours: Set<Int> = []
+    @State private var categories: Set<PlanCategory> = []
     @State private var recherche: Set<Gender> = []
     /// Le consentement aux données sensibles vaut-il en ce moment ?
     ///
@@ -167,6 +168,35 @@ struct ReglagesView: View {
                         Text(jours.isEmpty
                             ? "Aucun jour retenu : le fil montre tous les jours."
                             : "Le fil ne montre que les plans tombant ces jours-là.")
+                    }
+                }
+
+                // Le troisième des « critères précis » que l'Escapade vend :
+                // catégorie, jour, distance fine. Le jour et la distance
+                // avaient leur réglage ; la catégorie était portée par l'API,
+                // par le modèle, par le correctif envoyé — et par aucun écran.
+                if let moi = modele.moi, moi.tier.filtreParCategorie {
+                    Section {
+                        ForEach(PlanCategory.allCases, id: \.self) { categorie in
+                            Button {
+                                basculerCategorie(categorie)
+                            } label: {
+                                HStack {
+                                    Label(categorie.displayName, systemImage: categorie.symbolName)
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    if categories.contains(categorie) {
+                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Catégories")
+                    } footer: {
+                        Text(categories.isEmpty
+                            ? "Aucune catégorie retenue : le fil montre tous les plans."
+                            : "Le fil ne montre que les plans de ces catégories.")
                     }
                 }
 
@@ -490,6 +520,7 @@ struct ReglagesView: View {
         escaleFin = criteres.escaleUntil
         escaleEnCours = criteres.escaleEnCours
         jours = Set(criteres.days)
+        categories = Set(criteres.categories)
         recherche = Set(criteres.seeking)
         rappels = criteres.rappelsActifs
         sensiblesAccordees = (try? await modele.api.consents().estActif(.donneesSensibles)) ?? false
@@ -516,6 +547,34 @@ struct ReglagesView: View {
                 erreur = souci.userMessage
                 // Remettre l'affichage en accord avec ce que le serveur a
                 // retenu : laisser la case cochée après un refus mentirait.
+                await chargerCriteresDeForce()
+            } catch {
+                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+            }
+        }
+    }
+
+    /// Retient ou retire une catégorie, puis applique.
+    ///
+    /// Même conduite que pour les jours : la section n'apparaît qu'aux paliers
+    /// qui y ont droit, et un refus du serveur remet l'affichage d'accord avec
+    /// ce qu'il a retenu.
+    private func basculerCategorie(_ categorie: PlanCategory) {
+        if categories.contains(categorie) {
+            categories.remove(categorie)
+        } else {
+            categories.insert(categorie)
+        }
+        // Dans l'ordre du contrat, et non dans celui de l'ensemble : l'ordre
+        // d'un `Set` change d'une exécution à l'autre, et deux envois du même
+        // choix ne doivent pas se lire comme deux choix différents.
+        let choisies = PlanCategory.allCases.filter(categories.contains)
+        Task {
+            do {
+                try await modele.api.updatePreferences(PreferencesPatch(categories: choisies))
+                await modele.plans.refresh()
+            } catch let souci as WeaveAPIError {
+                erreur = souci.userMessage
                 await chargerCriteresDeForce()
             } catch {
                 erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."

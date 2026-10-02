@@ -2,7 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Trousseau partagé : la session est lisible par l'app, l'extension et la montre. -->
+  <!-- Trousseau partagé SUR CET APPAREIL : l'application et son extension
+       Live Activity lisent la même session. Il ne traverse PAS jusqu'à la
+       montre, qui a son propre trousseau : elle reçoit une session à elle,
+       par WatchConnectivity. -->
   <key>keychain-access-groups</key>
   <array>
     <string>$(AppIdentifierPrefix)com.weave.app.shared</string>

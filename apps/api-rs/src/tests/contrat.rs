@@ -329,6 +329,7 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
         ("accountPurgeDays", "ACCOUNT_PURGE_DAYS"),
         ("bioMaxChars", "BIO_MAX_CHARS"),
         ("conversationMaxChars", "CONVERSATION_MAX_CHARS"),
+        ("messageRetentionDays", "MESSAGE_RETENTION_DAYS"),
         ("photoMaxBytes", "PHOTO_MAX_BYTES"),
         ("maxOpen", "MAX_OPEN_PLANS"),
     ] {
@@ -1100,8 +1101,8 @@ fn cas_de_l_enumeration(source: &str, nom: &str) -> Vec<String> {
     valeurs
 }
 
-/// Le palier à partir duquel l'application propose le filtre par jour est
-/// celui que le serveur accepte.
+/// Le palier à partir duquel l'application propose les filtres précis — jour
+/// et catégorie — est celui que le serveur accepte.
 ///
 /// `PlanTier.filtreParJour` existe côté iOS pour ne pas MONTRER un réglage qui
 /// sera refusé — proposer puis refuser est une façon de vendre, pas de régler.
@@ -1109,7 +1110,7 @@ fn cas_de_l_enumeration(source: &str, nom: &str) -> Vec<String> {
 /// elle dériverait en silence, l'application montrant un réglage refusé ou
 /// cachant un réglage permis.
 #[test]
-fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
+fn les_filtres_precis_sont_proposes_aux_memes_paliers_des_deux_cotes() {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../ios/WeaveKit/Sources/WeaveKit/Models/Account.swift");
     let Ok(source) = std::fs::read_to_string(&chemin) else {
@@ -1120,25 +1121,32 @@ fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
         return;
     };
 
-    let debut = source
-        .find("public var filtreParJour: Bool {")
-        .expect("« filtreParJour » a disparu du modèle iOS");
-    let fin = source[debut..].find("\n    }").expect("corps fermé") + debut;
-    let corps = &source[debut..fin];
+    // Chaque propriété iOS, et le critère serveur qu'elle copie.
+    for (propriete, critere) in [
+        ("filtreParJour", crate::droits::Critere::Jour),
+        ("filtreParCategorie", crate::droits::Critere::Categorie),
+    ] {
+        let debut = source
+            .find(&format!("public var {propriete}: Bool {{"))
+            .unwrap_or_else(|| panic!("« {propriete} » a disparu du modèle iOS"));
+        let fin = source[debut..].find("\n    }").expect("corps fermé") + debut;
+        let corps = &source[debut..fin];
 
-    for palier in ["depart", "viree", "escapade", "expedition", "grandtour"] {
-        // Le cas Swift s'écrit « .depart, .viree: false ».
-        let cote_ios = corps
-            .lines()
-            .find(|ligne| ligne.contains(&format!(".{palier}")))
-            .map(|ligne| ligne.contains("true"))
-            .unwrap_or_else(|| panic!("« {palier} » absent de `filtreParJour`"));
+        for palier in ["depart", "viree", "escapade", "expedition", "grandtour"] {
+            // Le cas Swift s'écrit « .depart, .viree: false ».
+            let cote_ios = corps
+                .lines()
+                .find(|ligne| ligne.contains(&format!(".{palier}")))
+                .map(|ligne| ligne.contains("true"))
+                .unwrap_or_else(|| panic!("« {palier} » absent de `{propriete}`"));
 
-        let cote_serveur = crate::droits::filtre_autorise(palier, crate::droits::Critere::Jour);
-        assert_eq!(
-            cote_ios, cote_serveur,
-            "« {palier} » : l'application propose {cote_ios}, le serveur accepte {cote_serveur}"
-        );
+            let cote_serveur = crate::droits::filtre_autorise(palier, critere);
+            assert_eq!(
+                cote_ios, cote_serveur,
+                "`{propriete}`, « {palier} » : l'application propose {cote_ios}, \
+                 le serveur accepte {cote_serveur}"
+            );
+        }
     }
 }
 
