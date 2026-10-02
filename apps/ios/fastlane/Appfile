@@ -1,6 +1,7 @@
 app_identifier("com.weave.maxlestage")
 
-# L'identifiant d'équipe est fourni par la variable d'environnement, pour ne
-# pas figurer dans le dépôt.
-team_id(ENV["ASC_TEAM_ID"])
-itc_team_id(ENV["ASC_TEAM_ID"])
+# L'identifiant d'équipe vient de `ASC_TEAM_ID` s'il est fourni ; sinon le
+# Fastfile le lit sur les identifiants enregistrés. Il ne figure pas dans le
+# dépôt.
+equipe = ENV["ASC_TEAM_ID"].to_s.strip
+team_id(equipe) unless equipe.empty?
