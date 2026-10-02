@@ -226,10 +226,10 @@ fn aucune_phrase_n_est_identique_dans_deux_langues() {
         Msg::TransactionStoreKitRefusee,
         Msg::TransactionIncomplete,
         Msg::ProduitDAbonnementInconnu {
-            identifiant: temoin("com.weave.app.sub.viree.monthly"),
+            identifiant: temoin("com.weave.maxlestage.sub.viree.monthly"),
         },
         Msg::ProduitALUniteInconnu {
-            identifiant: temoin("com.weave.app.unit.renfort"),
+            identifiant: temoin("com.weave.maxlestage.unit.renfort"),
         },
         Msg::EscaleDejaEnCours,
         Msg::PauseHorsEtat,

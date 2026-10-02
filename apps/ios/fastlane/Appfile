@@ -1,4 +1,4 @@
-app_identifier("com.weave.app")
+app_identifier("com.weave.maxlestage")
 
 # L'identifiant d'équipe est fourni par la variable d'environnement, pour ne
 # pas figurer dans le dépôt.
