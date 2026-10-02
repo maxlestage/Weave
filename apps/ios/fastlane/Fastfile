@@ -10,12 +10,12 @@
 
 default_platform(:ios)
 
-APP_IDENTIFIER = "com.weave.app".freeze
+APP_IDENTIFIER = "com.weave.maxlestage".freeze
 
 EXTENSIONS = [
-  "com.weave.app.activity",
-  "com.weave.app.watchkitapp",
-  "com.weave.app.watchkitapp.widgets",
+  "com.weave.maxlestage.activity",
+  "com.weave.maxlestage.watchkitapp",
+  "com.weave.maxlestage.watchkitapp.widgets",
 ].freeze
 
 platform :ios do

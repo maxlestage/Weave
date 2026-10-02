@@ -124,10 +124,10 @@ Ils utilisent `swift-testing`, pas XCTest.
 ## Trousseau et groupe d'application
 
 La session est stockée dans le trousseau, dans le groupe partagé
-`com.weave.app.shared`, avec `kSecAttrAccessibleAfterFirstUnlock` : l'extension
+`com.weave.maxlestage.shared`, avec `kSecAttrAccessibleAfterFirstUnlock` : l'extension
 et la montre peuvent la lire appareil verrouillé, mais seulement après un premier
 déverrouillage depuis le démarrage.
 
 Le résumé destiné à la complication transite par les préférences du groupe
-`group.com.weave.app` : la complication ne fait aucun appel réseau, elle serait
+`group.com.weave.maxlestage` : la complication ne fait aucun appel réseau, elle serait
 réveillée bien trop souvent pour une donnée qui change une fois par jour.

@@ -419,10 +419,10 @@ mod tests {
     /// et APNs refuse — ou accepte, puis ne livre rien.
     #[test]
     fn une_alerte_porte_les_en_tetes_qu_apple_attend() {
-        let config = config("sandbox", "com.weave.app");
+        let config = config("sandbox", "com.weave.maxlestage");
         let en_tetes = en_tetes(&config, &envoi(TypeEnvoi::Alerte, None));
 
-        assert_eq!(valeur(&en_tetes, "apns-topic"), Some("com.weave.app"));
+        assert_eq!(valeur(&en_tetes, "apns-topic"), Some("com.weave.maxlestage"));
         assert_eq!(valeur(&en_tetes, "apns-push-type"), Some("alert"));
         assert_eq!(valeur(&en_tetes, "apns-priority"), Some("5"));
         assert_eq!(valeur(&en_tetes, "apns-collapse-id"), Some("fil-1"));
@@ -431,7 +431,7 @@ mod tests {
     /// ActivityKit exige son suffixe de sujet et son propre type d'envoi.
     #[test]
     fn une_live_activity_porte_son_suffixe_de_sujet() {
-        let config = config("sandbox", "com.weave.app");
+        let config = config("sandbox", "com.weave.maxlestage");
         let en_tetes = en_tetes(
             &config,
             &envoi(TypeEnvoi::LiveActivity, Some(".push-type.liveactivity")),
@@ -439,7 +439,7 @@ mod tests {
 
         assert_eq!(
             valeur(&en_tetes, "apns-topic"),
-            Some("com.weave.app.push-type.liveactivity"),
+            Some("com.weave.maxlestage.push-type.liveactivity"),
         );
         assert_eq!(valeur(&en_tetes, "apns-push-type"), Some("liveactivity"));
     }
@@ -453,7 +453,7 @@ mod tests {
     /// venir » compris, le seul message du produit qui attende une réponse.
     #[test]
     fn chaque_envoi_dit_jusqu_a_quand_le_garder() {
-        let config = config("sandbox", "com.weave.app");
+        let config = config("sandbox", "com.weave.maxlestage");
         for (type_envoi, suffixe) in [
             (TypeEnvoi::Alerte, None),
             (TypeEnvoi::LiveActivity, Some(".push-type.liveactivity")),
@@ -471,11 +471,11 @@ mod tests {
     #[test]
     fn l_adresse_suit_l_environnement() {
         assert!(
-            adresse(&config("production", "com.weave.app"), "jeton")
+            adresse(&config("production", "com.weave.maxlestage"), "jeton")
                 .starts_with("https://api.push.apple.com/3/device/")
         );
         assert!(
-            adresse(&config("sandbox", "com.weave.app"), "jeton")
+            adresse(&config("sandbox", "com.weave.maxlestage"), "jeton")
                 .starts_with("https://api.sandbox.push.apple.com/3/device/")
         );
     }
@@ -528,7 +528,7 @@ mod tests {
     /// de l'autre ne s'allume pas.
     #[tokio::test]
     async fn sans_configuration_l_envoi_est_simule() {
-        let config = config("sandbox", "com.weave.app");
+        let config = config("sandbox", "com.weave.maxlestage");
         let resultat = ClientApns::new()
             .envoyer(
                 &config,

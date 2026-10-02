@@ -75,7 +75,7 @@ targets:
         codeSign: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.maxlestage
         INFOPLIST_FILE: Weave/Info.plist
         CODE_SIGN_ENTITLEMENTS: Weave/Weave.entitlements
         TARGETED_DEVICE_FAMILY: "1"
@@ -99,7 +99,7 @@ targets:
       - package: WeaveKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app.activity
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.maxlestage.activity
         INFOPLIST_FILE: WeaveActivity/Info.plist
         CODE_SIGN_ENTITLEMENTS: WeaveActivity/WeaveActivity.entitlements
 
@@ -123,7 +123,7 @@ targets:
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.maxlestage.watchkitapp
         INFOPLIST_FILE: WeaveWatch/Info.plist
         CODE_SIGN_ENTITLEMENTS: WeaveWatch/WeaveWatch.entitlements
         WATCHOS_DEPLOYMENT_TARGET: "26.0"
@@ -146,7 +146,7 @@ targets:
       - package: WeaveKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.weave.app.watchkitapp.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.weave.maxlestage.watchkitapp.widgets
         INFOPLIST_FILE: WeaveWatchWidgets/Info.plist
         CODE_SIGN_ENTITLEMENTS: WeaveWatchWidgets/WeaveWatchWidgets.entitlements
 
