@@ -71,3 +71,59 @@ pub const CONTACT: Contact = Contact {
     support: "[à compléter : adresse de contact assistance]",
     signalements: "[à compléter : adresse de contact signalements]",
 };
+
+/// Tout ce qui se renseigne dans `identite.ts`, à plat : le chemin du champ
+/// et sa valeur actuelle.
+///
+/// Les noms sont ceux du fichier TypeScript, et non leur transcription en
+/// Rust : c'est là que l'éditeur doit aller les remplir.
+pub const VALEURS_A_RENSEIGNER: [(&str, &str); 15] = [
+    ("EDITEUR.raisonSociale", "[à compléter : raison sociale]"),
+    (
+        "EDITEUR.formeJuridique",
+        "[à compléter : forme juridique et capital social]",
+    ),
+    ("EDITEUR.adresse", "[à compléter : adresse du siège social]"),
+    ("EDITEUR.immatriculation", "[à compléter : SIREN et RCS]"),
+    (
+        "EDITEUR.tva",
+        "[à compléter : numéro de TVA intracommunautaire]",
+    ),
+    (
+        "EDITEUR.directeurPublication",
+        "[à compléter : directeur de la publication]",
+    ),
+    ("EDITEUR.telephone", "[à compléter : numéro de téléphone]"),
+    (
+        "EDITEUR.hebergeur.nom",
+        "[à compléter : nom de l'hébergeur]",
+    ),
+    (
+        "EDITEUR.hebergeur.adresse",
+        "[à compléter : adresse de l'hébergeur]",
+    ),
+    (
+        "EDITEUR.hebergeur.telephone",
+        "[à compléter : téléphone de l'hébergeur]",
+    ),
+    (
+        "EDITEUR.hebergeur.region",
+        "[à compléter : région d'hébergement]",
+    ),
+    (
+        "CONTACT.confidentialite",
+        "[à compléter : adresse de contact données personnelles]",
+    ),
+    (
+        "CONTACT.support",
+        "[à compléter : adresse de contact assistance]",
+    ),
+    (
+        "CONTACT.signalements",
+        "[à compléter : adresse de contact signalements]",
+    ),
+    (
+        "SITE.origine",
+        "[à compléter : adresse publique du site, ex. https://weave.app]",
+    ),
+];

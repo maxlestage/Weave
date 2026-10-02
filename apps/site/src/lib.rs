@@ -9,6 +9,11 @@
 //! les yeux du visiteur au premier affichage — et comme les deux rendus
 //! viennent d'ici, cela ne peut pas arriver.
 
+// La chaîne de construction ne vit que dans la compilation native : elle lit
+// des variables d'environnement et écrit des fichiers, ce qui n'a aucun sens
+// dans un wasm servi au navigateur.
+#[cfg(feature = "ssr")]
+pub mod chaine;
 pub mod composants;
 pub mod contrat;
 pub mod identite;

@@ -94,6 +94,20 @@ jobs:
       - name: Rendre le site en Yew
         run: cargo run --manifest-path apps/site/Cargo.toml --features ssr --bin rendre
 
+      - name: Tests de la chaîne de construction du site
+        run: cargo test --manifest-path apps/site/Cargo.toml --features ssr
+
+      - name: Les deux chaînes refusent-elles pareil
+        # Ce que `build.ts` refuse de produire est la moitié de sa valeur : une
+        # origine morte, une adresse non chiffrée, des mentions légales
+        # incomplètes qui partiraient pour un vrai domaine. Une page jamais
+        # écrite ne se compare pas — on compare donc le refus. C'est la seule
+        # chose qui empêche une mise en ligne sans SIREN, et l'article 6-III de
+        # la LCEN la rend obligatoire.
+        #
+        # L'étape laisse aussi les deux sorties propres pour la comparaison.
+        run: bun run apps/site/outils/comparer-les-refus.ts
+
       - name: React et Yew rendent-ils la même chose
         run: bun run apps/site/outils/comparer.ts
 

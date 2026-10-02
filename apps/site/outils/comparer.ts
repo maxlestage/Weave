@@ -556,6 +556,61 @@ for (const page of PAGES) {
   }
 }
 
+/* — Les fichiers qui ne sont pas des pages ————————————————————— */
+
+/*
+ * `robots.txt`, le manifeste, le plan du site, et les ressources à adresse
+ * fixe.
+ *
+ * Ils ne contiennent pas de balises, donc le relevé ne les voit pas — et c'est
+ * pourtant par eux qu'un moteur commence. `robots.txt` est le PREMIER fichier
+ * demandé ; s'il manquait du côté Rust, la comparaison des huit pages serait
+ * restée au vert et le site n'aurait plus été explorable.
+ *
+ * Les images et le manifeste se comparent octet par octet : ils sont copiés
+ * tels quels des deux côtés, et toute différence serait une copie manquée.
+ */
+const FICHIERS = [
+  "robots.txt",
+  "site.webmanifest",
+  "favicon.svg",
+  "apple-touch-icon.png",
+  "partage.png",
+  // Le plan du site n'existe que si l'origine est posée. Absent des deux
+  // côtés, c'est le bon état ; absent d'un seul, c'est une divergence.
+  "sitemap.xml",
+] as const;
+
+console.log("\n  Fichiers hors pages");
+for (const nom of FICHIERS) {
+  const [gauche, droite] = await Promise.all([
+    Bun.file(`${REACT}/${nom}`)
+      .bytes()
+      .catch(() => null),
+    Bun.file(`${YEW}/${nom}`)
+      .bytes()
+      .catch(() => null),
+  ]);
+
+  if (gauche === null && droite === null) {
+    console.log(`    ${nom} — absent des deux côtés`);
+    continue;
+  }
+  if (gauche === null || droite === null) {
+    divergences += 1;
+    console.log(`    ${nom} — présent chez ${gauche ? "React" : "Yew"} seulement`);
+    continue;
+  }
+
+  comparees += 1;
+  if (gauche.length === droite.length && gauche.every((octet, i) => octet === droite[i])) {
+    console.log(`    ${nom} — identique (${gauche.length} octets)`);
+  } else {
+    divergences += 1;
+    console.log(`    ${nom} — DIVERGE (${gauche.length} octets contre ${droite.length})`);
+  }
+}
+
 console.log(`\n  ${comparees} comparaisons, ${divergences} divergence(s).`);
 if (aPorter.size > 0) {
   console.log(`  Sections encore absentes de Yew : ${[...aPorter].sort().join(", ")}.`);
