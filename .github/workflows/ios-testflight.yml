@@ -39,8 +39,12 @@ jobs:
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
-      ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
+      # Deux noms acceptés pour chacun : ceux de la documentation, et ceux
+      # sous lesquels les secrets ont été déposés la première fois. Un nom
+      # de secret mal deviné se lisait comme une valeur vide, et le workflow
+      # disait la clé absente alors qu'elle était là.
+      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT || secrets.ASC_KEY_P8 }}
+      ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID || secrets.APPLE_TEAM_ID }}
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"
 
