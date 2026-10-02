@@ -121,13 +121,15 @@ charges utiles de l'API, les états de la Live Activity, la logique de
 renouvellement de session et l'absence de tout produit vendant de la visibilité.
 Ils utilisent `swift-testing`, pas XCTest.
 
-## Trousseau et groupe d'application
+## Trousseau
 
 La session est stockée dans le trousseau, dans le groupe partagé
 `com.weave.maxlestage.shared`, avec `kSecAttrAccessibleAfterFirstUnlock` : l'extension
 et la montre peuvent la lire appareil verrouillé, mais seulement après un premier
 déverrouillage depuis le démarrage.
 
-Le résumé destiné à la complication transite par les préférences du groupe
-`group.com.weave.maxlestage` : la complication ne fait aucun appel réseau, elle serait
-réveillée bien trop souvent pour une donnée qui change une fois par jour.
+Le résumé destiné à la complication passe par le même trousseau
+(`ResumeComplication`) : la complication ne fait aucun appel réseau, elle serait
+réveillée bien trop souvent pour une donnée qui change une fois par jour. Il n'y
+a pas de groupe d'application : un groupe doit être enregistré chez Apple, et la
+signature automatique par clé d'API ne sait pas le faire.
