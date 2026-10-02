@@ -33,6 +33,17 @@ etape "Site — le contrat engendré est-il à jour" \
 
 etape "Site — le rendu Yew" \
   cargo run --quiet --manifest-path apps/site/Cargo.toml --features ssr --bin rendre
+# Les tests de la chaîne de construction : l'origine, les refus, le plan du
+# site. Rien ne les lançait — `cargo test` ne visait que l'API.
+etape "Site — tests de la chaîne" \
+  cargo test --quiet --manifest-path apps/site/Cargo.toml --features ssr
+
+# Ce que `build.ts` REFUSE de produire est la moitié de sa valeur, et une page
+# jamais écrite ne se compare pas. Cette étape laisse aussi `dist` et `dist-rs`
+# propres pour la comparaison qui suit.
+etape "Site — les deux chaînes refusent-elles pareil" \
+  bun run apps/site/outils/comparer-les-refus.ts
+
 etape "Site — React et Yew rendent-ils la même chose" \
   bun run apps/site/outils/comparer.ts
 

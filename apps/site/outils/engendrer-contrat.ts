@@ -68,7 +68,7 @@ import { METADONNEES } from "../../web/src/pages/metadonnees.ts";
 // pages juridiques la lisent ; une seconde copie en Rust finirait par annoncer
 // un SIREN différent de celui du site React, et une mention légale fausse
 // engage pénalement son éditeur.
-import { CONTACT, EDITEUR } from "../../web/src/pages/identite.ts";
+import { CONTACT, EDITEUR, SITE } from "../../web/src/pages/identite.ts";
 
 const LANGUES = ["fr", "en", "es"] as const;
 
@@ -420,6 +420,42 @@ const identite: string[] = [
   "};",
   "",
 ];
+
+/*
+ * La liste à plat de tout ce qui se renseigne, pour la garde de construction.
+ *
+ * Un `struct` Rust ne se parcourt pas comme un objet JavaScript : la version
+ * TypeScript descend `EDITEUR`, `CONTACT` et `SITE` par réflexion, ce que Rust
+ * ne sait pas faire. On engendre donc la liste, avec LES MÊMES NOMS de champ —
+ * ce sont ceux que l'éditeur doit retrouver dans `identite.ts`, et un nom
+ * traduit en passant l'enverrait chercher une clé qui n'existe pas.
+ */
+const aplat: [string, string][] = [];
+const descendre = (objet: Record<string, unknown>, prefixe: string) => {
+  for (const [cle, valeur] of Object.entries(objet)) {
+    if (typeof valeur === "string") aplat.push([`${prefixe}${cle}`, valeur]);
+    else if (valeur && typeof valeur === "object") {
+      descendre(valeur as Record<string, unknown>, `${prefixe}${cle}.`);
+    }
+  }
+};
+descendre(EDITEUR, "EDITEUR.");
+descendre(CONTACT, "CONTACT.");
+// L'adresse du site n'est pas une mention légale, mais elle se renseigne au
+// même endroit et son oubli coûte le référencement des pages juridiques.
+descendre(SITE, "SITE.");
+
+identite.push(
+  "/// Tout ce qui se renseigne dans `identite.ts`, à plat : le chemin du champ",
+  "/// et sa valeur actuelle.",
+  "///",
+  "/// Les noms sont ceux du fichier TypeScript, et non leur transcription en",
+  "/// Rust : c'est là que l'éditeur doit aller les remplir.",
+  `pub const VALEURS_A_RENSEIGNER: [(&str, &str); ${aplat.length}] = [`,
+  ...aplat.map(([chemin, valeur]) => `    (${r(chemin)}, ${r(valeur)}),`),
+  "];",
+  "",
+);
 
 /* — Les métadonnées de l'accueil ——————————————————————————————— */
 

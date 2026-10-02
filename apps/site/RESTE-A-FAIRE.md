@@ -120,23 +120,50 @@ d'être statique.
 site React serait une fausse déclaration, et personne ne s'en apercevrait,
 puisqu'elle aurait l'air complète.
 
-## Ce qui reste : la chaîne de construction
+## La chaîne de construction est portée, refus compris
 
-Les huit pages du site sont portées et prouvées identiques — **81
-comparaisons, 0 divergence**. Ce qui reste n'est plus du contenu, c'est
-`apps/web/build.ts` : 700 lignes dont une quinzaine de gardes.
+`rendre.rs` fait désormais ce que fait `build.ts` :
 
-- l'**habillage empreint** : la feuille de style et l'icône portent une
-  empreinte de contenu que la chaîne Rust ne sait pas recalculer. Elle les lit
-  dans `apps/web/dist`, et c'est le dernier étai ;
-- `robots.txt`, `site.webmanifest`, les images de partage ;
-- les **adresses canoniques** et les `hreflang`, qui n'apparaissent que si
-  `SITE_ORIGINE` est posé ;
-- le **plan du site** ;
-- le **refus du domaine de remplacement** : mieux vaut ne rien déclarer que de
-  désigner une adresse morte, qu'un moteur suivrait pour désindexer les pages ;
-- le **refus des mentions légales incomplètes** : c'est lui qui empêche une
-  mise en ligne sans SIREN, et il n'a pas d'équivalent ailleurs.
+- il **vide** `dist-rs` avant d'écrire. Il ne le faisait pas, et la comparaison
+  l'a trouvé : une construction lancée avec une origine avait écrit
+  `sitemap.xml` puis refusé — et le plan du site restait là, annonçant une
+  adresse qui n'était plus la bonne, à travers toutes les constructions
+  suivantes ;
+- `robots.txt`, le manifeste, les images à adresse fixe — comparés **octet par
+  octet** avec ceux de React ;
+- les adresses canoniques, les `hreflang`, `og:url`, `og:image` et le plan du
+  site, quand `SITE_ORIGINE` est posé ;
+- les **trois refus** : une origine qui n'est pas en https, le domaine de
+  remplacement `weave.app` (sous-domaines compris, mais pas une adresse qui le
+  mentionne dans son chemin), et des mentions légales incomplètes qui
+  partiraient pour un vrai domaine ;
+- la garde qui refuse qu'une balise nomme notre adresse en dur.
+
+### Les refus se comparent, puisqu'ils ne produisent rien
+
+`outils/comparer-les-refus.ts` lance les deux chaînes avec quatre origines et
+exige qu'elles refusent toutes deux, en disant la même raison — puis qu'elles
+construisent toutes deux sans origine. Une garde qui refuse tout est aussi
+inutile qu'une garde qui ne refuse rien.
+
+Éprouvé en retirant du côté Rust la garde du domaine de remplacement (deux
+désaccords signalés), puis le refus des mentions légales (« Yew a CONSTRUIT au
+lieu de refuser »).
+
+### Ce qui ne se compare PAS encore, et pourquoi
+
+Les branches « avec origine » — canonique absolue, `hreflang`, `og:url`, plan
+du site — ne se construisent dans AUCUNE des deux chaînes : avec `SITE_ORIGINE`
+posée, les quinze mentions légales manquent et la construction s'arrête. C'est
+voulu. Ces branches sont tenues par douze tests unitaires dans `chaine.rs`, pas
+par la comparaison ; elles le seront le jour où `identite.ts` sera rempli.
+
+### Le dernier étai
+
+La feuille de style et l'icône **empreintes** viennent encore de
+`apps/web/dist`. La chaîne Rust ne sait pas refaire l'empaquetage de Bun au même
+octet, et Tailwind v4 est un greffon Bun. C'est la seule dépendance qui reste de
+la chaîne Rust vers la chaîne React.
 
 ## Comment le portage se vérifie
 
