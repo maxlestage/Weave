@@ -1,6 +1,346 @@
 {
   "sourceLanguage": "fr",
   "strings": {
+    "%@ / plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ / plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ / plan"
+          }
+        }
+      }
+    },
+    "%@ jours avant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ days ahead"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ días antes"
+          }
+        }
+      }
+    },
+    "%@, %lld ans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$lld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$lld años"
+          }
+        }
+      }
+    },
+    "%lld / %lld caractères. Facultatif. Une phrase, pas une biographie : ce sont les plans qui parlent pour vous.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld characters. Optional. One sentence, not a biography: your plans speak for you."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld caracteres. Opcional. Una frase, no una biografía: son los planes los que hablan por ti."
+          }
+        }
+      }
+    },
+    "%lld / %lld caractères. N'écrivez que ce qui aide à comprendre : ces précisions sont lues par une personne.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld characters. Only write what helps us understand: a person reads these details."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld caracteres. Escribe solo lo que ayude a entender: estos detalles los lee una persona."
+          }
+        }
+      }
+    },
+    "%lld caractères": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld characters"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld caracteres"
+          }
+        }
+      }
+    },
+    "%lld demandes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld requests"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld peticiones"
+          }
+        }
+      }
+    },
+    "%lld demandes restantes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld requests left"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld peticiones restantes"
+          }
+        }
+      }
+    },
+    "%lld demandes restantes aujourd'hui.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld requests left today."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te quedan %lld peticiones hoy."
+          }
+        }
+      }
+    },
+    "%lld demandes à traiter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld requests to handle"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld peticiones por atender"
+          }
+        }
+      }
+    },
+    "%lld en attente": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pending"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pendientes"
+          }
+        }
+      }
+    },
+    "%lld personnes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld people"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld personas"
+          }
+        }
+      }
+    },
+    "%lld places": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld spots"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld plazas"
+          }
+        }
+      }
+    },
+    "%lld places libres": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld spots free"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld plazas libres"
+          }
+        }
+      }
+    },
+    "%lld veulent venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld want to come"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld quieren venir"
+          }
+        }
+      }
+    },
+    "1 demande": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 request"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 petición"
+          }
+        }
+      }
+    },
+    "1 demande restante": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 request left"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 petición restante"
+          }
+        }
+      }
+    },
+    "1 personne": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 person"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 persona"
+          }
+        }
+      }
+    },
+    "1 place": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 spot"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 plaza"
+          }
+        }
+      }
+    },
+    "1 place libre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 spot free"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 plaza libre"
+          }
+        }
+      }
+    },
     "Abonnements": {
       "extractionState": "manual",
       "localizations": {
@@ -35,6 +375,57 @@
         }
       }
     },
+    "Acceptée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accepted"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aceptada"
+          }
+        }
+      }
+    },
+    "Accordé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Granted"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concedido"
+          }
+        }
+      }
+    },
+    "Accordé le %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Granted on %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concedido el %@."
+          }
+        }
+      }
+    },
     "Achetés une fois, utilisés quand vous voulez. Ils ne se périment pas.": {
       "extractionState": "manual",
       "localizations": {
@@ -48,6 +439,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Comprados una vez, usados cuando quieras. No caducan."
+          }
+        }
+      }
+    },
+    "Adresse changée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Address changed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dirección cambiada"
+          }
+        }
+      }
+    },
+    "Adresse e-mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email address"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correo electrónico"
+          }
+        }
+      }
+    },
+    "Affichage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vista"
           }
         }
       }
@@ -103,6 +545,57 @@
         }
       }
     },
+    "Annulé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelado"
+          }
+        }
+      }
+    },
+    "Arnaque ou sollicitation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scam or solicitation"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estafa o captación"
+          }
+        }
+      }
+    },
+    "Au plus %lld plans ouverts à la fois : ce que vous comptez vraiment faire, pas une annonce permanente.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At most %lld plans open at a time: what you actually mean to do, not a standing advert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Como máximo %lld planes abiertos a la vez: lo que de verdad piensas hacer, no un anuncio permanente."
+          }
+        }
+      }
+    },
     "Au-delà d'une, il faut les plans de groupe — compris à partir de Virée, ou à l'unité avec une « Tablée ».": {
       "extractionState": "manual",
       "localizations": {
@@ -116,6 +609,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Más de una requiere planes de grupo — incluidos a partir de Virée, o por unidades con una Tablée."
+          }
+        }
+      }
+    },
+    "Aucun jour retenu : le fil montre tous les jours.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No days selected: the feed shows every day."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún día elegido: el muro muestra todos los días."
+          }
+        }
+      }
+    },
+    "Aucun plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún plan"
           }
         }
       }
@@ -154,6 +681,159 @@
         }
       }
     },
+    "Aucune catégorie retenue : le fil montre tous les plans.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No categories selected: the feed shows every plan."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna categoría elegida: el muro muestra todos los planes."
+          }
+        }
+      }
+    },
+    "Aucune conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No conversations"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna conversación"
+          }
+        }
+      }
+    },
+    "Aucune conversation ouverte.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No open conversations."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna conversación abierta."
+          }
+        }
+      }
+    },
+    "Aucune demande": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No requests"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna petición"
+          }
+        }
+      }
+    },
+    "Aucune demande en attente.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pending requests."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna petición pendiente."
+          }
+        }
+      }
+    },
+    "Aucune demande envoyée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No requests sent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna petición enviada"
+          }
+        }
+      }
+    },
+    "Aujourd'hui": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hoy"
+          }
+        }
+      }
+    },
+    "Autorisée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permitida"
+          }
+        }
+      }
+    },
+    "Autorisées": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permitidas"
+          }
+        }
+      }
+    },
     "Autour": {
       "extractionState": "manual",
       "localizations": {
@@ -184,6 +864,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "A tu alrededor"
+          }
+        }
+      }
+    },
+    "Autre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otro"
           }
         }
       }
@@ -239,6 +936,40 @@
         }
       }
     },
+    "Bloquer %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquear a %@"
+          }
+        }
+      }
+    },
+    "Bloquer %@ ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block %@?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Bloquear a %@?"
+          }
+        }
+      }
+    },
     "Bornées à toutes les offres, socle gratuit compris. Elles reviennent à minuit. C'est ce qui empêche d'arroser — sur Weave, une demande vaut quelque chose.": {
       "extractionState": "manual",
       "localizations": {
@@ -256,6 +987,23 @@
         }
       }
     },
+    "Bouger": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get moving"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moverse"
+          }
+        }
+      }
+    },
     "C'est le moment de publier quelque chose. Un plan sans réponse reste un plan : vous ferez ce que vous aviez prévu.": {
       "extractionState": "manual",
       "localizations": {
@@ -269,6 +1017,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Es el momento de publicar algo. Un plan sin respuestas sigue siendo un plan: harás lo que tenías previsto."
+          }
+        }
+      }
+    },
+    "Catégorie": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Category"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categoría"
+          }
+        }
+      }
+    },
+    "Catégories": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categories"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Categorías"
           }
         }
       }
@@ -303,6 +1085,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ese plan está completo."
+          }
+        }
+      }
+    },
+    "Ce que vous comptez faire": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What you're planning to do"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que piensas hacer"
           }
         }
       }
@@ -392,6 +1191,74 @@
         }
       }
     },
+    "Cette image est trop lourde, même après réduction.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image is too large, even after shrinking it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta imagen pesa demasiado, incluso reducida."
+          }
+        }
+      }
+    },
+    "Cette image n'a pas pu être lue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image couldn't be read."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido leer esta imagen."
+          }
+        }
+      }
+    },
+    "Cette image n'a pas pu être préparée.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This image couldn't be prepared."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido preparar esta imagen."
+          }
+        }
+      }
+    },
+    "Cette ville n'a pas été trouvée. Vérifiez l'orthographe, ou essayez la grande ville la plus proche.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That town wasn't found. Check the spelling, or try the nearest large town."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha encontrado esa ciudad. Revisa cómo se escribe, o prueba con la ciudad grande más cercana."
+          }
+        }
+      }
+    },
     "Changer d'adresse": {
       "extractionState": "manual",
       "localizations": {
@@ -405,6 +1272,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cambiar de dirección"
+          }
+        }
+      }
+    },
+    "Changer d'adresse e-mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change email address"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar de correo electrónico"
+          }
+        }
+      }
+    },
+    "Close": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrada"
+          }
+        }
+      }
+    },
+    "Code (développement) : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code (development): %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código (desarrollo): %@"
+          }
+        }
+      }
+    },
+    "Code à six chiffres": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Six-digit code"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código de seis cifras"
           }
         }
       }
@@ -443,6 +1378,74 @@
         }
       }
     },
+    "Commencer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get started"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empezar"
+          }
+        }
+      }
+    },
+    "Complet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completo"
+          }
+        }
+      }
+    },
+    "Compte": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuenta"
+          }
+        }
+      }
+    },
+    "Compte supprimé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleted account"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuenta eliminada"
+          }
+        }
+      }
+    },
     "Confidentialité": {
       "extractionState": "manual",
       "localizations": {
@@ -456,6 +1459,108 @@
           "stringUnit": {
             "state": "translated",
             "value": "Privacidad"
+          }
+        }
+      }
+    },
+    "Confirmer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmar"
+          }
+        }
+      }
+    },
+    "Connexion impossible.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't connect."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se puede conectar."
+          }
+        }
+      }
+    },
+    "Connexion impossible. Réessayez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't connect. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se puede conectar. Vuelve a intentarlo."
+          }
+        }
+      }
+    },
+    "Contenu sexuel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sexual content"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contenido sexual"
+          }
+        }
+      }
+    },
+    "Conversation fermée. Ses messages seront effacés dans %lld jours.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation closed. Its messages will be deleted in %lld days."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversación cerrada. Sus mensajes se borrarán dentro de %lld días."
+          }
+        }
+      }
+    },
+    "Conversations": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversations"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversaciones"
           }
         }
       }
@@ -528,6 +1633,40 @@
         }
       }
     },
+    "Date de naissance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Date of birth"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fecha de nacimiento"
+          }
+        }
+      }
+    },
+    "Demande": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Petición"
+          }
+        }
+      }
+    },
     "Demande envoyée": {
       "extractionState": "manual",
       "localizations": {
@@ -541,6 +1680,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Petición enviada"
+          }
+        }
+      }
+    },
+    "Demande précédente refusée : %@. Vous pouvez redemander.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous request declined: %@. You can ask again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Petición anterior rechazada: %@. Puedes volver a pedirlo."
           }
         }
       }
@@ -579,6 +1735,23 @@
         }
       }
     },
+    "Demandes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requests"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peticiones"
+          }
+        }
+      }
+    },
     "Demandes restantes": {
       "extractionState": "manual",
       "localizations": {
@@ -592,6 +1765,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Peticiones restantes"
+          }
+        }
+      }
+    },
+    "Demandes reçues": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requests received"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peticiones recibidas"
           }
         }
       }
@@ -626,6 +1816,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Planes, no perfiles."
+          }
+        }
+      }
+    },
+    "Deux heures avant, une notification vous le remet en mémoire — à vous comme aux personnes que vous attendez. Elle ne dit ni le plan, ni avec qui : elle s'affiche sur un écran verrouillé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Two hours before, a notification reminds you — and the people you're expecting. It doesn't say which plan or who with: it shows on a locked screen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dos horas antes, una notificación te lo recuerda — a ti y a las personas que esperas. No dice ni el plan ni con quién: aparece en una pantalla bloqueada."
           }
         }
       }
@@ -681,6 +1888,91 @@
         }
       }
     },
+    "Donner un coup de main": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lend a hand"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Echar una mano"
+          }
+        }
+      }
+    },
+    "Dont acceptées": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Of which accepted"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De ellas aceptadas"
+          }
+        }
+      }
+    },
+    "Du %@ au %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From %1$@ to %2$@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Del %1$@ al %2$@."
+          }
+        }
+      }
+    },
+    "Débloquer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblock"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desbloquear"
+          }
+        }
+      }
+    },
+    "Débloquer cette personne ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblock this person?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Desbloquear a esta persona?"
+          }
+        }
+      }
+    },
     "Délai de publication": {
       "extractionState": "manual",
       "localizations": {
@@ -698,6 +1990,40 @@
         }
       }
     },
+    "Désactivée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivada"
+          }
+        }
+      }
+    },
+    "Elle est effacée du service, pas seulement masquée. Vous pourrez en déposer une autre.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It's deleted from the service, not just hidden. You can upload another one."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se borra del servicio, no solo se oculta. Podrás subir otra."
+          }
+        }
+      }
+    },
     "Elle sert à composer votre fil et à situer vos plans. Weave n'enregistre jamais de position plus précise que le kilomètre — pas même la vôtre.": {
       "extractionState": "manual",
       "localizations": {
@@ -711,6 +2037,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sirve para componer tu muro y situar tus planes. Weave nunca guarda una posición más precisa que el kilómetro — ni siquiera la tuya."
+          }
+        }
+      }
+    },
+    "En attente": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pendiente"
           }
         }
       }
@@ -749,6 +2092,57 @@
         }
       }
     },
+    "En cours d'examen": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Under review"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En revisión"
+          }
+        }
+      }
+    },
+    "En escale à": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopover in"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De escala en"
+          }
+        }
+      }
+    },
+    "En pause": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En pausa"
+          }
+        }
+      }
+    },
     "En une phrase": {
       "extractionState": "manual",
       "localizations": {
@@ -766,6 +2160,57 @@
         }
       }
     },
+    "Encore %lld caractères": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld more characters"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld caracteres más"
+          }
+        }
+      }
+    },
+    "Encore une chose": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One more thing"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una cosa más"
+          }
+        }
+      }
+    },
+    "Enregistrer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar"
+          }
+        }
+      }
+    },
     "Enregistrer le fichier": {
       "extractionState": "manual",
       "localizations": {
@@ -779,6 +2224,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Guardar el archivo"
+          }
+        }
+      }
+    },
+    "Envoi impossible. Réessayez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't send. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido enviar. Vuelve a intentarlo."
           }
         }
       }
@@ -851,6 +2313,40 @@
         }
       }
     },
+    "Faux profil": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fake profile"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil falso"
+          }
+        }
+      }
+    },
+    "Femme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Woman"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mujer"
+          }
+        }
+      }
+    },
     "Fermer": {
       "extractionState": "manual",
       "localizations": {
@@ -864,6 +2360,108 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cerrar"
+          }
+        }
+      }
+    },
+    "Fermer cette conversation ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close this conversation?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cerrar esta conversación?"
+          }
+        }
+      }
+    },
+    "Fermer la conversation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close the conversation"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar la conversación"
+          }
+        }
+      }
+    },
+    "Fermée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrada"
+          }
+        }
+      }
+    },
+    "Harcèlement ou menaces": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Harassment or threats"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acoso o amenazas"
+          }
+        }
+      }
+    },
+    "Homme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Man"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hombre"
+          }
+        }
+      }
+    },
+    "Il s'agit d'un mineur": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is a minor"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es menor de edad"
           }
         }
       }
@@ -885,6 +2483,23 @@
         }
       }
     },
+    "Introuvable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not found."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No encontrado."
+          }
+        }
+      }
+    },
     "Je grimpe depuis six mois, très mal.": {
       "extractionState": "manual",
       "localizations": {
@@ -898,6 +2513,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Llevo seis meses escalando, fatal."
+          }
+        }
+      }
+    },
+    "Je ne peux pas venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I can't come"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No puedo ir"
           }
         }
       }
@@ -919,6 +2551,23 @@
         }
       }
     },
+    "Jouer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jugar"
+          }
+        }
+      }
+    },
     "Jours": {
       "extractionState": "manual",
       "localizations": {
@@ -932,6 +2581,142 @@
           "stringUnit": {
             "state": "translated",
             "value": "Días"
+          }
+        }
+      }
+    },
+    "Jusqu'au": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasta el"
+          }
+        }
+      }
+    },
+    "Jusqu'à %lld ans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to %lld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasta %lld años"
+          }
+        }
+      }
+    },
+    "Jusqu'à %lld km": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to %lld km"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasta %lld km"
+          }
+        }
+      }
+    },
+    "L'achat n'a pas abouti. Si vous avez été débité, il sera retrouvé au prochain lancement.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The purchase didn't go through. If you were charged, it will be picked up next time the app opens."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La compra no se ha completado. Si se te ha cobrado, se recuperará la próxima vez que abras la aplicación."
+          }
+        }
+      }
+    },
+    "L'enregistrement n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving didn't work. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido guardar. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "L'envoi de la photo n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The photo didn't upload. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido subir la foto. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "L'escale n'a pas pu être ouverte. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The stopover couldn't be opened. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido abrir la escala. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "L'export n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The export didn't work. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido exportar. Vuelve a intentarlo en un momento."
           }
         }
       }
@@ -953,6 +2738,91 @@
         }
       }
     },
+    "La demande n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request didn't go through. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La solicitud no se ha completado. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "La fermeture n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closing didn't work. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido cerrar. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "La montre se relie toute seule à votre compte, dès que l'iPhone est à portée.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The watch connects to your account by itself as soon as your iPhone is in range."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El reloj se vincula solo a tu cuenta en cuanto el iPhone está cerca."
+          }
+        }
+      }
+    },
+    "La place repart au fil, et la personne qui vous attendait est prévenue. Votre demande du jour reste dépensée. La conversation, elle, reste ouverte : vous pouvez y dire un mot.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The spot goes back to the feed, and the person expecting you is told. Today's request stays spent. The conversation stays open: you can say a word there."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La plaza vuelve al muro, y se avisa a la persona que te esperaba. La petición del día sigue gastada. La conversación, en cambio, sigue abierta: puedes decir algo en ella."
+          }
+        }
+      }
+    },
+    "La suppression n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deletion didn't work. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido eliminar. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
     "Le badge dit qu'une personne de l'équipe a vérifié que vous êtes bien vous. La suite se fait par e-mail : aucune pièce d'identité ne s'envoie depuis l'application.": {
       "extractionState": "manual",
       "localizations": {
@@ -966,6 +2836,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "La insignia dice que alguien del equipo ha comprobado que eres tú. El resto se hace por correo: ningún documento de identidad se envía desde la aplicación."
+          }
+        }
+      }
+    },
+    "Le bilan n'a pas pu être établi. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The report couldn't be put together. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido elaborar el informe. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "Le blocage n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocking didn't work. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido bloquear. Vuelve a intentarlo en un momento."
           }
         }
       }
@@ -1004,6 +2908,74 @@
         }
       }
     },
+    "Le fil ne montre que les plans de ces catégories.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The feed only shows plans in these categories."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El muro solo muestra planes de estas categorías."
+          }
+        }
+      }
+    },
+    "Le fil ne montre que les plans de ces personnes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The feed only shows plans by these people."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El muro solo muestra planes de estas personas."
+          }
+        }
+      }
+    },
+    "Le fil ne montre que les plans tombant ces jours-là.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The feed only shows plans on those days."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El muro solo muestra planes en esos días."
+          }
+        }
+      }
+    },
+    "Le plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El plan"
+          }
+        }
+      }
+    },
     "Le prix d'entrée, le niveau, l'heure de fin : ce qui évite un malentendu.": {
       "extractionState": "manual",
       "localizations": {
@@ -1017,6 +2989,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "El precio de entrada, el nivel, la hora de fin: lo que evita un malentendido."
+          }
+        }
+      }
+    },
+    "Le réglage n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The setting didn't save. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido guardar el ajuste. Vuelve a intentarlo en un momento."
+          }
+        }
+      }
+    },
+    "Le signalement n'a pas abouti. Réessayez dans un moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The report didn't go through. Try again in a moment."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La denuncia no se ha enviado. Vuelve a intentarlo en un momento."
           }
         }
       }
@@ -1038,6 +3044,125 @@
         }
       }
     },
+    "Les personnes que vous attendez seront prévenues du changement d'heure.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The people you're expecting will be told about the new time."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se avisará del cambio de hora a las personas que esperas."
+          }
+        }
+      }
+    },
+    "Les prochains codes de connexion partiront à cette adresse.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your next sign-in codes will go to this address."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los próximos códigos de acceso llegarán a esta dirección."
+          }
+        }
+      }
+    },
+    "Lire la politique de confidentialité": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read the privacy policy"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leer la política de privacidad"
+          }
+        }
+      }
+    },
+    "Live Activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Activity"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Activity"
+          }
+        }
+      }
+    },
+    "Manger": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comer"
+          }
+        }
+      }
+    },
+    "Marcher": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walk"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caminar"
+          }
+        }
+      }
+    },
+    "Me rappeler avant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remind me beforehand"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recordármelo antes"
+          }
+        }
+      }
+    },
     "Mes plans": {
       "extractionState": "manual",
       "localizations": {
@@ -1051,6 +3176,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mis planes"
+          }
+        }
+      }
+    },
+    "Mettre en pause": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausar"
+          }
+        }
+      }
+    },
+    "Modifier": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar"
+          }
+        }
+      }
+    },
+    "Modifier ce plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit this plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar este plan"
           }
         }
       }
@@ -1072,6 +3248,74 @@
         }
       }
     },
+    "Ni vous ni l'autre personne ne pourrez plus y écrire. Les messages restent lisibles %lld jours, puis sont effacés.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neither of you will be able to write in it any more. The messages stay readable for %lld days, then they're deleted."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguno de los dos podrá volver a escribir en ella. Los mensajes se pueden leer durante %lld días y después se borran."
+          }
+        }
+      }
+    },
+    "Non accordé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not granted"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No concedido"
+          }
+        }
+      }
+    },
+    "Non binaire": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non-binary"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No binario"
+          }
+        }
+      }
+    },
+    "Notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notificaciones"
+          }
+        }
+      }
+    },
     "Nous vous écrirons à votre adresse e-mail pour la suite. Aucune pièce d'identité ne s'envoie depuis l'application.": {
       "extractionState": "manual",
       "localizations": {
@@ -1085,6 +3329,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Te escribiremos a tu correo para lo que sigue. Ningún documento de identidad se envía desde la aplicación."
+          }
+        }
+      }
+    },
+    "Nouvelle adresse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New address"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva dirección"
           }
         }
       }
@@ -1106,6 +3367,23 @@
         }
       }
     },
+    "Offre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscripción"
+          }
+        }
+      }
+    },
     "Offres": {
       "extractionState": "manual",
       "localizations": {
@@ -1123,6 +3401,40 @@
         }
       }
     },
+    "Oui": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sí"
+          }
+        }
+      }
+    },
+    "Ouvrez Weave sur votre iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Weave on your iPhone"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre Weave en tu iPhone"
+          }
+        }
+      }
+    },
     "Ouvrir l'escale": {
       "extractionState": "manual",
       "localizations": {
@@ -1136,6 +3448,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Abrir la Escale"
+          }
+        }
+      }
+    },
+    "Ouvrir le plan de %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open %@'s plan"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir el plan de %@"
           }
         }
       }
@@ -1208,6 +3537,40 @@
         }
       }
     },
+    "Pas encore demandées": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not asked yet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no solicitadas"
+          }
+        }
+      }
+    },
+    "Passé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Past"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasado"
+          }
+        }
+      }
+    },
     "Pause": {
       "extractionState": "manual",
       "localizations": {
@@ -1225,6 +3588,23 @@
         }
       }
     },
+    "Personne en particulier : le fil montre les plans de tout le monde.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No one in particular: the feed shows everyone's plans."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nadie en particular: el muro muestra los planes de todo el mundo."
+          }
+        }
+      }
+    },
     "Personne n'a encore demandé à venir. Ça n'enlève rien au plan.": {
       "extractionState": "manual",
       "localizations": {
@@ -1238,6 +3618,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "Todavía nadie ha pedido venir. Eso no le quita nada al plan."
+          }
+        }
+      }
+    },
+    "Personnes bloquées": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blocked people"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Personas bloqueadas"
+          }
+        }
+      }
+    },
+    "Place rendue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spot given back"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plaza devuelta"
+          }
+        }
+      }
+    },
+    "Plans passés": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Past plans"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Planes pasados"
+          }
+        }
+      }
+    },
+    "Plus de demande aujourd'hui. Le compteur revient à minuit.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No requests left today. The counter resets at midnight."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No te quedan peticiones hoy. El contador se reinicia a medianoche."
+          }
+        }
+      }
+    },
+    "Plus de demandes aujourd'hui. Elles reviennent à minuit.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No requests left today. They come back at midnight."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No te quedan peticiones hoy. Vuelven a medianoche."
           }
         }
       }
@@ -1310,6 +3775,57 @@
         }
       }
     },
+    "Précisions (facultatives)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details (optional)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detalles (opcionales)"
+          }
+        }
+      }
+    },
+    "Précisions (obligatoires)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details (required)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detalles (obligatorios)"
+          }
+        }
+      }
+    },
+    "Prénom": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First name"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nombre"
+          }
+        }
+      }
+    },
     "Publier": {
       "extractionState": "manual",
       "localizations": {
@@ -1323,6 +3839,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Publicar"
+          }
+        }
+      }
+    },
+    "Publier depuis une autre ville pendant sept jours. Vous en avez %lld.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Post from another town for seven days. You have %lld."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publica desde otra ciudad durante siete días. Tienes %lld."
           }
         }
       }
@@ -1378,6 +3911,40 @@
         }
       }
     },
+    "Quand ça ne prend pas": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When it doesn't catch on"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando no cuaja"
+          }
+        }
+      }
+    },
+    "Quand ça prend": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When it catches on"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando cuaja"
+          }
+        }
+      }
+    },
     "Que se passe-t-il ?": {
       "extractionState": "manual",
       "localizations": {
@@ -1391,6 +3958,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "¿Qué ocurre?"
+          }
+        }
+      }
+    },
+    "Quelqu'un veut venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Someone wants to come"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alguien quiere venir"
           }
         }
       }
@@ -1429,6 +4013,108 @@
         }
       }
     },
+    "Refuser": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decline"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechazar"
+          }
+        }
+      }
+    },
+    "Refusées": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denied"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denegadas"
+          }
+        }
+      }
+    },
+    "Rendez-vous": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meeting time"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cita"
+          }
+        }
+      }
+    },
+    "Rendre ma place": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give my spot back"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devolver mi plaza"
+          }
+        }
+      }
+    },
+    "Rendre votre place ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give your spot back?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Devolver tu plaza?"
+          }
+        }
+      }
+    },
+    "Reprendre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reanudar"
+          }
+        }
+      }
+    },
     "Restaurer mes achats": {
       "extractionState": "manual",
       "localizations": {
@@ -1459,6 +4145,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Retirar"
+          }
+        }
+      }
+    },
+    "Retirer ma photo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove my photo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar mi foto"
           }
         }
       }
@@ -1497,6 +4200,57 @@
         }
       }
     },
+    "Retirer votre photo ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove your photo?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Quitar tu foto?"
+          }
+        }
+      }
+    },
+    "Retiré le %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Withdrawn on %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirado el %@."
+          }
+        }
+      }
+    },
+    "Retirée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Withdrawn"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirada"
+          }
+        }
+      }
+    },
     "Revenir chez moi": {
       "extractionState": "manual",
       "localizations": {
@@ -1531,6 +4285,23 @@
         }
       }
     },
+    "Rien de prévu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing planned"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada previsto"
+          }
+        }
+      }
+    },
     "Réglages": {
       "extractionState": "manual",
       "localizations": {
@@ -1544,6 +4315,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ajustes"
+          }
+        }
+      }
+    },
+    "Répondre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responder"
+          }
+        }
+      }
+    },
+    "Sans aucune demande": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With no requests"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin ninguna petición"
           }
         }
       }
@@ -1595,6 +4400,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cerrar sesión"
+          }
+        }
+      }
+    },
+    "Ses plans reviennent dans votre fil, et les vôtres dans le sien. Rien n'est rouvert : ni les demandes closes, ni la conversation. Un signalement déjà envoyé reste traité.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Their plans come back into your feed, and yours into theirs. Nothing is reopened: neither closed requests nor the conversation. A report already sent is still handled."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sus planes vuelven a tu muro, y los tuyos al suyo. No se reabre nada: ni las peticiones cerradas ni la conversación. Una denuncia ya enviada se sigue tramitando."
+          }
+        }
+      }
+    },
+    "Signaler %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Report %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denunciar a %@"
+          }
+        }
+      }
+    },
+    "Signaler ou bloquer %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Report or block %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denunciar o bloquear a %@"
+          }
+        }
+      }
+    },
+    "Sortir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go out"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salir"
           }
         }
       }
@@ -1735,6 +4608,23 @@
         }
       }
     },
+    "Un Renfort : 5 demandes de plus aujourd'hui": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Renfort: 5 more requests today"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un Renfort: 5 peticiones más hoy"
+          }
+        }
+      }
+    },
     "Un badge apparaît sur vos plans. Il dit qu'une personne de l'équipe a vérifié que vous êtes bien vous — rien de plus.": {
       "extractionState": "manual",
       "localizations": {
@@ -1748,6 +4638,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aparece una insignia en tus planes. Dice que alguien del equipo ha comprobado que eres tú — nada más."
+          }
+        }
+      }
+    },
+    "Un code part à cette adresse. Tant qu'il n'est pas confirmé, rien ne change.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A code goes to this address. Nothing changes until it's confirmed."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se envía un código a esta dirección. Hasta que no se confirme, no cambia nada."
+          }
+        }
+      }
+    },
+    "Un code à six chiffres vient de partir vers %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A six-digit code has just been sent to %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se acaba de enviar un código de seis cifras a %@."
           }
         }
       }
@@ -1820,6 +4744,23 @@
         }
       }
     },
+    "Une demande restante aujourd'hui.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One request left today."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te queda una petición hoy."
+          }
+        }
+      }
+    },
     "Une phrase": {
       "extractionState": "manual",
       "localizations": {
@@ -1850,6 +4791,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Un detalle, si hace falta"
+          }
+        }
+      }
+    },
+    "Utiliser mon Renfort — 5 demandes de plus": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use my Renfort — 5 more requests"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar mi Renfort — 5 peticiones más"
+          }
+        }
+      }
+    },
+    "Utiliser un Renfort (%lld restants) — 5 demandes de plus": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use a Renfort (%lld left) — 5 more requests"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar un Renfort (quedan %lld) — 5 peticiones más"
           }
         }
       }
@@ -1888,6 +4863,23 @@
         }
       }
     },
+    "Voir quelque chose": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See something"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver algo"
+          }
+        }
+      }
+    },
     "Vos données": {
       "extractionState": "manual",
       "localizations": {
@@ -1901,6 +4893,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tus datos"
+          }
+        }
+      }
+    },
+    "Vos plans ouverts disparaissent du fil immédiatement. Tout le reste est effacé sous %lld jours.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your open plans leave the feed straight away. Everything else is deleted within %lld days."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus planes abiertos desaparecen del muro de inmediato. Todo lo demás se borra en un plazo de %lld días."
+          }
+        }
+      }
+    },
+    "Vos plans sortent du fil et personne ne peut plus demander à venir. Rien n'est supprimé : vos conversations vous attendent, et vos plans reviennent à la reprise.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your plans leave the feed and no one can ask to come. Nothing is deleted: your conversations wait for you, and your plans come back when you resume."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus planes salen del muro y nadie puede pedir venir. No se borra nada: tus conversaciones te esperan, y tus planes vuelven al reanudar."
           }
         }
       }
@@ -1956,6 +4982,40 @@
         }
       }
     },
+    "Votre fiche": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your profile"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu ficha"
+          }
+        }
+      }
+    },
+    "Votre fil se compose autour de cette ville, et vos plans y sont visibles. Revenir n'est pas remboursé : l'escale a servi.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your feed is built around this town, and your plans are visible there. Coming back isn't refunded: the stopover has been used."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu muro se compone en torno a esta ciudad, y tus planes se ven allí. Volver no se reembolsa: la escala ya se ha usado."
+          }
+        }
+      }
+    },
     "Votre fil se composera autour de cette ville pendant sept jours, et vos plans y seront visibles. Cela consomme une « Escale ».": {
       "extractionState": "manual",
       "localizations": {
@@ -1986,6 +5046,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tu suscripción actual"
+          }
+        }
+      }
+    },
+    "Votre offre retient les paliers de 10, 25, 50 et 100 km : le fil s'arrête à %lld km. Votre réglage est conservé et redevient exact avec « critères précis ». Les critères filtrent ce que vous voyez ; ils ne changent jamais l'ordre.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your plan uses steps of 10, 25, 50 and 100 km: the feed stops at %lld km. Your setting is kept, and becomes exact again with “precise filters”. Filters change what you see; they never change the order."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción usa tramos de 10, 25, 50 y 100 km: el muro se detiene en %lld km. Tu ajuste se conserva y vuelve a ser exacto con «criterios precisos». Los criterios filtran lo que ves; nunca cambian el orden."
           }
         }
       }
@@ -2024,6 +5101,23 @@
         }
       }
     },
+    "Votre session a expiré. Reconnectez-vous.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your session has expired. Please sign in again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu sesión ha caducado. Vuelve a iniciar sesión."
+          }
+        }
+      }
+    },
     "Vous": {
       "extractionState": "manual",
       "localizations": {
@@ -2037,6 +5131,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tú"
+          }
+        }
+      }
+    },
+    "Vous avez déjà accordé %lld places : les reprendre reviendrait à décommander quelqu'un.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've already given out %lld spots: taking them back would mean cancelling on someone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya has concedido %lld plazas: retirarlas sería dejar plantado a alguien."
+          }
+        }
+      }
+    },
+    "Vous avez déjà accordé une place : la reprendre reviendrait à décommander quelqu'un.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've already given out a spot: taking it back would mean cancelling on someone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya has concedido una plaza: retirarla sería dejar plantado a alguien."
+          }
+        }
+      }
+    },
+    "Vous avez déjà demandé à venir.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've already asked to come."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya has pedido venir."
           }
         }
       }
@@ -2058,6 +5203,74 @@
         }
       }
     },
+    "Vous en avez %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You have %lld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tienes %lld"
+          }
+        }
+      }
+    },
+    "Vous en avez %lld en réserve aujourd'hui.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You have %lld left for today."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te quedan %lld para hoy."
+          }
+        }
+      }
+    },
+    "Vous n'avez bloqué personne.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You haven't blocked anyone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No has bloqueado a nadie."
+          }
+        }
+      }
+    },
+    "Vous ne verrez plus ses plans, et il ne verra plus les vôtres. Votre conversation se ferme et les demandes en attente entre vous expirent.\n\n%@ n'en est pas informé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You won't see their plans any more, and they won't see yours. Your conversation closes and any pending requests between you expire.\n\n%@ isn't told."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dejarás de ver sus planes, y esa persona dejará de ver los tuyos. Vuestra conversación se cierra y las peticiones pendientes entre vosotros caducan.\n\nNo se le avisa a %@."
+          }
+        }
+      }
+    },
     "Vous êtes": {
       "extractionState": "manual",
       "localizations": {
@@ -2071,6 +5284,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Eres"
+          }
+        }
+      }
+    },
+    "Vous êtes en pause. Vos plans sont retirés du fil et personne ne peut vous écrire de demande. Reprendre les remet tels quels.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're paused. Your plans are off the feed and no one can send you a request. Resuming puts them back as they were."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estás en pausa. Tus planes están fuera del muro y nadie puede enviarte peticiones. Al reanudar vuelven tal como estaban."
           }
         }
       }
@@ -2092,6 +5322,40 @@
         }
       }
     },
+    "Vérification impossible. Réessayez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't verify. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido verificar. Vuelve a intentarlo."
+          }
+        }
+      }
+    },
+    "Weave": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weave"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weave"
+          }
+        }
+      }
+    },
     "avant le départ": {
       "extractionState": "manual",
       "localizations": {
@@ -2105,6 +5369,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "antes de empezar"
+          }
+        }
+      }
+    },
+    "demandes sans réponse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "requests awaiting a reply"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "peticiones sin respuesta"
+          }
+        }
+      }
+    },
+    "en attente": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pending"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pendientes"
+          }
+        }
+      }
+    },
+    "publié %lld jours avant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "posted %lld days ahead"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "publicado %lld días antes"
+          }
+        }
+      }
+    },
+    "publié 1 jour avant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "posted 1 day ahead"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "publicado 1 día antes"
+          }
+        }
+      }
+    },
+    "veulent venir": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "want to come"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "quieren venir"
           }
         }
       }
@@ -2126,6 +5475,23 @@
         }
       }
     },
+    "À partir de %lld ans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From %lld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A partir de %lld años"
+          }
+        }
+      }
+    },
     "Échec": {
       "extractionState": "manual",
       "localizations": {
@@ -2139,6 +5505,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fallido"
+          }
+        }
+      }
+    },
+    "Écouter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escuchar"
           }
         }
       }
@@ -2190,6 +5573,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Elaborar mi Bilan"
+          }
+        }
+      }
+    },
+    "à %lld km": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld km away"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a %lld km"
           }
         }
       }

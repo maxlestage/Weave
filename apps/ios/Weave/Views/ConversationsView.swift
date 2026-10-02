@@ -170,11 +170,10 @@ private struct DemandeEnvoyeeLigne: View {
             // Les deux conséquences, dites avant plutôt qu'après. La seconde
             // surtout : se désister n'est pas gratuit, et l'apprendre une fois
             // le geste fait serait déloyal.
-            Text(
-                "La place repart au fil, et la personne qui vous attendait est prévenue. "
-                    + "Votre demande du jour reste dépensée. "
-                    + "La conversation, elle, reste ouverte : vous pouvez y dire un mot."
-            )
+            //
+            // Une seule phrase, et non trois mises bout à bout : `"…" + "…"`
+            // fait un `String`, que SwiftUI affiche tel quel sans le traduire.
+            Text("La place repart au fil, et la personne qui vous attendait est prévenue. Votre demande du jour reste dépensée. La conversation, elle, reste ouverte : vous pouvez y dire un mot.")
         }
     }
 }

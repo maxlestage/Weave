@@ -162,8 +162,8 @@ struct DemanderView: View {
                     HStack {
                         if renfortEnCours { ProgressView() }
                         Text(modele.plans.renfortsDisponibles == 1
-                            ? "Utiliser mon Renfort — 5 demandes de plus"
-                            : "Utiliser un Renfort (\(modele.plans.renfortsDisponibles) restants) — 5 demandes de plus")
+                            ? String(localized: "Utiliser mon Renfort — 5 demandes de plus")
+                            : String(localized: "Utiliser un Renfort (\(modele.plans.renfortsDisponibles) restants) — 5 demandes de plus"))
                     }
                 }
                 .buttonStyle(.bordered)
@@ -186,13 +186,15 @@ struct DemanderView: View {
 
     private var compteur: String {
         assezEcrit
-            ? "\(caracteres) caractères"
-            : "Encore \(JoinRequest.minimumMessageLength - caracteres) caractères"
+            ? String(localized: "\(caracteres) caractères")
+            : String(localized: "Encore \(JoinRequest.minimumMessageLength - caracteres) caractères")
     }
 
     private var resteAujourdhui: String {
         let reste = modele.plans.requestsLeftToday
-        return reste == 1 ? "1 demande restante" : "\(reste) demandes restantes"
+        return reste == 1
+            ? String(localized: "1 demande restante")
+            : String(localized: "\(reste) demandes restantes")
     }
 
     private func envoyer() async {

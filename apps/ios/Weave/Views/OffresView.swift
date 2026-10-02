@@ -156,7 +156,7 @@ struct OffresView: View {
                 await modele.rafraichirMoi()
             }
         } catch {
-            erreur = "L'achat n'a pas abouti. Si vous avez été débité, il sera retrouvé au prochain lancement."
+            erreur = String(localized: "L'achat n'a pas abouti. Si vous avez été débité, il sera retrouvé au prochain lancement.")
         }
     }
 }

@@ -118,15 +118,17 @@ private struct MonPlanCarte: View {
 
     private var etat: String {
         switch plan.state {
-        case .ouvert: plan.seatsLeft == 1 ? "1 place libre" : "\(plan.seatsLeft) places libres"
-        case .complet: "Complet"
-        case .passe: "Passé"
-        case .annule: "Annulé"
+        case .ouvert: plan.seatsLeft == 1
+            ? String(localized: "1 place libre")
+            : String(localized: "\(plan.seatsLeft) places libres")
+        case .complet: String(localized: "Complet")
+        case .passe: String(localized: "Passé")
+        case .annule: String(localized: "Annulé")
         // Ajouté à `PlanState` pour que « Mes plans » cesse d'échouer au
         // décodage ; l'écran, lui, n'avait pas suivi. Seul un vrai
         // compilateur pouvait le dire — un `switch` incomplet ne se voit
         // qu'à la compilation de la cible, hors de portée de Linux.
-        case .suspendu: "En pause"
+        case .suspendu: String(localized: "En pause")
         }
     }
 }
@@ -296,10 +298,16 @@ private struct ModifierPlanView: View {
                 }
 
                 Section {
-                    Stepper("\(places) place\(places > 1 ? "s" : "")", value: $places, in: 1...6)
+                    Stepper(
+                        places == 1 ? String(localized: "1 place") : String(localized: "\(places) places"),
+                        value: $places,
+                        in: 1...6
+                    )
                 } footer: {
                     if places < plan.seatsAccordees {
-                        Text("Vous avez déjà accordé \(plan.seatsAccordees) place\(plan.seatsAccordees > 1 ? "s" : "") : les reprendre reviendrait à décommander quelqu'un.")
+                        Text(plan.seatsAccordees == 1
+                            ? "Vous avez déjà accordé une place : la reprendre reviendrait à décommander quelqu'un."
+                            : "Vous avez déjà accordé \(plan.seatsAccordees) places : les reprendre reviendrait à décommander quelqu'un.")
                             .foregroundStyle(.red)
                     }
                 }

@@ -17,10 +17,10 @@ public enum Gender: String, CaseIterable, Identifiable, Codable, Sendable {
 
     public var libelle: String {
         switch self {
-        case .femme: "Femme"
-        case .homme: "Homme"
-        case .nonBinaire: "Non binaire"
-        case .autre: "Autre"
+        case .femme: NSLocalizedString("Femme", comment: "")
+        case .homme: NSLocalizedString("Homme", comment: "")
+        case .nonBinaire: NSLocalizedString("Non binaire", comment: "")
+        case .autre: NSLocalizedString("Autre", comment: "")
         }
     }
 }
