@@ -118,8 +118,9 @@ n'est nécessaire.
   voies s'excluent — un buildpack ne s'emploie que hors de la pile `container`,
   et les workflows exigent cette pile.
 - **L'application iOS** est construite sur un exécuteur macOS loué à la minute
-  par GitHub, signée par `fastlane match`, puis envoyée à TestFlight. Posséder
-  un Mac n'est donc pas nécessaire ; un compte Apple Developer l'est.
+  par GitHub, signée automatiquement par Xcode avec la clé d'API, puis envoyée
+  à TestFlight. Posséder un Mac n'est donc pas nécessaire ; un compte Apple
+  Developer l'est.
 
 La marche à suivre, étape par étape : **[docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md)**.
 

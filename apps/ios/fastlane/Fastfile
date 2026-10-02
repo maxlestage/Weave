@@ -7,16 +7,41 @@
 # Authentification : clé d'API App Store Connect (et non un identifiant Apple),
 # parce qu'elle ne demande pas de double authentification — indispensable pour
 # une machine.
+#
+# ## Signature : entièrement automatique
+#
+# Xcode signe lui-même, avec la clé d'API : il enregistre les capacités des
+# identifiants, crée le groupe d'application, obtient les certificats (gérés
+# par Apple, dans le nuage) et les profils. Rien à préparer sur le portail
+# développeur, aucun dépôt de certificats à tenir.
+#
+# Avant, `match` gardait certificats et profils dans un dépôt privé chiffré.
+# Cela demandait ce dépôt, un jeton GitHub encodé en base64, une phrase
+# secrète, et l'enregistrement à la main de quatre identifiants, d'un groupe
+# et de leurs capacités — beaucoup trop depuis un téléphone.
+#
+# La contrepartie : la clé d'API doit avoir le rôle **Admin**. C'est ce rôle
+# qui permet à Xcode d'utiliser les certificats de distribution gérés par
+# Apple.
+
+require "base64"
+require "shellwords"
+require "tmpdir"
 
 default_platform(:ios)
 
 APP_IDENTIFIER = "com.weave.maxlestage".freeze
 
-EXTENSIONS = [
-  "com.weave.maxlestage.activity",
-  "com.weave.maxlestage.watchkitapp",
-  "com.weave.maxlestage.watchkitapp.widgets",
-].freeze
+# Identifiant → nom affiché sur le portail développeur (lettres, chiffres et
+# espaces seulement).
+IDENTIFIANTS = {
+  APP_IDENTIFIER => "Weave",
+  "#{APP_IDENTIFIER}.activity" => "Weave Live Activity",
+  "#{APP_IDENTIFIER}.watchkitapp" => "Weave Watch",
+  "#{APP_IDENTIFIER}.watchkitapp.widgets" => "Weave Complication",
+}.freeze
+
+PROJET = "Weave ‣.xcodeproj".freeze
 
 platform :ios do
   before_all do
@@ -36,14 +61,26 @@ platform :ios do
     # téléphone, encoder en base64 sans passer par un site en ligne est
     # pénible — et un site en ligne verrait la clé.
     contenu = ENV.fetch("ASC_KEY_CONTENT").strip
-    en_clair = contenu.include?("BEGIN PRIVATE KEY")
+    pem = contenu.include?("BEGIN PRIVATE KEY") ? "#{contenu}\n" : Base64.decode64(contenu)
+    id_cle = ENV.fetch("ASC_KEY_ID")
+    emetteur = ENV.fetch("ASC_ISSUER_ID")
+
     cle = app_store_connect_api_key(
-      key_id: ENV.fetch("ASC_KEY_ID"),
-      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-      key_content: en_clair ? "#{contenu}\n" : contenu,
-      is_key_content_base64: !en_clair,
+      key_id: id_cle,
+      issuer_id: emetteur,
+      key_content: pem,
       in_house: false,
     )
+
+    # xcodebuild ne lit la clé que depuis un fichier. Il vit dans le dossier
+    # temporaire de l'exécuteur, effacé avec lui à la fin du travail — jamais
+    # dans le dépôt.
+    chemin_cle = File.join(ENV["RUNNER_TEMP"] || Dir.tmpdir, "AuthKey_#{id_cle}.p8")
+    File.write(chemin_cle, pem)
+    File.chmod(0o600, chemin_cle)
+
+    equipe = enregistrer_les_identifiants
+    verifier_que_l_application_existe
 
     generer
 
@@ -51,31 +88,32 @@ platform :ios do
     # il est ainsi toujours croissant, ce qu'exige App Store Connect.
     increment_build_number(
       build_number: ENV.fetch("BUILD_NUMBER", Time.now.to_i.to_s),
-      xcodeproj: "Weave ‣.xcodeproj",
+      xcodeproj: PROJET,
     )
 
-    # `match` conserve certificats et profils chiffrés dans un dépôt privé :
-    # c'est ce qui permet à une machine neuve de signer sans Mac de référence.
-    (["#{APP_IDENTIFIER}"] + EXTENSIONS).each do |identifiant|
-      match(
-        type: "appstore",
-        app_identifier: identifiant,
-        api_key: cle,
-        readonly: ENV["MATCH_READONLY"] != "false",
-      )
-    end
+    authentification = [
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath #{chemin_cle.shellescape}",
+      "-authenticationKeyID #{id_cle.shellescape}",
+      "-authenticationKeyIssuerID #{emetteur.shellescape}",
+    ].join(" ")
 
     build_app(
-      project: "Weave ‣.xcodeproj",
+      project: PROJET,
       # Le projet, la cible et le schéma portent tous « ‣ ». Seul le nom du
       # fichier livré reste sobre : « Weave.ipa » se tape et se cherche.
       scheme: "Weave ‣",
       configuration: "Release",
       export_method: "app-store",
+      export_options: {
+        signingStyle: "automatic",
+        teamID: equipe,
+      },
       clean: true,
       output_directory: "build",
       output_name: "Weave.ipa",
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: "#{authentification} DEVELOPMENT_TEAM=#{equipe.shellescape}",
+      export_xcargs: authentification,
     )
 
     upload_to_testflight(
@@ -92,4 +130,54 @@ platform :ios do
   lane :tests do
     sh("cd ../WeaveKit && swift test")
   end
+end
+
+# Enregistre les identifiants qui manquent, et rend l'identifiant d'équipe.
+#
+# App Store Connect ne propose, à la création d'une application, que des
+# identifiants déjà enregistrés : les créer ici les fait apparaître dans sa
+# liste. Leurs capacités (notifications, groupe d'application), Xcode les
+# active ensuite lui-même pendant la signature.
+#
+# L'identifiant d'équipe se lit sur les identifiants eux-mêmes (leur préfixe),
+# sauf s'il est fourni par `ASC_TEAM_ID` : un secret de moins à trouver.
+def enregistrer_les_identifiants
+  prefixe = nil
+  IDENTIFIANTS.each do |identifiant, nom|
+    existant = Spaceship::ConnectAPI::BundleId.find(identifiant)
+    if existant
+      UI.message("Identifiant déjà enregistré : #{identifiant}")
+    else
+      existant = Spaceship::ConnectAPI::BundleId.create(
+        name: nom,
+        platform: Spaceship::ConnectAPI::Platform::IOS,
+        identifier: identifiant,
+      )
+      UI.success("Identifiant enregistré : #{identifiant}")
+    end
+    prefixe ||= existant.seed_id
+  end
+
+  equipe = ENV["ASC_TEAM_ID"].to_s.strip
+  equipe = prefixe.to_s if equipe.empty?
+  UI.user_error!("Identifiant d'équipe introuvable : renseignez le secret ASC_TEAM_ID.") if equipe.empty?
+  ENV["WEAVE_TEAM_ID"] = equipe
+  equipe
+end
+
+# Échoue tout de suite, et clairement, si l'application n'existe pas encore
+# dans App Store Connect.
+#
+# Apple ne permet pas de la créer par l'API : c'est le seul geste qui reste à
+# faire à la main. Sans cette vérification, on l'apprendrait après vingt
+# minutes de construction, au moment de l'envoi.
+def verifier_que_l_application_existe
+  return if Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+
+  UI.user_error!(
+    "L'application n'existe pas encore dans App Store Connect. Les identifiants " \
+    "viennent d'être enregistrés : dans App Store Connect → Apps → + → Nouvelle " \
+    "app, choisissez « #{APP_IDENTIFIER} » comme identifiant de lot, puis " \
+    "relancez ce workflow.",
+  )
 end
