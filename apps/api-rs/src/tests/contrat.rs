@@ -329,6 +329,7 @@ fn les_nombres_de_l_application_ios_sont_ceux_du_contrat_partage() {
         ("accountPurgeDays", "ACCOUNT_PURGE_DAYS"),
         ("bioMaxChars", "BIO_MAX_CHARS"),
         ("conversationMaxChars", "CONVERSATION_MAX_CHARS"),
+        ("messageRetentionDays", "MESSAGE_RETENTION_DAYS"),
         ("photoMaxBytes", "PHOTO_MAX_BYTES"),
         ("maxOpen", "MAX_OPEN_PLANS"),
     ] {
@@ -1100,8 +1101,8 @@ fn cas_de_l_enumeration(source: &str, nom: &str) -> Vec<String> {
     valeurs
 }
 
-/// Le palier à partir duquel l'application propose le filtre par jour est
-/// celui que le serveur accepte.
+/// Le palier à partir duquel l'application propose les filtres précis — jour
+/// et catégorie — est celui que le serveur accepte.
 ///
 /// `PlanTier.filtreParJour` existe côté iOS pour ne pas MONTRER un réglage qui
 /// sera refusé — proposer puis refuser est une façon de vendre, pas de régler.
@@ -1109,7 +1110,7 @@ fn cas_de_l_enumeration(source: &str, nom: &str) -> Vec<String> {
 /// elle dériverait en silence, l'application montrant un réglage refusé ou
 /// cachant un réglage permis.
 #[test]
-fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
+fn les_filtres_precis_sont_proposes_aux_memes_paliers_des_deux_cotes() {
     let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../ios/WeaveKit/Sources/WeaveKit/Models/Account.swift");
     let Ok(source) = std::fs::read_to_string(&chemin) else {
@@ -1120,25 +1121,32 @@ fn le_filtre_par_jour_est_propose_aux_memes_paliers_des_deux_cotes() {
         return;
     };
 
-    let debut = source
-        .find("public var filtreParJour: Bool {")
-        .expect("« filtreParJour » a disparu du modèle iOS");
-    let fin = source[debut..].find("\n    }").expect("corps fermé") + debut;
-    let corps = &source[debut..fin];
+    // Chaque propriété iOS, et le critère serveur qu'elle copie.
+    for (propriete, critere) in [
+        ("filtreParJour", crate::droits::Critere::Jour),
+        ("filtreParCategorie", crate::droits::Critere::Categorie),
+    ] {
+        let debut = source
+            .find(&format!("public var {propriete}: Bool {{"))
+            .unwrap_or_else(|| panic!("« {propriete} » a disparu du modèle iOS"));
+        let fin = source[debut..].find("\n    }").expect("corps fermé") + debut;
+        let corps = &source[debut..fin];
 
-    for palier in ["depart", "viree", "escapade", "expedition", "grandtour"] {
-        // Le cas Swift s'écrit « .depart, .viree: false ».
-        let cote_ios = corps
-            .lines()
-            .find(|ligne| ligne.contains(&format!(".{palier}")))
-            .map(|ligne| ligne.contains("true"))
-            .unwrap_or_else(|| panic!("« {palier} » absent de `filtreParJour`"));
+        for palier in ["depart", "viree", "escapade", "expedition", "grandtour"] {
+            // Le cas Swift s'écrit « .depart, .viree: false ».
+            let cote_ios = corps
+                .lines()
+                .find(|ligne| ligne.contains(&format!(".{palier}")))
+                .map(|ligne| ligne.contains("true"))
+                .unwrap_or_else(|| panic!("« {palier} » absent de `{propriete}`"));
 
-        let cote_serveur = crate::droits::filtre_autorise(palier, crate::droits::Critere::Jour);
-        assert_eq!(
-            cote_ios, cote_serveur,
-            "« {palier} » : l'application propose {cote_ios}, le serveur accepte {cote_serveur}"
-        );
+            let cote_serveur = crate::droits::filtre_autorise(palier, critere);
+            assert_eq!(
+                cote_ios, cote_serveur,
+                "`{propriete}`, « {palier} » : l'application propose {cote_ios}, \
+                 le serveur accepte {cote_serveur}"
+            );
+        }
     }
 }
 
@@ -1186,18 +1194,26 @@ fn chaque_requete_ios_annonce_sa_langue() {
     );
 }
 
-/// Le catalogue de chaînes iOS reste en phase avec le code qui les affiche.
+/// Le catalogue de chaînes iOS reste en phase avec le code qui les affiche —
+/// dans les DEUX sens.
 ///
 /// En SwiftUI, `Text("Publier")` passe par `LocalizedStringKey` : le texte
-/// français EST la clé. Renommer une phrase dans le code sans la renommer dans
-/// le catalogue ne casse rien de visible — la chaîne retombe simplement sur le
-/// français, dans une application anglaise, sans erreur ni avertissement.
+/// français EST la clé. Une phrase absente du catalogue ne casse rien de
+/// visible — elle retombe sur le français, dans une application anglaise, sans
+/// erreur ni avertissement.
 ///
-/// Le contrôle porte sur les deux sens :
+/// Ce test ne vérifiait qu'un sens : que chaque clé du catalogue existe encore
+/// dans le code. Rien ne vérifiait l'autre, et l'application s'était remplie
+/// de phrases jamais traduites — 186 au dernier relevé, dont TOUTES celles qui
+/// portent une valeur : « Bloquer \(prenom) » a pour clé « Bloquer %@ », et le
+/// catalogue n'en contenait aucune.
 ///
-/// - chaque clé du catalogue existe encore dans le code Swift ; une clé
-///   orpheline est une phrase qu'on croit traduite et qui ne l'est plus ;
-/// - chaque clé a bien ses deux traductions, non vides.
+/// Les deux sens, donc :
+///
+/// - chaque phrase localisable écrite dans le Swift a sa clé au catalogue,
+///   interpolations converties en spécificateurs ;
+/// - chaque clé du catalogue correspond encore à une phrase du code ;
+/// - chaque clé a ses deux traductions, non vides, et distinctes du français.
 #[test]
 fn le_catalogue_ios_est_en_phase_avec_le_code() {
     let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/ios");
@@ -1221,26 +1237,81 @@ fn le_catalogue_ios_est_en_phase_avec_le_code() {
         sources.len()
     );
 
-    // Ces noms sont ceux de produits déclarés dans App Store Connect, et
-    // « Pause » est le même mot en anglais : les seules identités voulues.
-    const IDENTITES_VOULUES: [&str; 3] = ["Bilan", "Escale", "Pause"];
+    // Des noms propres, et des mots qui s'écrivent pareil dans la langue
+    // d'arrivée : les seules identités voulues.
+    const IDENTITES_VOULUES: [&str; 7] = [
+        "Bilan",
+        "Escale",
+        "Pause",
+        "Weave",
+        "Live Activity",
+        "Notifications",
+        "Conversations",
+    ];
+    // Une identité d'une langue seulement : « / plan » se dit pareil partout.
+    const IDENTITES_PARTIELLES: [&str; 1] = ["%@ / plan"];
 
     let chaines = catalogue["strings"].as_object().expect("des chaînes");
     assert!(
-        chaines.len() >= 120,
+        chaines.len() >= 300,
         "catalogue étonnamment court : {}",
         chaines.len()
     );
 
+    // — Sens 1 : chaque phrase du code est au catalogue ——————————————
+    let (releves, concatenees) = phrases_localisables(&ios);
+
+    // `Text("…" + "…")` ne se traduit JAMAIS : la concaténation fait un
+    // `String`, que SwiftUI affiche tel quel, sans consulter le catalogue. Deux
+    // paragraphes de l'application étaient écrits ainsi, et restaient français
+    // quelle que soit la langue — leurs morceaux avaient beau être traduits.
+    assert!(
+        concatenees.is_empty(),
+        "texte assemblé par « + » dans une vue — il ne sera jamais traduit, \
+         écrivez une seule phrase : {concatenees:?}"
+    );
+    assert!(
+        releves.len() > 250,
+        "seulement {} phrases relevées : l'analyse du Swift a dérivé",
+        releves.len()
+    );
+    let mut cles_du_code = std::collections::HashSet::new();
+    let mut absentes = Vec::new();
+    for (litteral, fichier) in &releves {
+        let candidates = cles_candidates(litteral);
+        let trouvee = candidates.iter().any(|c| chaines.contains_key(c));
+        cles_du_code.extend(candidates);
+        if !trouvee {
+            absentes.push(format!("{litteral}   ({fichier})"));
+        }
+    }
+    absentes.sort();
+    absentes.dedup();
+    assert!(
+        absentes.is_empty(),
+        "{} phrase(s) du code absente(s) du catalogue — elles s'afficheront en \
+         français quelle que soit la langue :\n  {}",
+        absentes.len(),
+        absentes.join("\n  ")
+    );
+
+    // — Sens 2 : chaque clé du catalogue sert encore —————————————————
     let mut orphelines = Vec::new();
     for (cle, entree) in chaines {
-        // La clé telle qu'elle est ÉCRITE dans le source : les sauts de ligne
-        // y sont des échappements, pas des retours à la ligne.
-        let litteral = cle
-            .replace('\\', "\\\\")
-            .replace('\n', "\\n")
-            .replace('"', "\\\"");
-        if !sources.contains(&format!("\"{litteral}\"")) {
+        let presente = if cle.contains('%') {
+            // Une clé à spécificateurs n'apparaît pas telle quelle dans le
+            // source : « Bloquer %@ » s'y écrit « Bloquer \(prenom) ».
+            cles_du_code.contains(cle)
+        } else {
+            // La clé telle qu'elle est ÉCRITE dans le source : les sauts de
+            // ligne y sont des échappements, pas des retours à la ligne.
+            let litteral = cle
+                .replace('\\', "\\\\")
+                .replace('\n', "\\n")
+                .replace('"', "\\\"");
+            sources.contains(&format!("\"{litteral}\""))
+        };
+        if !presente {
             orphelines.push(cle.clone());
             continue;
         }
@@ -1253,9 +1324,19 @@ fn le_catalogue_ios_est_en_phase_avec_le_code() {
                 !valeur.is_empty(),
                 "« {cle} » : traduction « {langue} » vide"
             );
-            if !IDENTITES_VOULUES.contains(&cle.as_str()) {
+            if !IDENTITES_VOULUES.contains(&cle.as_str())
+                && !IDENTITES_PARTIELLES.contains(&cle.as_str())
+            {
                 assert_ne!(valeur, cle, "« {cle} » : « {langue} » reprend le français");
             }
+            // Autant de valeurs à insérer que la clé en attend : une
+            // traduction qui en perd une affiche un trou, une qui en ajoute
+            // une lit de la mémoire au hasard.
+            assert_eq!(
+                nombre_de_specificateurs(valeur),
+                nombre_de_specificateurs(cle),
+                "« {cle} » : la traduction « {langue} » n'insère pas le même nombre de valeurs"
+            );
         }
     }
 
@@ -1263,6 +1344,316 @@ fn le_catalogue_ios_est_en_phase_avec_le_code() {
         orphelines.is_empty(),
         "ces clés ne sont plus dans le code Swift, et leur traduction ne sert plus : {orphelines:?}"
     );
+}
+
+/// Les phrases localisables écrites dans le Swift de l'application, avec le
+/// fichier où chacune apparaît.
+///
+/// Sont localisables : le premier argument des vues qui prennent une
+/// `LocalizedStringKey` (`Text`, `Button`, `Label`, `Section`…), les
+/// modificateurs qui en prennent une (`.navigationTitle`, `.alert`…),
+/// `String(localized:)`, `NSLocalizedString`, et les paramètres de nos propres
+/// composants déclarés `LocalizedStringKey`.
+///
+/// Une analyse à la main plutôt qu'une expression rationnelle : une phrase
+/// peut contenir une interpolation, qui peut contenir une autre chaîne — `"\(n)
+/// place\(n > 1 ? "s" : "")"` — et seule une lecture qui suit les parenthèses
+/// sait où la phrase s'arrête.
+fn phrases_localisables(ios: &std::path::Path) -> (Vec<(String, String)>, Vec<String>) {
+    let mut fichiers = Vec::new();
+    lister_le_swift(ios, &mut fichiers);
+
+    // Les paramètres `LocalizedStringKey` de nos propres composants.
+    let mut parametres = Vec::new();
+    for (_, source) in &fichiers {
+        for ligne in source.lines() {
+            let ligne = ligne.trim();
+            for debut in ["let ", "var "] {
+                if let Some(reste) = ligne.strip_prefix(debut)
+                    && let Some((nom, type_)) = reste.split_once(':')
+                    && type_.trim() == "LocalizedStringKey"
+                {
+                    parametres.push(format!("{}:", nom.trim()));
+                }
+            }
+        }
+    }
+
+    const VUES: [&str; 21] = [
+        "Text(",
+        "Button(",
+        "Label(",
+        "Section(",
+        "Toggle(",
+        "TextField(",
+        "SecureField(",
+        "Stepper(",
+        "DatePicker(",
+        "Picker(",
+        "NavigationLink(",
+        "LabeledContent(",
+        "Link(",
+        "ContentUnavailableView(",
+        "Menu(",
+        ".navigationTitle(",
+        ".alert(",
+        ".confirmationDialog(",
+        ".accessibilityLabel(",
+        ".accessibilityHint(",
+        ".help(",
+    ];
+    const DIRECTES: [&str; 2] = ["String(localized:", "NSLocalizedString("];
+
+    let mut releves = Vec::new();
+    let mut concatenees = Vec::new();
+    for (chemin, source) in &fichiers {
+        let nom = chemin
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let dans_weavekit = chemin.to_string_lossy().contains("/WeaveKit/");
+
+        // `String(localized:)` et `NSLocalizedString` valent partout, WeaveKit
+        // compris : sur l'appareil, ils cherchent dans le catalogue de
+        // l'application qui les appelle.
+        for prefixe in DIRECTES {
+            for position in occurrences(source, prefixe) {
+                let mut i = position + prefixe.len();
+                i += espaces(&source[i..]);
+                if let Some((litteral, _)) = lire_litteral(source, i) {
+                    releves.push((litteral, nom.clone()));
+                }
+            }
+        }
+        if dans_weavekit {
+            continue;
+        }
+
+        for prefixe in VUES {
+            for position in occurrences(source, prefixe) {
+                let (litteraux, concatene) =
+                    litteraux_du_premier_argument(source, position + prefixe.len());
+                if concatene {
+                    concatenees.push(format!("{nom} : {prefixe}{}", litteraux.join(" + ")));
+                }
+                for litteral in litteraux {
+                    releves.push((litteral, nom.clone()));
+                }
+            }
+        }
+        for prefixe in &parametres {
+            for position in occurrences(source, prefixe) {
+                let mut i = position + prefixe.len();
+                i += espaces(&source[i..]);
+                if let Some((litteral, _)) = lire_litteral(source, i) {
+                    releves.push((litteral, nom.clone()));
+                }
+            }
+        }
+    }
+
+    // Rien à traduire dans « 000000 » ou « — » : seulement des chiffres et
+    // des signes.
+    releves.retain(|(litteral, _)| {
+        sans_interpolations(litteral)
+            .chars()
+            .any(char::is_alphabetic)
+    });
+    (releves, concatenees)
+}
+
+/// Les fichiers Swift de l'application, hors vérification Linux et hors tests.
+fn lister_le_swift(repertoire: &std::path::Path, sortie: &mut Vec<(std::path::PathBuf, String)>) {
+    let Ok(entrees) = std::fs::read_dir(repertoire) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        let nom = entree.file_name().to_string_lossy().into_owned();
+        if chemin.is_dir() {
+            if nom != "verification-linux" && nom != "Tests" && !nom.starts_with('.') {
+                lister_le_swift(&chemin, sortie);
+            }
+        } else if nom.ends_with(".swift")
+            && let Ok(contenu) = std::fs::read_to_string(&chemin)
+        {
+            sortie.push((chemin, contenu));
+        }
+    }
+}
+
+/// Les positions d'un préfixe qui n'est pas la fin d'un identifiant plus long
+/// — `Text(` mais pas `RichText(`.
+fn occurrences(source: &str, prefixe: &str) -> Vec<usize> {
+    let mut positions = Vec::new();
+    let mut depart = 0;
+    while let Some(trouve) = source[depart..].find(prefixe) {
+        let position = depart + trouve;
+        let avant = source[..position].chars().next_back();
+        let colle = prefixe.starts_with(|c: char| c.is_alphanumeric())
+            && avant.is_some_and(|c| c.is_alphanumeric() || c == '_');
+        if !colle {
+            positions.push(position);
+        }
+        depart = position + prefixe.len();
+    }
+    positions
+}
+
+fn espaces(texte: &str) -> usize {
+    texte.len() - texte.trim_start().len()
+}
+
+/// Lit un littéral de chaîne qui commence à `debut`, et rend son contenu brut
+/// (échappements compris) et la position qui le suit.
+fn lire_litteral(source: &str, debut: usize) -> Option<(String, usize)> {
+    let octets = source.as_bytes();
+    if octets.get(debut) != Some(&b'"') || source[debut..].starts_with("\"\"\"") {
+        return None;
+    }
+    let mut i = debut + 1;
+    while i < octets.len() {
+        match octets[i] {
+            b'\\' if octets.get(i + 1) == Some(&b'(') => {
+                // Une interpolation : on suit ses parenthèses, en sautant les
+                // chaînes qu'elle contient.
+                let mut profondeur = 1;
+                i += 2;
+                while i < octets.len() && profondeur > 0 {
+                    match octets[i] {
+                        b'(' => profondeur += 1,
+                        b')' => profondeur -= 1,
+                        b'"' => {
+                            let (_, suite) = lire_litteral(source, i)?;
+                            i = suite;
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+            }
+            b'\\' => i += 2,
+            b'"' => return Some((source[debut + 1..i].to_string(), i + 1)),
+            b'\n' => return None,
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Les littéraux du premier argument d'un appel ouvert juste avant `debut`.
+///
+/// Le premier seulement : `Label("Publier", systemImage: "plus")` traduit
+/// « Publier », pas le nom de l'icône. Un ternaire de deux littéraux en donne
+/// deux. Un `verbatim:` n'en donne aucun — c'est précisément son rôle.
+///
+/// Rend aussi si des littéraux y sont assemblés par « + » au premier niveau.
+fn litteraux_du_premier_argument(source: &str, debut: usize) -> (Vec<String>, bool) {
+    let octets = source.as_bytes();
+    let mut trouves = Vec::new();
+    let mut concatene = false;
+    if source[debut..].trim_start().starts_with("verbatim:") {
+        return (trouves, false);
+    }
+    let mut profondeur = 0usize;
+    let mut i = debut;
+    while i < octets.len() {
+        match octets[i] {
+            b'"' => match lire_litteral(source, i) {
+                Some((litteral, suite)) => {
+                    // Les littéraux d'un appel imbriqué — `String(localized:)`
+                    // — sont relevés par ailleurs ; ceux du premier niveau
+                    // sont la clé de cette vue.
+                    if profondeur == 0 {
+                        trouves.push(litteral);
+                    }
+                    i = suite;
+                    continue;
+                }
+                None => return (trouves, concatene),
+            },
+            b'(' | b'[' | b'{' => profondeur += 1,
+            b')' | b']' | b'}' if profondeur == 0 => return (trouves, concatene),
+            b')' | b']' | b'}' => profondeur -= 1,
+            b',' if profondeur == 0 => return (trouves, concatene),
+            b'+' if profondeur == 0 && !trouves.is_empty() => concatene = true,
+            _ => {}
+        }
+        i += 1;
+    }
+    (trouves, concatene)
+}
+
+/// Le littéral sans ses interpolations.
+fn sans_interpolations(litteral: &str) -> String {
+    morceaux(litteral).into_iter().flatten().collect()
+}
+
+/// Le littéral découpé : `Some(texte)` pour le texte, `None` pour chaque
+/// interpolation.
+fn morceaux(litteral: &str) -> Vec<Option<String>> {
+    let octets = litteral.as_bytes();
+    let mut sortie: Vec<Option<String>> = Vec::new();
+    let mut courant = String::new();
+    let mut i = 0;
+    while i < octets.len() {
+        if octets[i] == b'\\' && octets.get(i + 1) == Some(&b'(') {
+            sortie.push(Some(std::mem::take(&mut courant)));
+            let mut profondeur = 1;
+            i += 2;
+            while i < octets.len() && profondeur > 0 {
+                match octets[i] {
+                    b'(' => profondeur += 1,
+                    b')' => profondeur -= 1,
+                    _ => {}
+                }
+                i += 1;
+            }
+            sortie.push(None);
+            continue;
+        }
+        if octets[i] == b'\\' && i + 1 < octets.len() {
+            match octets[i + 1] {
+                b'n' => courant.push('\n'),
+                b't' => courant.push('\t'),
+                autre => courant.push(autre as char),
+            }
+            i += 2;
+            continue;
+        }
+        // Un caractère entier, pas un octet : le français a des accents.
+        let caractere = litteral[i..].chars().next().expect("un caractère");
+        courant.push(caractere);
+        i += caractere.len_utf8();
+    }
+    sortie.push(Some(courant));
+    sortie
+}
+
+/// Les clés possibles d'un littéral.
+///
+/// SwiftUI remplace chaque interpolation par le spécificateur de son type :
+/// `%@` pour un texte, `%lld` pour un entier, `%lf` pour un réel. Le type ne se
+/// lit pas dans le source ; on accepte donc l'une ou l'autre forme — et c'est
+/// au catalogue de porter la bonne, sans quoi la phrase reste française.
+fn cles_candidates(litteral: &str) -> Vec<String> {
+    let mut cles = vec![String::new()];
+    for morceau in morceaux(litteral) {
+        cles = match morceau {
+            Some(texte) => cles.into_iter().map(|c| c + &texte).collect(),
+            None => cles
+                .into_iter()
+                .flat_map(|c| ["%@", "%lld", "%lf"].map(|s| format!("{c}{s}")))
+                .collect(),
+        };
+    }
+    cles
+}
+
+/// Le nombre de valeurs qu'une chaîne de format insère.
+fn nombre_de_specificateurs(texte: &str) -> usize {
+    texte.matches('%').count() - 2 * texte.matches("%%").count()
 }
 
 /// Concatène tout le Swift d'un répertoire, récursivement.
@@ -2622,4 +3013,107 @@ fn l_application_porte_son_nom_et_garde_son_identifiant() {
          application, et TestFlight, les abonnements et les achats déjà faits \
          ne suivraient pas"
     );
+}
+
+/// Le schéma que la CI invoque est celui que le projet déclare.
+///
+/// ## Pourquoi trois fichiers doivent s'accorder
+///
+/// Le nom de la cible iPhone devient celui du schéma Xcode. Trois endroits
+/// l'invoquent : les deux `xcodebuild` de la compilation, et le `build_app`
+/// de fastlane qui envoie à TestFlight.
+///
+/// Renommer la cible sans les suivre ne casse rien de visible : le projet se
+/// génère, les tests Rust passent, le site se construit. Cela casse la
+/// CONSTRUCTION iOS — et la fastlane ne tourne qu'au moment d'envoyer une
+/// version, c'est-à-dire le jour où l'on voulait livrer.
+///
+/// Le nom porte « ‣ », ce qui ajoute une façon de se tromper : un schéma non
+/// cité serait coupé à l'espace, et `xcodebuild` chercherait un schéma
+/// « Weave » qui n'existe plus.
+#[test]
+fn le_schema_ios_est_le_meme_partout() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let ios = racine.join("ios");
+    if !ios.is_dir() {
+        eprintln!("dépôt iOS absent — accord non vérifié");
+        return;
+    }
+
+    // Le nom fait foi là où il est déclaré : dans `project.yml`.
+    let projet = std::fs::read_to_string(ios.join("project.yml")).expect("project.yml lisible");
+    let declare = projet
+        .split("\nschemes:\n")
+        .nth(1)
+        .and_then(|reste| reste.lines().next())
+        .map(|ligne| {
+            ligne
+                .trim()
+                .trim_end_matches(':')
+                .trim_matches('"')
+                .to_string()
+        })
+        .expect("aucun schéma déclaré");
+    assert_eq!(
+        declare, "Weave ‣",
+        "le schéma déclaré a changé sans que ce test le sache"
+    );
+
+    // La compilation, deux fois. Le schéma est CITÉ : sans les guillemets,
+    // l'espace le couperait et `xcodebuild` chercherait « Weave ».
+    let ci = std::fs::read_to_string(racine.join("../.github/workflows/ios-compilation.yml"))
+        .expect("ios-compilation.yml lisible");
+    let attendu_ci = format!("-scheme '{declare}'");
+    assert_eq!(
+        ci.matches(&attendu_ci).count(),
+        2,
+        "les deux appels à xcodebuild n'invoquent pas « {declare} » entre guillemets"
+    );
+    assert!(
+        !ci.contains("-scheme Weave \\"),
+        "un appel à xcodebuild invoque encore le schéma sans guillemets"
+    );
+
+    // Et l'envoi à TestFlight.
+    let fastfile =
+        std::fs::read_to_string(ios.join("fastlane/Fastfile")).expect("Fastfile lisible");
+    assert!(
+        fastfile.contains(&format!("scheme: \"{declare}\"")),
+        "fastlane n'envoie pas le schéma « {declare} » : la construction de \
+         livraison chercherait un schéma qui n'existe pas"
+    );
+
+    // Le projet porte le même nom que la cible, et le fichier généré aussi.
+    assert!(
+        projet.contains("\nname: \"Weave \u{2023}\"\n"),
+        "le projet ne porte plus « Weave ‣ »"
+    );
+
+    // Les DEUX emplois chez fastlane, et non « le nom figure quelque part » :
+    // le Fastfile cite le projet à deux endroits — la numérotation de version
+    // et la construction. En changer un seul laissait ma première version au
+    // vert, puisque l'autre suffisait à la satisfaire. C'est la même faute que
+    // la garde qui cherchait « Signaler » n'importe où dans un fichier.
+    assert_eq!(
+        fastfile.matches("\"Weave \u{2023}.xcodeproj\"").count(),
+        2,
+        "fastlane ne désigne plus « Weave ‣.xcodeproj » aux deux endroits"
+    );
+
+    // Et `xcodebuild` le nomme entre guillemets, deux fois : sans eux,
+    // l'espace couperait le chemin et le projet serait introuvable.
+    assert_eq!(
+        ci.matches("-project 'Weave \u{2023}.xcodeproj'").count(),
+        2,
+        "les deux appels à xcodebuild ne désignent pas le projet entre guillemets"
+    );
+
+    // Les cibles voisines gardent leurs noms : ce sont des applications
+    // distinctes sur l'appareil, et le renommage portait sur l'iPhone.
+    for voisine in ["WeaveActivity", "WeaveWatch", "WeaveWatchWidgets"] {
+        assert!(
+            projet.contains(&format!("\n  {voisine}:\n")),
+            "la cible « {voisine} » a été renommée avec l'iPhone"
+        );
+    }
 }

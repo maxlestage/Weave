@@ -31,11 +31,17 @@ platform :ios do
 
   desc "Construit et envoie une version à TestFlight"
   lane :beta do
+    # La clé est acceptée telle quelle (le contenu du `.p8`, collé avec ses
+    # lignes « BEGIN/END PRIVATE KEY ») ou encodée en base64. Depuis un
+    # téléphone, encoder en base64 sans passer par un site en ligne est
+    # pénible — et un site en ligne verrait la clé.
+    contenu = ENV.fetch("ASC_KEY_CONTENT").strip
+    en_clair = contenu.include?("BEGIN PRIVATE KEY")
     cle = app_store_connect_api_key(
       key_id: ENV.fetch("ASC_KEY_ID"),
       issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-      key_content: ENV.fetch("ASC_KEY_CONTENT"),
-      is_key_content_base64: true,
+      key_content: en_clair ? "#{contenu}\n" : contenu,
+      is_key_content_base64: !en_clair,
       in_house: false,
     )
 
@@ -45,7 +51,7 @@ platform :ios do
     # il est ainsi toujours croissant, ce qu'exige App Store Connect.
     increment_build_number(
       build_number: ENV.fetch("BUILD_NUMBER", Time.now.to_i.to_s),
-      xcodeproj: "Weave.xcodeproj",
+      xcodeproj: "Weave ‣.xcodeproj",
     )
 
     # `match` conserve certificats et profils chiffrés dans un dépôt privé :
@@ -60,8 +66,10 @@ platform :ios do
     end
 
     build_app(
-      project: "Weave.xcodeproj",
-      scheme: "Weave",
+      project: "Weave ‣.xcodeproj",
+      # Le projet, la cible et le schéma portent tous « ‣ ». Seul le nom du
+      # fichier livré reste sobre : « Weave.ipa » se tape et se cherche.
+      scheme: "Weave ‣",
       configuration: "Release",
       export_method: "app-store",
       clean: true,

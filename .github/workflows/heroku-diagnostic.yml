@@ -42,6 +42,53 @@ jobs:
           echo "Application interrogée : $APP"
 
       # ----------------------------------------------------------------
+      # La région, et elle sert à une mention légale
+      #
+      # L'article 6-III de la LCEN impose de nommer l'hébergeur, et la
+      # politique de confidentialité annonce où vivent les données — « dans
+      # l'Union européenne (Irlande) », ou ailleurs. Écrire l'un pour l'autre
+      # serait une fausse déclaration dans un document qui engage.
+      #
+      # La région se DEMANDE donc à Heroku plutôt que de se déduire du
+      # formulaire de création : celui-ci propose « eu » par défaut, mais
+      # l'application a pu être créée autrement, ou déplacée depuis.
+      # ----------------------------------------------------------------
+      - name: Région et pile
+        run: |
+          set -euo pipefail
+          reponse=$(curl -sS -X GET "https://api.heroku.com/apps/$APP" \
+            -H "Accept: application/vnd.heroku+json; version=3" \
+            -H "Authorization: Bearer $HEROKU_API_KEY")
+
+          region=$(echo "$reponse" | jq -r '.region.name // "inconnue"')
+          pays=$(echo "$reponse" | jq -r '.region.description // "—"')
+          pile=$(echo "$reponse" | jq -r '.stack.name // "inconnue"')
+
+          {
+            echo "## Région et pile"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Région | \`$region\` — $pays |"
+            echo "| Pile | \`$pile\` |"
+            echo ""
+            if [ "$region" = "eu" ]; then
+              echo "La région « eu » d'Heroku s'exécute en Irlande, dans l'Union"
+              echo "européenne. Pour \`identite.ts\` :"
+              echo ""
+              echo '```'
+              echo "region: \"dans l'Union européenne (Irlande)\","
+              echo '```'
+            else
+              echo "**La région n'est pas « eu ».** La politique de confidentialité"
+              echo "annonce où vivent les données, et la section « Transferts hors de"
+              echo "l'Union européenne » doit dire ce qui est vrai — pas ce qu'on"
+              echo "aurait souhaité. Renseignez \`EDITEUR.hebergeur.region\` en"
+              echo "conséquence."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ----------------------------------------------------------------
       # Les buildpacks
       #
       # C'est la première chose à savoir : un buildpack Bun tiers n'installe

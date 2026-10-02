@@ -34,7 +34,7 @@ struct WeaveLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     if let intervalle = contexte.state.countdown {
                         HStack {
-                            Text(contexte.state.planTitle ?? "Prochain plan")
+                            Text(contexte.state.planTitle ?? String(localized: "Prochain plan"))
                                 .font(.footnote.weight(.medium))
                                 .lineLimit(1)
                             Spacer()
@@ -74,7 +74,7 @@ private struct EcranVerrouille: View {
             Motif()
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(etat.planTitle ?? "Aucun plan à venir")
+                Text(etat.planTitle ?? String(localized: "Aucun plan à venir"))
                     .font(.headline)
                     .lineLimit(2)
                 Text(etat.summary)
@@ -123,7 +123,10 @@ private struct Motif: View {
 
 private struct Compteur: View {
     let valeur: Int
-    let libelle: String
+    /// Une clé, et non un `String` : un `String` s'affiche tel quel, et
+    /// « veulent venir » restait en français sur l'écran verrouillé d'un
+    /// iPhone réglé dans une autre langue.
+    let libelle: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 1) {

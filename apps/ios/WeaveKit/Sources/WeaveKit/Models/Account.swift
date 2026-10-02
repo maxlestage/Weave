@@ -66,6 +66,19 @@ public enum PlanTier: String, Codable, CaseIterable, Sendable {
         case .escapade, .expedition, .grandtour: true
         }
     }
+
+    /// Ce palier donne-t-il droit au filtre par catégorie ?
+    ///
+    /// Même règle que le jour, du même « précis » — mais écrite à part : le
+    /// serveur les tient pour deux critères, et un test les rapproche chacun
+    /// de leur règle. Une propriété partagée aurait caché le jour où l'une des
+    /// deux change sans l'autre.
+    public var filtreParCategorie: Bool {
+        switch self {
+        case .depart, .viree: false
+        case .escapade, .expedition, .grandtour: true
+        }
+    }
 }
 
 /// Produit achetable à l'unité. Miroir de `UnitSku`.

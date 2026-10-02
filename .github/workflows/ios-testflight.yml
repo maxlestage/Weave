@@ -81,8 +81,9 @@ jobs:
       # ------------------------------------------------------------------
       # L'adresse de l'API, avant de construire quoi que ce soit.
       #
-      # `project.yml` porte « https://api.weave.app » en configuration Release.
-      # C'est un domaine de remplacement, et le dépôt le dit lui-même ailleurs :
+      # `project.yml` a longtemps porté « https://api.weave.app » en
+      # configuration Release. C'est un domaine de remplacement, et le dépôt le
+      # dit lui-même ailleurs :
       # « https://weave.app […] un domaine qui ne répond pas »
       # (apps/web/src/pages/identite.ts).
       #

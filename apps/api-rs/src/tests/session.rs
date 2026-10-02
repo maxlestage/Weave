@@ -670,3 +670,158 @@ async fn un_jeton_de_renouvellement_perime_ne_renouvelle_rien() {
         "un jeton périmé a renouvelé la session : elle n'a plus de durée de vie ({corps})"
     );
 }
+
+// — La session de la montre ————————————————————————————————————————
+
+/// La montre reçoit SA session, et celle de l'iPhone continue de vivre.
+///
+/// C'est tout l'objet de la route : si la montre avait reçu une copie du
+/// jeton de l'iPhone, le premier renouvellement de l'un aurait fait passer
+/// l'autre pour un voleur, et le compte entier aurait été déconnecté.
+#[tokio::test]
+async fn la_montre_recoit_sa_propre_session() {
+    let service = Service::monter().await;
+    let (acces, renouvellement) = session(&service, "montre").await;
+
+    let (statut, corps) = service
+        .post(
+            "/v1/auth/watch-session",
+            Some(&acces),
+            json!({ "refreshToken": renouvellement.clone() }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let acces_montre = corps["session"]["accessToken"].as_str().expect("un accès").to_string();
+    let renouv_montre = corps["session"]["refreshToken"]
+        .as_str()
+        .expect("un renouvellement")
+        .to_string();
+    assert_ne!(renouv_montre, renouvellement, "la montre a reçu le jeton de l'iPhone");
+
+    // La montre lit son résumé avec son propre accès.
+    let (statut, _) = service.get("/v1/watch/summary", Some(&acces_montre)).await;
+    assert_eq!(statut, StatusCode::OK);
+
+    // Les deux chaînes tournent chacune de leur côté, sans se gêner.
+    let (statut, corps) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouv_montre }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "la montre ne renouvelle pas : {corps}");
+    let (statut, corps) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement }))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::OK,
+        "l'iPhone a perdu sa session après la montre : {corps}"
+    );
+}
+
+/// Un jeton d'accès seul ne suffit pas à obtenir une session longue.
+///
+/// Sans cette exigence, un jeton d'accès intercepté — il ne vit qu'un quart
+/// d'heure — s'échangeait contre trente jours d'accès.
+#[tokio::test]
+async fn une_session_de_montre_exige_un_jeton_de_renouvellement_vivant() {
+    let service = Service::monter().await;
+    let (acces, renouvellement) = session(&service, "montre-exige").await;
+
+    // Un jeton inventé.
+    let (statut, _) = service
+        .post(
+            "/v1/auth/watch-session",
+            Some(&acces),
+            json!({ "refreshToken": "inventé" }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::UNAUTHORIZED);
+
+    // Un jeton déjà tourné : quelqu'un a pu en garder une copie.
+    let (statut, _) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": renouvellement.clone() }))
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+    let (statut, _) = service
+        .post(
+            "/v1/auth/watch-session",
+            Some(&acces),
+            json!({ "refreshToken": renouvellement }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::UNAUTHORIZED, "un jeton tourné a ouvert une session");
+}
+
+/// Le jeton de renouvellement doit être celui du compte qui demande.
+#[tokio::test]
+async fn le_jeton_d_un_autre_compte_n_ouvre_rien() {
+    let service = Service::monter().await;
+    let (acces_a, _) = session(&service, "montre-a").await;
+    let (_, renouvellement_b) = session(&service, "montre-b").await;
+
+    let (statut, _) = service
+        .post(
+            "/v1/auth/watch-session",
+            Some(&acces_a),
+            json!({ "refreshToken": renouvellement_b }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::UNAUTHORIZED);
+}
+
+/// Une seule montre à la fois : la précédente perd sa session.
+#[tokio::test]
+async fn une_nouvelle_montre_remplace_l_ancienne() {
+    let service = Service::monter().await;
+    let (acces, renouvellement) = session(&service, "montre-deux").await;
+
+    let premiere = session_de_montre(&service, &acces, &renouvellement).await;
+    let seconde = session_de_montre(&service, &acces, &renouvellement).await;
+
+    let (statut, _) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": premiere }))
+        .await;
+    assert_eq!(statut, StatusCode::UNAUTHORIZED, "l'ancienne montre a gardé sa session");
+    let (statut, _) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": seconde }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "la nouvelle montre n'a pas de session");
+}
+
+/// Ouvre une session de montre et rend son jeton de renouvellement.
+async fn session_de_montre(service: &Service, acces: &str, renouvellement: &str) -> String {
+    let (statut, corps) = service
+        .post(
+            "/v1/auth/watch-session",
+            Some(acces),
+            json!({ "refreshToken": renouvellement }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    corps["session"]["refreshToken"].as_str().unwrap().to_string()
+}
+
+/// Se déconnecter de l'iPhone déconnecte aussi la montre — côté serveur.
+#[tokio::test]
+async fn se_deconnecter_de_l_iphone_coupe_la_montre() {
+    let service = Service::monter().await;
+    let (acces, renouvellement) = session(&service, "montre-sortie").await;
+    let montre = session_de_montre(&service, &acces, &renouvellement).await;
+
+    let (statut, corps) = service
+        .post(
+            "/v1/auth/logout",
+            Some(&acces),
+            json!({ "refreshToken": renouvellement }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, _) = service
+        .post("/v1/auth/refresh", None, json!({ "refreshToken": montre }))
+        .await;
+    assert_eq!(
+        statut,
+        StatusCode::UNAUTHORIZED,
+        "la montre garde une session après la déconnexion de l'iPhone"
+    );
+}

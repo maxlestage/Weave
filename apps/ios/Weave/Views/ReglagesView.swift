@@ -23,6 +23,7 @@ struct ReglagesView: View {
     /// s'allumer serait pire que d'attendre une seconde.
     @State private var rappels = true
     @State private var jours: Set<Int> = []
+    @State private var categories: Set<PlanCategory> = []
     @State private var recherche: Set<Gender> = []
     /// Le consentement aux données sensibles vaut-il en ce moment ?
     ///
@@ -44,6 +45,7 @@ struct ReglagesView: View {
     @State private var fiche = false
     @State private var offres = false
     @State private var confidentialite = false
+    @State private var changerAdresse = false
     @State private var verification: EtatDeVerification?
     @State private var motVerification = ""
     @State private var demandeVerifEnCours = false
@@ -79,11 +81,9 @@ struct ReglagesView: View {
                     Text("Rendez-vous")
                 } footer: {
                     // Ce que le réglage fait, et ce qu'il ne dit à personne.
-                    Text(
-                        "Deux heures avant, une notification vous le remet en mémoire — "
-                            + "à vous comme aux personnes que vous attendez. Elle ne dit ni "
-                            + "le plan, ni avec qui : elle s'affiche sur un écran verrouillé."
-                    )
+                    // Une seule phrase : `"…" + "…"` ferait un `String`, que
+                    // SwiftUI affiche tel quel sans jamais le traduire.
+                    Text("Deux heures avant, une notification vous le remet en mémoire — à vous comme aux personnes que vous attendez. Elle ne dit ni le plan, ni avec qui : elle s'affiche sur un écran verrouillé.")
                 }
 
                 Section {
@@ -170,6 +170,35 @@ struct ReglagesView: View {
                     }
                 }
 
+                // Le troisième des « critères précis » que l'Escapade vend :
+                // catégorie, jour, distance fine. Le jour et la distance
+                // avaient leur réglage ; la catégorie était portée par l'API,
+                // par le modèle, par le correctif envoyé — et par aucun écran.
+                if let moi = modele.moi, moi.tier.filtreParCategorie {
+                    Section {
+                        ForEach(PlanCategory.allCases, id: \.self) { categorie in
+                            Button {
+                                basculerCategorie(categorie)
+                            } label: {
+                                HStack {
+                                    Label(categorie.displayName, systemImage: categorie.symbolName)
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    if categories.contains(categorie) {
+                                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Catégories")
+                    } footer: {
+                        Text(categories.isEmpty
+                            ? "Aucune catégorie retenue : le fil montre tous les plans."
+                            : "Le fil ne montre que les plans de ces catégories.")
+                    }
+                }
+
                 if let moi = modele.moi {
                     Section("Crédits") {
                         ForEach(UnitSku.allCases, id: \.self) { sku in
@@ -186,7 +215,9 @@ struct ReglagesView: View {
                 Section {
                     LabeledContent(
                         "Live Activity",
-                        value: modele.activites.isEnabled ? "Autorisée" : "Désactivée"
+                        value: modele.activites.isEnabled
+                            ? String(localized: "Autorisée")
+                            : String(localized: "Désactivée")
                     )
                     LabeledContent("Notifications", value: etatNotifications)
                 } footer: {
@@ -237,6 +268,13 @@ struct ReglagesView: View {
                     Text("Donner ou retirer votre accord pour les données sensibles — les personnes que vous cherchez.")
                 }
 
+                Section("Compte") {
+                    Button("Changer d'adresse e-mail") { changerAdresse = true }
+                    NavigationLink("Personnes bloquées") {
+                        BloquesView().environment(modele)
+                    }
+                }
+
                 // Souffler sans partir. La page publique « Supprimer votre
                 // compte » renvoie ici : elle propose la pause à qui voulait
                 // seulement s'absenter, et il faut donc qu'elle existe.
@@ -283,6 +321,9 @@ struct ReglagesView: View {
             .task { await chargerVerification() }
             .sheet(isPresented: $confidentialite) {
                 ConfidentialiteView().environment(modele)
+            }
+            .sheet(isPresented: $changerAdresse) {
+                AdresseEmailView().environment(modele)
             }
             // L'accord a pu être donné ou retiré : les critères affichés ne
             // valent plus, et le serveur vient peut-être d'effacer la recherche.
@@ -423,9 +464,9 @@ struct ReglagesView: View {
         if let etat = verification {
             Section {
                 if etat.verified {
-                    LabeledContent("Profil vérifié", value: "Oui")
+                    LabeledContent("Profil vérifié", value: String(localized: "Oui"))
                 } else if etat.enAttente {
-                    LabeledContent("Demande", value: "En cours d'examen")
+                    LabeledContent("Demande", value: String(localized: "En cours d'examen"))
                 } else {
                     TextField("Un mot, si vous voulez (facultatif)", text: $motVerification, axis: .vertical)
                         .lineLimit(1...3)
@@ -474,7 +515,7 @@ struct ReglagesView: View {
         } catch let souci as WeaveAPIError {
             erreur = souci.userMessage
         } catch {
-            erreur = "La demande n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "La demande n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -490,6 +531,7 @@ struct ReglagesView: View {
         escaleFin = criteres.escaleUntil
         escaleEnCours = criteres.escaleEnCours
         jours = Set(criteres.days)
+        categories = Set(criteres.categories)
         recherche = Set(criteres.seeking)
         rappels = criteres.rappelsActifs
         sensiblesAccordees = (try? await modele.api.consents().estActif(.donneesSensibles)) ?? false
@@ -518,7 +560,35 @@ struct ReglagesView: View {
                 // retenu : laisser la case cochée après un refus mentirait.
                 await chargerCriteresDeForce()
             } catch {
-                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+                erreur = String(localized: "Le réglage n'a pas abouti. Réessayez dans un moment.")
+            }
+        }
+    }
+
+    /// Retient ou retire une catégorie, puis applique.
+    ///
+    /// Même conduite que pour les jours : la section n'apparaît qu'aux paliers
+    /// qui y ont droit, et un refus du serveur remet l'affichage d'accord avec
+    /// ce qu'il a retenu.
+    private func basculerCategorie(_ categorie: PlanCategory) {
+        if categories.contains(categorie) {
+            categories.remove(categorie)
+        } else {
+            categories.insert(categorie)
+        }
+        // Dans l'ordre du contrat, et non dans celui de l'ensemble : l'ordre
+        // d'un `Set` change d'une exécution à l'autre, et deux envois du même
+        // choix ne doivent pas se lire comme deux choix différents.
+        let choisies = PlanCategory.allCases.filter(categories.contains)
+        Task {
+            do {
+                try await modele.api.updatePreferences(PreferencesPatch(categories: choisies))
+                await modele.plans.refresh()
+            } catch let souci as WeaveAPIError {
+                erreur = souci.userMessage
+                await chargerCriteresDeForce()
+            } catch {
+                erreur = String(localized: "Le réglage n'a pas abouti. Réessayez dans un moment.")
             }
         }
     }
@@ -543,7 +613,7 @@ struct ReglagesView: View {
                 erreur = souci.userMessage
                 await chargerCriteresDeForce()
             } catch {
-                erreur = "Le réglage n'a pas abouti. Réessayez dans un moment."
+                erreur = String(localized: "Le réglage n'a pas abouti. Réessayez dans un moment.")
             }
         }
     }
@@ -568,7 +638,7 @@ struct ReglagesView: View {
         } catch let souci as WeaveAPIError {
             erreur = souci.userMessage
         } catch {
-            erreur = "L'escale n'a pas pu être ouverte. Réessayez dans un moment."
+            erreur = String(localized: "L'escale n'a pas pu être ouverte. Réessayez dans un moment.")
         }
     }
 
@@ -580,7 +650,7 @@ struct ReglagesView: View {
             escaleEnCours = false
             await modele.plans.refresh()
         } catch {
-            erreur = "La fermeture n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "La fermeture n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -596,7 +666,7 @@ struct ReglagesView: View {
             // que d'en inventer un : c'est lui qui connaît le compte.
             erreur = souci.userMessage
         } catch {
-            erreur = "Le bilan n'a pas pu être établi. Réessayez dans un moment."
+            erreur = String(localized: "Le bilan n'a pas pu être établi. Réessayez dans un moment.")
         }
     }
 
@@ -614,7 +684,7 @@ struct ReglagesView: View {
             try donnees.write(to: cible, options: .atomic)
             fichierExporte = cible
         } catch {
-            erreur = "L'export n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "L'export n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -643,7 +713,7 @@ struct ReglagesView: View {
             await modele.seDeconnecter()
             dismiss()
         } catch {
-            erreur = "La suppression n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "La suppression n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -666,9 +736,9 @@ struct ReglagesView: View {
     /// à annoncer : afficher « désactivées » laisserait croire à un refus.
     private var etatNotifications: String {
         switch modele.notifications.autorise {
-        case .some(true): "Autorisées"
-        case .some(false): "Refusées"
-        case nil: "Pas encore demandées"
+        case .some(true): String(localized: "Autorisées")
+        case .some(false): String(localized: "Refusées")
+        case nil: String(localized: "Pas encore demandées")
         }
     }
 

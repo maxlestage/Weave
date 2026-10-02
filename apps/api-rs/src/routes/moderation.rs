@@ -11,16 +11,18 @@ use crate::{
         accounts, audit_events, blocks, conversations, join_requests, messages, plans, reports,
     },
     error::{AppError, invalide},
+    temps::iso8601,
     limitation::{Regle, consommer},
 };
 use axum::{
     Json, Router,
     extract::{Path, State},
-    routing::{delete, post},
+    routing::{delete, get, post},
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -59,7 +61,7 @@ pub(crate) const MOTIFS: [&str; 6] = [
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/v1/blocks", post(bloquer))
+        .route("/v1/blocks", get(lister_blocages).post(bloquer))
         .route("/v1/blocks/{account_id}", delete(lever_blocage))
         .route("/v1/reports", post(signaler))
         .route("/v1/me/pause", post(mettre_en_pause))
@@ -84,6 +86,59 @@ async fn bloquer(
     couper_entre(&state, &compte.id, &corps.account_id).await?;
 
     Ok(Json(json!({ "ok": true })))
+}
+
+/// Les personnes qu'on a bloquées.
+///
+/// `DELETE /v1/blocks/{id}` levait un blocage, mais rien ne permettait de
+/// savoir qui l'on avait bloqué : la route n'avait donc aucun chemin dans
+/// l'application. Un blocage posé sous le coup d'un agacement devenait
+/// définitif, faute de pouvoir le retrouver.
+///
+/// Le prénom est rendu : on a bloqué cette personne, on l'a donc vue. Un compte
+/// parti entre-temps reste dans la liste, sans prénom — le blocage, lui,
+/// existe toujours, et le cacher le rendrait impossible à lever.
+///
+/// Seuls les blocages qu'on a POSÉS sont listés, jamais ceux qu'on subit :
+/// savoir qui vous a bloqué est exactement ce qu'un blocage doit taire.
+async fn lister_blocages(
+    State(state): State<AppState>,
+    Authentifie(compte): Authentifie,
+) -> Result<Json<Value>, AppError> {
+    let poses = blocks::Entity::find()
+        .filter(blocks::Column::AuthorId.eq(compte.id.as_str()))
+        .order_by_desc(blocks::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    // Les comptes visés, en une requête. Pas de jointure : `blocks` porte
+    // DEUX relations vers `accounts` — l'auteur et la cible — et une jointure
+    // implicite aurait pu suivre la mauvaise, rendant notre propre prénom en
+    // face de chaque blocage.
+    let cibles: std::collections::HashMap<String, accounts::Model> = accounts::Entity::find()
+        .filter(accounts::Column::Id.is_in(poses.iter().map(|b| b.target_id.clone())))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|c| (c.id.clone(), c))
+        .collect();
+
+    let liste: Vec<Value> = poses
+        .into_iter()
+        .map(|blocage| {
+            let present = cibles
+                .get(&blocage.target_id)
+                .filter(|c| c.status != "deleting" && c.deletion_requested_at.is_none())
+                .map(|c| c.display_name.clone());
+            json!({
+                "accountId": blocage.target_id,
+                "displayName": present,
+                "blockedAt": iso8601(blocage.created_at.and_utc()),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "blocks": liste })))
 }
 
 async fn lever_blocage(
