@@ -177,7 +177,7 @@ jobs:
               "REDIS_TLS_INSECURE": "true",
               "PUBLIC_WEB_ORIGIN": f"https://{app}.herokuapp.com",
               "MEDIA_BASE_URL": f"https://{app}.herokuapp.com/media",
-              "APNS_BUNDLE_ID": "com.weave.app",
+              "APNS_BUNDLE_ID": "com.weave.maxlestage",
               "APNS_ENVIRONMENT": "sandbox",
               "APPSTORE_ENVIRONMENT": "sandbox",
           }))

@@ -6,8 +6,8 @@ storage_mode("git")
 type("appstore")
 
 app_identifier([
-  "com.weave.app",
-  "com.weave.app.activity",
-  "com.weave.app.watchkitapp",
-  "com.weave.app.watchkitapp.widgets",
+  "com.weave.maxlestage",
+  "com.weave.maxlestage.activity",
+  "com.weave.maxlestage.watchkitapp",
+  "com.weave.maxlestage.watchkitapp.widgets",
 ])

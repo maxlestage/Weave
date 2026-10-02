@@ -11,11 +11,11 @@
   <key>WEAVE_API_URL</key>
   <string>$(WEAVE_API_URL)</string>
   <key>WEAVE_KEYCHAIN_GROUP</key>
-  <string>$(AppIdentifierPrefix)com.weave.app.shared</string>
+  <string>$(AppIdentifierPrefix)com.weave.maxlestage.shared</string>
   <key>WKApplication</key>
   <true/>
   <key>WKCompanionAppBundleIdentifier</key>
-  <string>com.weave.app</string>
+  <string>com.weave.maxlestage</string>
   <key>WKRunsIndependentlyOfCompanionApp</key>
   <true/>
 </dict>
