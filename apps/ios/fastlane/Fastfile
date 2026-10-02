@@ -110,8 +110,12 @@ platform :ios do
       clean: true,
       output_directory: "build",
       output_name: "Weave.ipa",
-      xcargs: "#{authentification} DEVELOPMENT_TEAM=#{equipe.shellescape}",
-      export_xcargs: authentification,
+      # fastlane repasse `xcargs` à l'export lui-même : les y redonner par
+      # `export_xcargs` doublait chaque option, et xcodebuild refusait
+      # (« '-authenticationKeyPath' may only be provided once »). L'équipe
+      # n'y figure pas : le projet la lit dans WEAVE_TEAM_ID, et l'export
+      # dans `export_options`.
+      xcargs: authentification,
     )
 
     upload_to_testflight(
