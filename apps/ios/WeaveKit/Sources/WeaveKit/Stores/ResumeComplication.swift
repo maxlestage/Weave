@@ -24,9 +24,7 @@ public enum ResumeComplication {
 
     /// Dépose le résumé, en remplaçant le précédent.
     public static func deposer(_ resume: WatchSummary, accessGroup: String?) {
-        let encodeur = JSONEncoder()
-        encodeur.dateEncodingStrategy = .iso8601
-        guard let octets = try? encodeur.encode(resume) else { return }
+        guard let octets = encoder(resume) else { return }
 
         let requete = requeteDeBase(accessGroup: accessGroup)
         let attributs: [String: Any] = [
@@ -50,7 +48,18 @@ public enum ResumeComplication {
         guard SecItemCopyMatching(requete as CFDictionary, &element) == errSecSuccess,
               let octets = element as? Data
         else { return .empty }
+        return decoder(octets)
+    }
 
+    // MARK: - Format
+
+    static func encoder(_ resume: WatchSummary) -> Data? {
+        let encodeur = JSONEncoder()
+        encodeur.dateEncodingStrategy = .iso8601
+        return try? encodeur.encode(resume)
+    }
+
+    static func decoder(_ octets: Data) -> WatchSummary {
         let decodeur = JSONDecoder()
         decodeur.dateDecodingStrategy = .iso8601
         return (try? decodeur.decode(WatchSummary.self, from: octets)) ?? .empty
