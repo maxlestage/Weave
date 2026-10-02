@@ -54,6 +54,7 @@ pub fn routes() -> Router<AppState> {
         .route("/v1/auth/otp/verify", post(verifier_code))
         .route("/v1/auth/refresh", post(renouveler))
         .route("/v1/auth/logout", post(fermer_session))
+        .route("/v1/auth/watch-session", post(session_pour_la_montre))
         .route("/v1/auth/account", delete(supprimer_compte))
 }
 
@@ -139,6 +140,110 @@ async fn renouveler(
     Ok(Json(json!({ "session": session })))
 }
 
+/// L'étiquette d'appareil des sessions de montre.
+///
+/// `deviceId` est un texte libre dans `refresh_tokens` : la montre n'y est pas
+/// un appareil enregistré pour les alertes, et ne doit pas le devenir — c'est
+/// l'iPhone qui reçoit les notifications.
+pub(crate) const APPAREIL_MONTRE: &str = "montre";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DemandeSessionMontre {
+    refresh_token: String,
+}
+
+/// Ouvre une session PROPRE à la montre, à la demande de l'iPhone.
+///
+/// ## Pourquoi la montre ne pouvait rien
+///
+/// La montre est un autre appareil, avec son propre trousseau. Le groupe de
+/// trousseau partagé relie les applications d'un même appareil, pas l'iPhone à
+/// la montre ; et la montre n'a pas d'écran de connexion. Elle n'avait donc
+/// jamais de session, et son seul écran affichait une erreur.
+///
+/// ## Pourquoi pas la session de l'iPhone, tout simplement
+///
+/// Parce que les jetons de renouvellement TOURNENT : chacun ne sert qu'une
+/// fois. Deux appareils qui partagent le même jeton finissent par présenter
+/// tous deux le même — et `renouveler` y voit un rejeu, donc un vol, et coupe
+/// TOUTES les sessions du compte. Copier la session aurait déconnecté
+/// l'utilisateur partout, au premier renouvellement de la montre.
+///
+/// La montre reçoit donc sa propre chaîne de jetons, qui tourne de son côté.
+///
+/// ## Pourquoi le jeton de renouvellement est exigé
+///
+/// Le jeton d'accès seul aurait suffi à prouver l'identité — mais il ne vit
+/// que quinze minutes. Accepter de l'échanger contre une session de trente
+/// jours aurait fait de tout jeton d'accès intercepté une session longue.
+/// Exiger le jeton de renouvellement, vivant et de ce compte, ne donne rien à
+/// qui ne l'avait pas déjà : c'est déjà une session longue.
+///
+/// Il n'est PAS tourné ici : l'iPhone le garde, et sa propre chaîne continue.
+///
+/// ## Une seule montre à la fois
+///
+/// Les sessions de montre précédentes sont révoquées. Une montre perdue,
+/// remplacée ou réappairée ne laisse pas de session orpheline derrière elle,
+/// et le nombre de sessions vivantes reste borné.
+async fn session_pour_la_montre(
+    State(state): State<AppState>,
+    ConnectInfo(adresse): ConnectInfo<SocketAddr>,
+    Authentifie(compte): Authentifie,
+    Json(corps): Json<DemandeSessionMontre>,
+) -> Result<Json<Value>, AppError> {
+    let maintenant = Utc::now().naive_utc();
+
+    // Vivant et de CE compte.
+    //
+    // « Jamais tourné » n'a pas besoin d'un filtre à part : `renouveler` pose
+    // `revokedAt` AVANT `rotatedTo`, si bien qu'un jeton tourné est toujours
+    // révoqué. Un filtre sur `rotatedTo` avait été écrit ici ; le retirer ne
+    // faisait échouer aucun test, parce qu'il ne pouvait rien refuser que
+    // `revokedAt` n'ait déjà refusé. Une condition qui ne protège de rien se
+    // lit pourtant comme une protection — elle est partie.
+    let vivant = refresh_tokens::Entity::find()
+        .filter(refresh_tokens::Column::TokenHash.eq(sha256_hex(&corps.refresh_token)))
+        .filter(refresh_tokens::Column::AccountId.eq(compte.id.as_str()))
+        .filter(refresh_tokens::Column::RevokedAt.is_null())
+        .filter(refresh_tokens::Column::ExpiresAt.gt(maintenant))
+        .one(&state.db)
+        .await?;
+    if vivant.is_none() {
+        return Err(non_autorise(Msg::SessionExpiree));
+    }
+
+    refresh_tokens::Entity::update_many()
+        .col_expr(
+            refresh_tokens::Column::RevokedAt,
+            sea_orm::sea_query::Expr::value(maintenant),
+        )
+        .filter(refresh_tokens::Column::AccountId.eq(compte.id.as_str()))
+        .filter(refresh_tokens::Column::DeviceId.eq(APPAREIL_MONTRE))
+        .filter(refresh_tokens::Column::RevokedAt.is_null())
+        .exec(&state.db)
+        .await?;
+
+    let session = ouvrir_session(&state, &compte.id, Some(APPAREIL_MONTRE)).await?;
+
+    // Une session longue vient de naître : elle se trace, comme le reste de
+    // ce qui touche aux accès.
+    audit_events::ActiveModel {
+        id: Set(cuid2::create_id()),
+        account_id: Set(Some(compte.id.clone())),
+        action: Set("watch_session".to_string()),
+        subject: Set(None),
+        meta_json: Set("{}".to_string()),
+        ip: Set(Some(adresse.ip().to_string())),
+        created_at: Set(maintenant),
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok(Json(json!({ "session": session })))
+}
+
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct DemandeFermeture {
@@ -158,7 +263,21 @@ async fn fermer_session(
         .filter(refresh_tokens::Column::AccountId.eq(compte.id.as_str()));
 
     a_revoquer = match &corps.refresh_token {
-        Some(jeton) => a_revoquer.filter(refresh_tokens::Column::TokenHash.eq(sha256_hex(jeton))),
+        // La session présentée, ET celle de la montre : la montre tient sa
+        // session de l'iPhone, et se déconnecter de l'iPhone en la laissant
+        // vivante laisserait un poignet afficher les plans d'un compte dont on
+        // vient de sortir. Le message que l'iPhone lui envoie peut arriver
+        // bien plus tard — montre éteinte, hors de portée ; la révocation, elle,
+        // vaut tout de suite.
+        Some(jeton) => a_revoquer.filter(
+            Condition::any()
+                .add(refresh_tokens::Column::TokenHash.eq(sha256_hex(jeton)))
+                .add(
+                    Condition::all()
+                        .add(refresh_tokens::Column::DeviceId.eq(APPAREIL_MONTRE))
+                        .add(refresh_tokens::Column::RevokedAt.is_null()),
+                ),
+        ),
         None => a_revoquer.filter(refresh_tokens::Column::RevokedAt.is_null()),
     };
 

@@ -61,11 +61,15 @@ struct PublierView: View {
                 }
 
                 Section {
-                    Stepper("\(places) personne\(places > 1 ? "s" : "")", value: $places, in: 1...4)
+                    Stepper(
+                        places == 1 ? String(localized: "1 personne") : String(localized: "\(places) personnes"),
+                        value: $places,
+                        in: 1...4
+                    )
                 } header: {
                     Text("Combien de personnes peuvent venir")
                 } footer: {
-                    Text("Au-delà d'une, il faut les plans de groupe — compris à partir d'Escapade, ou à l'unité avec une « Tablée ».")
+                    Text("Au-delà d'une, il faut les plans de groupe — compris à partir de Virée, ou à l'unité avec une « Tablée ».")
                 }
 
                 if let erreur {

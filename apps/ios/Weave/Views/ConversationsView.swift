@@ -7,7 +7,6 @@ import WeaveKit
 /// aucun moyen d'écrire à quelqu'un qui n'a pas dit oui.
 struct ConversationsView: View {
     @Environment(ModeleApplication.self) private var modele
-    @State private var conversations: [Conversation] = []
     @State private var onglet = Onglet.conversations
 
     private enum Onglet: String, CaseIterable {
@@ -39,14 +38,14 @@ struct ConversationsView: View {
 
     private var listeConversations: some View {
         Group {
-            if conversations.isEmpty {
+            if modele.conversations.conversations.isEmpty {
                 ContentUnavailableView(
                     "Aucune conversation",
                     systemImage: "bubble.left.and.bubble.right",
                     description: Text("Une conversation s'ouvre quand quelqu'un accepte votre demande, ou que vous acceptez la sienne.")
                 )
             } else {
-                List(conversations) { conversation in
+                List(modele.conversations.conversations) { conversation in
                     NavigationLink {
                         ConversationView(conversation: conversation).environment(modele)
                     } label: {
@@ -77,7 +76,7 @@ struct ConversationsView: View {
 
     private func recharger() async {
         await modele.plans.refreshSent()
-        conversations = (try? await modele.api.conversations()) ?? []
+        await modele.conversations.refresh()
     }
 }
 
@@ -102,7 +101,11 @@ private struct ConversationLigne: View {
             Text(conversation.planTitle)
                 .font(.subheadline)
                 .foregroundStyle(Color.weaveCuivre)
-            if let dernier = conversation.lastMessage {
+            if conversation.closed {
+                Text("Fermée")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if let dernier = conversation.lastMessage {
                 Text(dernier)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -167,11 +170,10 @@ private struct DemandeEnvoyeeLigne: View {
             // Les deux conséquences, dites avant plutôt qu'après. La seconde
             // surtout : se désister n'est pas gratuit, et l'apprendre une fois
             // le geste fait serait déloyal.
-            Text(
-                "La place repart au fil, et la personne qui vous attendait est prévenue. "
-                    + "Votre demande du jour reste dépensée. "
-                    + "La conversation, elle, reste ouverte : vous pouvez y dire un mot."
-            )
+            //
+            // Une seule phrase, et non trois mises bout à bout : `"…" + "…"`
+            // fait un `String`, que SwiftUI affiche tel quel sans le traduire.
+            Text("La place repart au fil, et la personne qui vous attendait est prévenue. Votre demande du jour reste dépensée. La conversation, elle, reste ouverte : vous pouvez y dire un mot.")
         }
     }
 }
@@ -183,9 +185,19 @@ struct ConversationView: View {
 
     @Environment(ModeleApplication.self) private var modele
     @Environment(\.dismiss) private var dismiss
-    @State private var messages: [Message] = []
     @State private var brouillon = ""
     @State private var envoi = false
+    @State private var confirmeFermeture = false
+    @State private var erreur: String?
+
+    private var messages: [Message] { modele.conversations.messages[conversation.id] ?? [] }
+
+    /// L'état le plus frais : la liste a pu être relue depuis l'ouverture,
+    /// notamment juste après une fermeture.
+    private var fermee: Bool {
+        modele.conversations.conversations.first { $0.id == conversation.id }?.closed
+            ?? conversation.closed
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -205,7 +217,25 @@ struct ConversationView: View {
                 }
             }
 
-            if !conversation.closed {
+            if let erreur {
+                Text(erreur)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+            }
+
+            if fermee {
+                // Rien ne disait qu'une conversation était close : le champ de
+                // saisie disparaissait, et c'était tout.
+                Text("Conversation fermée. Ses messages seront effacés dans \(messageRetentionDays) jours.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(12)
+                    .frame(maxWidth: .infinity)
+                    .background(.bar)
+            } else {
                 HStack(spacing: 10) {
                     TextField("Écrire…", text: $brouillon, axis: .vertical)
                         .lineLimit(1...4)
@@ -246,23 +276,53 @@ struct ConversationView: View {
                     dismiss()
                 }
             }
+            // Le site le promet : « elle se ferme quand vous voulez ». La
+            // route existait ; aucun bouton n'y menait.
+            if !fermee {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Fermer", role: .destructive) { confirmeFermeture = true }
+                }
+            }
         }
-        .task { await charger() }
-    }
-
-    private func charger() async {
-        messages = (try? await modele.api.messages(conversationID: conversation.id)) ?? []
+        .confirmationDialog(
+            "Fermer cette conversation ?",
+            isPresented: $confirmeFermeture,
+            titleVisibility: .visible
+        ) {
+            Button("Fermer la conversation", role: .destructive) {
+                Task { await fermer() }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            // Les conséquences avant le geste : on ne rouvre pas, et les
+            // messages partent pour de bon après le délai.
+            Text("Ni vous ni l'autre personne ne pourrez plus y écrire. Les messages restent lisibles \(messageRetentionDays) jours, puis sont effacés.")
+        }
+        .task { await modele.conversations.load(conversation.id) }
     }
 
     private func envoyer() async {
-        let texte = brouillon.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !texte.isEmpty else { return }
         envoi = true
-        if let message = try? await modele.api.send(conversationID: conversation.id, body: texte) {
-            messages.append(message)
+        defer { envoi = false }
+        erreur = nil
+        if await modele.conversations.send(brouillon, in: conversation.id) {
             brouillon = ""
+        } else if let souci = modele.conversations.alert {
+            // Le texte reste dans le champ : un refus ne doit pas coûter ce
+            // qu'on a écrit.
+            erreur = souci.userMessage
+            modele.conversations.alert = nil
         }
-        envoi = false
+    }
+
+    private func fermer() async {
+        erreur = nil
+        if !(await modele.conversations.close(conversation.id)),
+           let souci = modele.conversations.alert
+        {
+            erreur = souci.userMessage
+            modele.conversations.alert = nil
+        }
     }
 }
 

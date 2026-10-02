@@ -71,7 +71,7 @@ struct MenuDeProtection: View {
             await modele.plans.refresh()
             apresCoupure()
         } catch {
-            erreur = "Le blocage n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "Le blocage n'a pas abouti. Réessayez dans un moment.")
         }
     }
 }
@@ -166,7 +166,7 @@ struct SignalementView: View {
             apresEnvoi()
             dismiss()
         } catch {
-            erreur = "Le signalement n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "Le signalement n'a pas abouti. Réessayez dans un moment.")
         }
     }
 }

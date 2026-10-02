@@ -161,3 +161,66 @@ async fn fil_contient(service: &Service, nom: &str, plan: &str) -> bool {
         .iter()
         .any(|p| p["id"] == plan)
 }
+
+/// On retrouve qui l'on a bloqué, et on peut le débloquer.
+///
+/// Sans cette liste, la levée d'un blocage n'avait aucun chemin dans
+/// l'application : un blocage posé sous le coup d'un agacement devenait
+/// définitif, faute de pouvoir le retrouver.
+#[tokio::test]
+async fn on_retrouve_qui_l_on_a_bloque_et_on_le_debloque() {
+    let service = Service::monter().await;
+    service.compte("liste-moi", "depart").await;
+    let autre = service.compte("liste-autre", "depart").await;
+    let jeton = service.jeton("liste-moi");
+
+    let (statut, corps) = service
+        .post("/v1/blocks", Some(&jeton), json!({ "accountId": autre }))
+        .await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+
+    let (statut, corps) = service.get("/v1/blocks", Some(&jeton)).await;
+    assert_eq!(statut, StatusCode::OK, "{corps}");
+    let liste = corps["blocks"].as_array().expect("une liste");
+    assert_eq!(liste.len(), 1);
+    assert_eq!(liste[0]["accountId"], autre.as_str());
+    // Le prénom de la CIBLE, pas le nôtre : `blocks` a deux relations vers
+    // les comptes, et suivre la mauvaise rendrait son propre nom.
+    assert_ne!(
+        liste[0]["displayName"],
+        service.get("/v1/me", Some(&jeton)).await.1["displayName"],
+        "la liste affiche notre propre prénom en face du blocage"
+    );
+    assert!(liste[0]["displayName"].is_string());
+
+    let (statut, _) = service
+        .delete(&format!("/v1/blocks/{autre}"), Some(&jeton))
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+    let (_, corps) = service.get("/v1/blocks", Some(&jeton)).await;
+    assert_eq!(corps["blocks"].as_array().map(Vec::len), Some(0));
+}
+
+/// Qui VOUS a bloqué ne se liste pas : c'est exactement ce qu'un blocage tait.
+#[tokio::test]
+async fn on_ne_voit_pas_qui_nous_a_bloque() {
+    let service = Service::monter().await;
+    service.compte("tait-bloqueur", "depart").await;
+    let bloque = service.compte("tait-bloque", "depart").await;
+
+    let (statut, _) = service
+        .post(
+            "/v1/blocks",
+            Some(&service.jeton("tait-bloqueur")),
+            json!({ "accountId": bloque }),
+        )
+        .await;
+    assert_eq!(statut, StatusCode::OK);
+
+    let (_, corps) = service.get("/v1/blocks", Some(&service.jeton("tait-bloque"))).await;
+    assert_eq!(
+        corps["blocks"].as_array().map(Vec::len),
+        Some(0),
+        "la personne bloquée apprend qui l'a bloquée"
+    );
+}

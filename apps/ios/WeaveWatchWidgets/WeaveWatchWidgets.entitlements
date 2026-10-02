@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Trousseau partagé : la session est lisible par l'app, l'extension et la montre. -->
+  <!-- Trousseau de la MONTRE : la complication partage celui de l'application
+       montre, pas celui de l'iPhone. -->
   <key>keychain-access-groups</key>
   <array>
     <string>$(AppIdentifierPrefix)com.weave.app.shared</string>

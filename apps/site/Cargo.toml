@@ -1,0 +1,74 @@
+[package]
+name = "weave-site"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Le site vitrine, en Rust, avec rendu serveur ET hydratation.
+#
+# Trois cibles, un seul jeu de composants :
+#
+# * la bibliothèque porte les composants ;
+# * `rendre`, binaire NATIF, produit le HTML à la construction (`ssr`) ;
+# * la même bibliothèque, compilée en wasm, hydrate ce HTML (`hydration`).
+#
+# Les traits sont exclusifs à la compilation : `yew/ssr` et `yew/hydration`
+# demandent des arbres de dépendances différents, et les activer ensemble
+# ferait entrer le DOM dans le binaire natif.
+
+# `chrono` est une dépendance de CONSTRUCTION seulement : elle sert à figer
+# l'année du droit d'auteur, et n'entre ni dans le binaire natif ni dans le
+# wasm livré.
+[build-dependencies]
+chrono = "0.4.45"
+
+[lib]
+# `cdylib` pour le wasm, `rlib` pour que le binaire natif lie la bibliothèque.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+ssr = ["yew/ssr", "dep:tokio", "dep:chrono"]
+hydration = [
+  "yew/hydration",
+  "dep:wasm-bindgen",
+  "dep:web-sys",
+  "dep:console_error_panic_hook",
+]
+
+[dependencies]
+yew = "0.23"
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
+# La date du jour, pour le plan du site. Optionnelle et liée au trait `ssr` :
+# elle n'entre pas dans le wasm, qui n'écrit aucun plan du site.
+chrono = { version = "0.4.45", optional = true }
+wasm-bindgen = { version = "0.2.129", optional = true }
+# Une panique dans le wasm sort autrement en « unreachable executed », sans
+# fichier ni ligne. Ce crochet la fait apparaître dans la console du
+# navigateur avec son message — c'est la différence entre une erreur qu'on
+# corrige et une erreur qu'on devine.
+console_error_panic_hook = { version = "0.1", optional = true }
+# Les traits sont nommés un à un, et non pris en bloc : `web-sys` expose toute
+# la plateforme web, et chaque trait activé entre dans le binaire livré.
+web-sys = { version = "0.3", optional = true, features = [
+  "Window",
+  "Document",
+  "Element",
+  "Location",
+  "console",
+] }
+
+[[bin]]
+name = "rendre"
+path = "src/bin/rendre.rs"
+required-features = ["ssr"]
+
+# Le wasm est compilé en taille, pas en vitesse d'exécution : ce qui coûte au
+# visiteur, c'est le téléchargement, pas les microsecondes d'hydratation d'un
+# menu.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

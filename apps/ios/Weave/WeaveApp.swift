@@ -58,9 +58,14 @@ final class ModeleApplication {
     let sessionStore: SessionStore
     let api: WeaveAPI
     let plans: PlansStore
+    let conversations: ConversationsStore
     let activites: ActivityController
     let notifications: NotificationsController
     let boutique: BoutiqueController
+
+    /// Le lien avec la montre. Ignoré par l'observation : c'est un tuyau,
+    /// pas un état que les vues affichent.
+    @ObservationIgnored private var lienMontre: LienMontre?
 
     private(set) var moi: Me?
     private(set) var connecte = false
@@ -72,6 +77,7 @@ final class ModeleApplication {
         self.sessionStore = store
         self.api = api
         self.plans = PlansStore(api: api)
+        self.conversations = ConversationsStore(api: api)
         self.boutique = BoutiqueController(api: api)
         self.activites = ActivityController(api: api, vendorID: Self.vendorID)
         let notifications = NotificationsController(api: api, vendorID: Self.vendorID)
@@ -91,6 +97,14 @@ final class ModeleApplication {
         // écoute permanente, ces transactions-là ne seraient jamais transmises
         // au serveur — quelqu'un aurait payé sans rien recevoir.
         boutique.demarrer()
+
+        // La montre demande sa session quand elle n'en a pas — à son premier
+        // lancement, ou quand le serveur a révoqué la sienne.
+        let lien = LienMontre { [weak self] message in
+            await self?.recuDeLaMontre(message)
+        }
+        lien.demarrer()
+        lienMontre = lien
     }
 
     func demarrer() async {
@@ -103,6 +117,8 @@ final class ModeleApplication {
         await rafraichirMoi()
         await plans.refresh()
         await synchroniserActivite()
+        await equiperLaMontre()
+        await envoyerResumeALaMontre()
     }
 
     func reprendre() async {
@@ -111,6 +127,11 @@ final class ModeleApplication {
         await plans.refresh()
         await rafraichirMoi()
         await synchroniserActivite()
+        // Au premier lancement, WatchConnectivity n'était peut-être pas encore
+        // activé : on retente à chaque retour au premier plan, ce qui ne coûte
+        // rien une fois la session donnée.
+        await equiperLaMontre()
+        await envoyerResumeALaMontre()
     }
 
     func seConnecter() async {
@@ -129,14 +150,63 @@ final class ModeleApplication {
         await notifications.demanderAutorisation()
         await plans.refresh()
         await synchroniserActivite()
+        // Un nouveau compte : la montre doit recevoir une session à lui.
+        UserDefaults.standard.set(false, forKey: Self.cleSessionMontreDonnee)
+        await equiperLaMontre()
+        await envoyerResumeALaMontre()
     }
 
     func seDeconnecter() async {
         await activites.end()
         await notifications.oublier()
+        // La montre oublie tout. Le serveur révoque de son côté la session de
+        // la montre avec celle-ci : le message ne fait que lui éviter
+        // d'afficher, en attendant, ce qu'elle n'a plus le droit de lire.
+        lienMontre?.envoyer(.deconnexion)
+        UserDefaults.standard.set(false, forKey: Self.cleSessionMontreDonnee)
         try? await api.logout()
         moi = nil
         connecte = false
+    }
+
+    // MARK: - La montre
+
+    private static let cleSessionMontreDonnee = "montre.sessionDonnee"
+
+    /// Donne à la montre SA session, si elle n'en a pas encore reçu.
+    ///
+    /// Jamais une copie de celle-ci : les jetons de renouvellement tournent,
+    /// et deux appareils qui partagent le même se font prendre l'un pour le
+    /// voleur de l'autre — le serveur coupe alors tout le compte. Le serveur
+    /// ouvre donc une session propre à la montre (`watchSession`).
+    ///
+    /// Une fois donnée, on ne la redonne pas à chaque lancement : chaque
+    /// session ouverte révoque la précédente, et en fabriquer une à chaque
+    /// ouverture de l'iPhone ferait tourner la montre pour rien. C'est la
+    /// montre qui en redemande une quand la sienne ne vaut plus.
+    private func equiperLaMontre(forcer: Bool = false) async {
+        guard connecte, let lienMontre, lienMontre.autreAppareilPresent else { return }
+        if !forcer, UserDefaults.standard.bool(forKey: Self.cleSessionMontreDonnee) { return }
+        guard let session = try? await api.watchSession() else { return }
+        lienMontre.envoyer(.session(session))
+        UserDefaults.standard.set(true, forKey: Self.cleSessionMontreDonnee)
+    }
+
+    /// Pousse le résumé à la montre : elle l'affiche sans attendre le réseau.
+    ///
+    /// Le résumé vient du serveur, comme celui que la montre demanderait
+    /// elle-même : deux compositions différentes du même état finiraient par
+    /// se contredire au poignet.
+    private func envoyerResumeALaMontre() async {
+        guard connecte, let lienMontre, lienMontre.autreAppareilPresent else { return }
+        guard let resume = try? await api.watchSummary() else { return }
+        lienMontre.envoyer(.resume(resume))
+    }
+
+    private func recuDeLaMontre(_ message: MessageMontre) async {
+        if case .demandeDeSession = message {
+            await equiperLaMontre(forcer: true)
+        }
     }
 
     /// Recharge le résumé du compte.
