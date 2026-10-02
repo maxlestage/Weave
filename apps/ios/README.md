@@ -67,7 +67,7 @@ Deux choses demandent l'outil, et n'ont donc pas pu être faites depuis un
 ## Adresse de l'API
 
 Elle vient du `Info.plist` (`WEAVE_API_URL`), alimenté par la configuration de
-build : `http://localhost:3000` en Debug, `https://api.weave.app` en Release.
+build : `http://localhost:3000` en Debug, `https://weave-c9f3a59e2f02.herokuapp.com` en Release (l'API sur Heroku).
 Rien n'est codé en dur dans le binaire.
 
 Pour tester contre l'API locale depuis un iPhone réel, remplacez `localhost` par
