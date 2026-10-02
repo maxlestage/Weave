@@ -1065,27 +1065,43 @@ struct BlocagesTests {
 
 @Suite("Le résumé laissé à la complication")
 struct ResumeComplicationTests {
+    static let premier = WatchSummary(
+        pendingRequests: 1,
+        awaitingReply: 0,
+        nextPlan: nil,
+        generatedAt: Date(timeIntervalSince1970: 1_789_000_000)
+    )
+    static let second = WatchSummary(
+        pendingRequests: 3,
+        awaitingReply: 2,
+        nextPlan: .init(title: "Pique-nique", startsAt: Date(timeIntervalSince1970: 1_790_000_000), city: "Nantes"),
+        generatedAt: Date(timeIntervalSince1970: 1_789_500_000)
+    )
+
+    @Test("Le résumé se relit à l'identique, et des octets illisibles donnent un résumé vide")
+    func format() throws {
+        let octets = try #require(ResumeComplication.encoder(Self.second))
+        #expect(ResumeComplication.decoder(octets) == Self.second)
+        // Un format changé entre deux versions ne doit pas faire tomber la
+        // complication : elle affiche alors un cadran vide.
+        #expect(ResumeComplication.decoder(Data("pas du JSON".utf8)) == .empty)
+    }
+
+    // Le dépôt et la relecture dans le trousseau ne s'éprouvent que contre le
+    // trousseau simulé de `verification-linux`. Sur le simulateur iOS, les
+    // tests tournent SANS signature (`CODE_SIGNING_ALLOWED=NO`), donc sans
+    // droit au trousseau : tout y relit vide, quel que soit le code. Sur un
+    // appareil, c'est le groupe de trousseau signé qui ouvre l'accès.
+    #if !canImport(Security)
     @Test("Le résumé déposé par la montre se relit, et le dernier remplace le précédent")
     func depotEtRelecture() {
-        let premier = WatchSummary(
-            pendingRequests: 1,
-            awaitingReply: 0,
-            nextPlan: nil,
-            generatedAt: Date(timeIntervalSince1970: 1_789_000_000)
-        )
-        let second = WatchSummary(
-            pendingRequests: 3,
-            awaitingReply: 2,
-            nextPlan: .init(title: "Pique-nique", startsAt: Date(timeIntervalSince1970: 1_790_000_000), city: "Nantes"),
-            generatedAt: Date(timeIntervalSince1970: 1_789_500_000)
-        )
+        ResumeComplication.deposer(Self.premier, accessGroup: nil)
+        #expect(ResumeComplication.lire(accessGroup: nil) == Self.premier)
 
-        ResumeComplication.deposer(premier, accessGroup: nil)
-        #expect(ResumeComplication.lire(accessGroup: nil) == premier)
-
-        // Une mise à jour, pas un second élément : sinon la complication
-        // pourrait relire l'ancien.
-        ResumeComplication.deposer(second, accessGroup: nil)
-        #expect(ResumeComplication.lire(accessGroup: nil) == second)
+        // Une mise à jour, pas un second ajout : le vrai trousseau refuse un
+        // doublon, et la complication relirait l'ancien résumé.
+        ResumeComplication.deposer(Self.second, accessGroup: nil)
+        #expect(ResumeComplication.lire(accessGroup: nil) == Self.second)
     }
+    #endif
 }
