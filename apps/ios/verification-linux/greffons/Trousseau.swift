@@ -48,6 +48,7 @@ let kSecAttrAccessible = Etiquette.accessibilite
 let kSecAttrAccessibleAfterFirstUnlock = Etiquette.apresLePremierDeverrouillage
 let errSecSuccess: Int32 = 0
 let errSecItemNotFound: Int32 = -25300
+let errSecDuplicateItem: Int32 = -25299
 
 private final class Trousseau: @unchecked Sendable {
     static let partage = Trousseau()
@@ -98,6 +99,10 @@ func SecItemUpdate(_ requete: CFDictionary, _ attributs: CFDictionary) -> Int32 
 @discardableResult
 func SecItemAdd(_ requete: CFDictionary, _ inutilise: CFTypeRef?) -> Int32 {
     guard let octets = requete[kSecValueData] as? Data else { return errSecItemNotFound }
+    // Comme le vrai trousseau : ajouter un élément qui existe déjà est refusé,
+    // il ne l'écrase pas. Un simulateur qui écrasait laissait passer un code
+    // qui n'aurait jamais mis à jour quoi que ce soit sur un appareil.
+    guard !Trousseau.partage.existe(requete) else { return errSecDuplicateItem }
     Trousseau.partage.ecrire(requete, octets)
     return errSecSuccess
 }
