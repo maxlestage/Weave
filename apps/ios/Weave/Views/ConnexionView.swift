@@ -139,7 +139,7 @@ struct ConnexionView: View {
         } catch let erreur as WeaveAPIError {
             message = erreur.userMessage
         } catch {
-            message = "Envoi impossible. Réessayez."
+            message = String(localized: "Envoi impossible. Réessayez.")
         }
     }
 
@@ -170,7 +170,7 @@ struct ConnexionView: View {
             message = erreur.userMessage
             code = ""
         } catch {
-            message = "Vérification impossible. Réessayez."
+            message = String(localized: "Vérification impossible. Réessayez.")
             code = ""
         }
     }

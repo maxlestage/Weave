@@ -68,9 +68,9 @@ private struct CompteurDemandes: View {
 
     private var texte: String {
         switch restantes {
-        case 0: "Plus de demandes aujourd'hui. Elles reviennent à minuit."
-        case 1: "Une demande restante aujourd'hui."
-        default: "\(restantes) demandes restantes aujourd'hui."
+        case 0: String(localized: "Plus de demandes aujourd'hui. Elles reviennent à minuit.")
+        case 1: String(localized: "Une demande restante aujourd'hui.")
+        default: String(localized: "\(restantes) demandes restantes aujourd'hui.")
         }
     }
 }
@@ -135,9 +135,9 @@ struct PlanCarte: View {
 
     private var placesTexte: String {
         switch plan.seatsLeft {
-        case 0: "Complet"
-        case 1: "1 place"
-        default: "\(plan.seatsLeft) places"
+        case 0: String(localized: "Complet")
+        case 1: String(localized: "1 place")
+        default: String(localized: "\(plan.seatsLeft) places")
         }
     }
 }

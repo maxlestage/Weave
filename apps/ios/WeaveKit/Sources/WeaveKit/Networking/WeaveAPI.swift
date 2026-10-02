@@ -39,18 +39,18 @@ public enum WeaveAPIError: Error, Sendable, Equatable {
 
     public var userMessage: String {
         switch self {
-        case .unauthorized: "Votre session a expiré. Reconnectez-vous."
+        case .unauthorized: NSLocalizedString("Votre session a expiré. Reconnectez-vous.", comment: "")
         case .forbidden(let message): message
-        case .notFound: "Introuvable."
+        case .notFound: NSLocalizedString("Introuvable.", comment: "")
         case .validation(let message): message
         case .rateLimited(let message): message
         case .noRequestsLeft(let message): message
         case .tooManyPlans(let message): message
         case .planClosed(let message): message
-        case .alreadyRequested: "Vous avez déjà demandé à venir."
+        case .alreadyRequested: NSLocalizedString("Vous avez déjà demandé à venir.", comment: "")
         case .entitlementRequired(let message, _, _): message
         case .server(_, let message): message
-        case .transport: "Connexion impossible. Réessayez."
+        case .transport: NSLocalizedString("Connexion impossible. Réessayez.", comment: "")
         }
     }
 }

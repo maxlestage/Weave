@@ -208,7 +208,7 @@ struct FicheView: View {
         do {
             position = try await Self.situer(nom)
         } catch {
-            erreur = "Cette ville n'a pas été trouvée. Vérifiez l'orthographe, ou essayez la grande ville la plus proche."
+            erreur = String(localized: "Cette ville n'a pas été trouvée. Vérifiez l'orthographe, ou essayez la grande ville la plus proche.")
             return
         }
 
@@ -231,7 +231,7 @@ struct FicheView: View {
             await modele.plans.refresh()
             if permetDAnnuler { dismiss() }
         } catch {
-            erreur = "L'enregistrement n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "L'enregistrement n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
@@ -263,7 +263,7 @@ struct FicheView: View {
         guard let brut = try? await choix.loadTransferable(type: Data.self),
               let image = UIImage(data: brut)
         else {
-            erreur = "Cette image n'a pas pu être lue."
+            erreur = String(localized: "Cette image n'a pas pu être lue.")
             return
         }
 
@@ -278,18 +278,18 @@ struct FicheView: View {
 
     private func televerser(_ image: UIImage) async {
         guard let octets = image.jpegData(compressionQuality: 0.82) else {
-            erreur = "Cette image n'a pas pu être préparée."
+            erreur = String(localized: "Cette image n'a pas pu être préparée.")
             return
         }
         guard octets.count <= photoMaxBytes else {
-            erreur = "Cette image est trop lourde, même après réduction."
+            erreur = String(localized: "Cette image est trop lourde, même après réduction.")
             return
         }
         do {
             _ = try await modele.api.submitPhoto(octets)
             await modele.rafraichirMoi()
         } catch {
-            erreur = "L'envoi de la photo n'a pas abouti. Réessayez dans un moment."
+            erreur = String(localized: "L'envoi de la photo n'a pas abouti. Réessayez dans un moment.")
         }
     }
 
