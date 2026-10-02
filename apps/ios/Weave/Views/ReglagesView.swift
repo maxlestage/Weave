@@ -45,6 +45,7 @@ struct ReglagesView: View {
     @State private var fiche = false
     @State private var offres = false
     @State private var confidentialite = false
+    @State private var changerAdresse = false
     @State private var verification: EtatDeVerification?
     @State private var motVerification = ""
     @State private var demandeVerifEnCours = false
@@ -267,6 +268,13 @@ struct ReglagesView: View {
                     Text("Donner ou retirer votre accord pour les données sensibles — les personnes que vous cherchez.")
                 }
 
+                Section("Compte") {
+                    Button("Changer d'adresse e-mail") { changerAdresse = true }
+                    NavigationLink("Personnes bloquées") {
+                        BloquesView().environment(modele)
+                    }
+                }
+
                 // Souffler sans partir. La page publique « Supprimer votre
                 // compte » renvoie ici : elle propose la pause à qui voulait
                 // seulement s'absenter, et il faut donc qu'elle existe.
@@ -313,6 +321,9 @@ struct ReglagesView: View {
             .task { await chargerVerification() }
             .sheet(isPresented: $confidentialite) {
                 ConfidentialiteView().environment(modele)
+            }
+            .sheet(isPresented: $changerAdresse) {
+                AdresseEmailView().environment(modele)
             }
             // L'accord a pu être donné ou retiré : les critères affichés ne
             // valent plus, et le serveur vient peut-être d'effacer la recherche.

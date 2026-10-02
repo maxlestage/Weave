@@ -41,3 +41,14 @@ public enum ReportReason: String, CaseIterable, Identifiable, Sendable {
 /// Le serveur refuse au-delà : mieux vaut le dire pendant la saisie que
 /// rejeter l'envoi une fois le texte écrit.
 public let reportDetailsMaxChars = 1000
+
+/// Une personne qu'on a bloquée.
+public struct BlockedAccount: Codable, Identifiable, Hashable, Sendable {
+    public let accountId: String
+    /// Absent si le compte est parti depuis : le blocage existe toujours, et
+    /// doit rester possible à lever.
+    public let displayName: String?
+    public let blockedAt: Date
+
+    public var id: String { accountId }
+}
