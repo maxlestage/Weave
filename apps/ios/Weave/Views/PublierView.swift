@@ -65,7 +65,7 @@ struct PublierView: View {
                 } header: {
                     Text("Combien de personnes peuvent venir")
                 } footer: {
-                    Text("Au-delà d'une, il faut les plans de groupe — compris à partir d'Escapade, ou à l'unité avec une « Tablée ».")
+                    Text("Au-delà d'une, il faut les plans de groupe — compris à partir de Virée, ou à l'unité avec une « Tablée ».")
                 }
 
                 if let erreur {

@@ -18,6 +18,7 @@ struct DemanderView: View {
     @State private var offres = false
     /// Vrai quand le dernier refus portait sur une offre ou un crédit.
     @State private var manqueUneOffre = false
+    @State private var renfortEnCours = false
 
     private var caracteres: Int { message.trimmingCharacters(in: .whitespacesAndNewlines).count }
     private var assezEcrit: Bool { caracteres >= JoinRequest.minimumMessageLength }
@@ -43,9 +44,14 @@ struct DemanderView: View {
                 .padding(16)
             }
             .background(Color.weaveLin.ignoresSafeArea())
-            .sheet(isPresented: $offres) {
+            // Au retour des offres, un Renfort vient peut-être d'être acheté :
+            // on relit les crédits pour pouvoir le proposer aussitôt.
+            .sheet(isPresented: $offres, onDismiss: {
+                Task { await modele.plans.refreshCredits() }
+            }) {
                 OffresView().environment(modele)
             }
+            .task { await modele.plans.refreshCredits() }
             .navigationTitle("Demander à venir")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -113,6 +119,10 @@ struct DemanderView: View {
                 }
             }
 
+            if modele.plans.requestsLeftToday == 0 {
+                plusDeDemandes
+            }
+
             Button {
                 Task { await envoyer() }
             } label: {
@@ -129,6 +139,48 @@ struct DemanderView: View {
             Text("Cette demande consomme une de vos demandes du jour. Retirée avant d'avoir été lue, elle vous est rendue.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Plus de demande aujourd'hui : ce qu'on peut faire, plutôt qu'un
+    /// bouton grisé sans explication.
+    ///
+    /// Un Renfort détenu se propose en premier — il est déjà payé. Sinon, on
+    /// montre où en acheter un, et l'on rappelle que le compteur revient à
+    /// minuit : attendre reste une réponse gratuite, et la dire évite de
+    /// laisser croire que payer est la seule.
+    private var plusDeDemandes: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Plus de demande aujourd'hui. Le compteur revient à minuit.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if modele.plans.renfortsDisponibles > 0 {
+                Button {
+                    Task { await utiliserRenfort() }
+                } label: {
+                    HStack {
+                        if renfortEnCours { ProgressView() }
+                        Text(modele.plans.renfortsDisponibles == 1
+                            ? "Utiliser mon Renfort — 5 demandes de plus"
+                            : "Utiliser un Renfort (\(modele.plans.renfortsDisponibles) restants) — 5 demandes de plus")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(renfortEnCours)
+            } else {
+                Button("Un Renfort : 5 demandes de plus aujourd'hui") { offres = true }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private func utiliserRenfort() async {
+        renfortEnCours = true
+        defer { renfortEnCours = false }
+        erreur = nil
+        if !(await modele.plans.useRenfort()) {
+            erreur = modele.plans.alert?.userMessage
         }
     }
 

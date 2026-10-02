@@ -193,9 +193,9 @@ public struct Feed: Codable, Hashable, Sendable {
     /// plus du serveur, il a été retouché ici, et l'écran doit pouvoir le dire.
     /// `generatedAt` ne bouge pas — c'est l'heure de composition du fil, et la
     /// retoucher ferait croire à une composition qui n'a pas eu lieu.
-    public func remplacant(plans: [Plan], requestsLeftToday: Int? = nil) -> Feed {
+    public func remplacant(plans: [Plan]? = nil, requestsLeftToday: Int? = nil) -> Feed {
         Feed(
-            plans: plans,
+            plans: plans ?? self.plans,
             requestsLeftToday: requestsLeftToday ?? self.requestsLeftToday,
             fromCache: true,
             generatedAt: generatedAt
@@ -310,6 +310,11 @@ public enum MessageAuthor: String, Codable, Sendable {
 /// Le serveur refuse au-delà. L'application l'ignorait : on pouvait écrire
 /// sans fin, et perdre son texte à l'envoi.
 public let conversationMaxChars = 2000
+
+/// Jours pendant lesquels les messages d'une conversation fermée restent
+/// lisibles, avant leur effacement. Le serveur pose la date de purge à la
+/// fermeture ; l'application le dit au moment de fermer, et pas après.
+public let messageRetentionDays = 90
 
 public struct Message: Codable, Identifiable, Hashable, Sendable {
     public let id: String

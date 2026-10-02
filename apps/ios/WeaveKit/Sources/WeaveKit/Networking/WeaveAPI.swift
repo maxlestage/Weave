@@ -424,6 +424,34 @@ public actor WeaveAPI {
         await store.clear()
     }
 
+    /// Obtient une session PROPRE à la montre, sans toucher à celle-ci.
+    ///
+    /// La montre ne peut pas se connecter elle-même : pas d'écran de saisie de
+    /// code, et un trousseau qui n'est pas celui de l'iPhone. Elle ne doit pas
+    /// non plus recevoir une copie de cette session — les jetons de
+    /// renouvellement tournent, et deux appareils qui en partagent un se font
+    /// prendre l'un pour le voleur de l'autre : le serveur coupe alors TOUTES
+    /// les sessions du compte.
+    ///
+    /// Le jeton de renouvellement est lu APRÈS avoir obtenu un accès valide :
+    /// obtenir cet accès peut renouveler la session, donc remplacer le jeton.
+    /// Le lire avant enverrait un jeton qui vient d'être tourné, et le serveur
+    /// le refuserait.
+    public func watchSession() async throws -> Session {
+        let acces = try await validToken()
+        guard let renouvellement = await store.current?.refreshToken else {
+            throw WeaveAPIError.unauthorized
+        }
+        struct Enveloppe: Decodable { let session: Session }
+        let reponse: Enveloppe = try await send(
+            .post,
+            "/v1/auth/watch-session",
+            token: acces,
+            payload: encoder.encode(["refreshToken": renouvellement])
+        )
+        return reponse.session
+    }
+
     /// Dépose ou met à jour sa fiche : une ville, un genre, une phrase.
     ///
     /// C'est l'étape qui manquait. L'inscription ne demandait que le prénom et
