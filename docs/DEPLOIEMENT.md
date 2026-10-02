@@ -319,13 +319,14 @@ cette clé donne accès à votre compte développeur.
 | --- | --- |
 | `ASC_KEY_ID` | Le Key ID de l'étape B1 |
 | `ASC_ISSUER_ID` | L'Issuer ID de l'étape B1 |
-| `ASC_KEY_CONTENT` | Le contenu du fichier `.p8`, tel quel (ou en base64) |
-| `ASC_TEAM_ID` | *Facultatif.* Votre identifiant d'équipe Apple. Sans lui, il est lu sur vos identifiants enregistrés |
+| `ASC_KEY_CONTENT` (ou `ASC_KEY_P8`) | Le contenu du fichier `.p8`, tel quel (ou en base64) |
+| `ASC_TEAM_ID` (ou `APPLE_TEAM_ID`) | *Facultatif.* Votre identifiant d'équipe Apple. Sans lui, il est lu sur vos identifiants enregistrés |
 
-C'est tout. Pas de dépôt de certificats, pas de phrase secrète : Xcode
-enregistre les identifiants, active leurs capacités (notifications, groupe
-d'application), crée le groupe `group.com.weave.maxlestage`, et obtient
-certificats et profils lui-même.
+C'est tout. Pas de dépôt de certificats, pas de phrase secrète : le workflow
+enregistre les identifiants, Xcode active leurs capacités (notifications) et
+obtient certificats et profils lui-même. L'application ne déclare aucun groupe
+d'application — c'est la seule capacité que la signature par clé d'API ne sait
+pas enregistrer.
 
 ### B3. Première exécution : les identifiants
 

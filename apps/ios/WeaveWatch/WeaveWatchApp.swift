@@ -77,14 +77,10 @@ final class ModeleMontre {
         lien?.envoyer(.demandeDeSession)
     }
 
-    /// Dépose le résumé dans les préférences du groupe : la complication le lit
-    /// de là plutôt que d'appeler le réseau à chaque relève de cadran.
+    /// Dépose le résumé dans le trousseau partagé : la complication le lit de
+    /// là plutôt que d'appeler le réseau à chaque relève de cadran.
     private func partagerAvecLaComplication() {
-        guard let defaults = UserDefaults(suiteName: WeaveEnvironment.appGroup) else { return }
-        let encodeur = JSONEncoder()
-        encodeur.dateEncodingStrategy = .iso8601
-        guard let data = try? encodeur.encode(magasin.resume) else { return }
-        defaults.set(data, forKey: "watchSummary")
+        ResumeComplication.deposer(magasin.resume, accessGroup: WeaveEnvironment.keychainAccessGroup)
         WidgetCenter.shared.reloadTimelines(ofKind: "app.weave.complication")
     }
 }

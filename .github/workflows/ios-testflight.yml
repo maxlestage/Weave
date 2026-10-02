@@ -39,8 +39,12 @@ jobs:
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
-      ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
+      # Deux noms acceptés pour chacun : ceux de la documentation, et ceux
+      # sous lesquels les secrets ont été déposés la première fois. Un nom
+      # de secret mal deviné se lisait comme une valeur vide, et le workflow
+      # disait la clé absente alors qu'elle était là.
+      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT || secrets.ASC_KEY_P8 }}
+      ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID || secrets.APPLE_TEAM_ID }}
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"
 
@@ -132,11 +136,50 @@ jobs:
           brew install xcodegen
           cd apps/ios && bundle install --quiet
 
+      # Les tests passent avant la construction : inutile de signer et
+      # d'envoyer une version dont le cœur est cassé.
+      #
+      # Sur un simulateur iPhone, et non `swift test` : sur un Mac, `swift
+      # test` compile pour macOS, plateforme que WeaveKit ne déclare pas — la
+      # compilation échouait (« 'now' is only available in macOS 12 »). C'est
+      # la commande de « iOS — compiler », qui tourne à chaque poussée.
       - name: Tests du paquet WeaveKit
         if: steps.verifier.outputs.pret == 'true'
-        # Les tests passent avant la construction : inutile de signer et
-        # d'envoyer une version dont le cœur est cassé.
-        run: cd apps/ios/WeaveKit && swift test
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodegen generate
+          udid=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          appareils = json.load(sys.stdin)['devices']
+          for moteur in sorted(appareils, reverse=True):
+              if 'iOS' not in moteur:
+                  continue
+              for a in appareils[moteur]:
+                  if a.get('isAvailable') and 'iPhone' in a['name']:
+                      print(a['udid'])
+                      raise SystemExit
+          raise SystemExit('aucun simulateur iPhone disponible')
+          ")
+          echo "Simulateur : $udid"
+
+          xcodebuild test \
+            -project 'Weave ‣.xcodeproj' \
+            -scheme 'Weave ‣' \
+            -configuration Debug \
+            -destination "id=$udid" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee /tmp/tests.log | grep -E "Test Case|Test Suite|passed|failed|error:" || true
+
+          # `grep` masque le code de sortie de xcodebuild : on le relit.
+          if grep -q "\*\* TEST FAILED \*\*" /tmp/tests.log; then
+            echo "::error::Des tests ont échoué sur le simulateur."
+            exit 1
+          fi
 
       - name: Construire et envoyer à TestFlight
         if: steps.verifier.outputs.pret == 'true'

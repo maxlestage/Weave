@@ -14,8 +14,8 @@
        quand un message arrive alors qu'aucune bannière n'est en cours. -->
   <key>aps-environment</key>
   <string>development</string>
-  <!-- Pas de groupe d'application : seuls la montre et sa complication en
-       partagent un (ils sont sur la même montre). L'iPhone n'y lirait rien, et
-       chaque capacité déclarée est une case de plus à cocher chez Apple. -->
+  <!-- Pas de groupe d'application : la montre et sa complication partagent
+       leur résumé par le trousseau, et la signature par clé d'API ne sait pas
+       enregistrer de groupe chez Apple. -->
 </dict>
 </plist>

@@ -3018,6 +3018,89 @@ fn l_application_porte_son_nom_et_garde_son_identifiant() {
     );
 }
 
+/// Chaque paquet déclare les clés sans lesquelles Apple refuse l'archive.
+///
+/// Aucun `Info.plist` ne portait `CFBundleIdentifier` : XcodeGen n'en engendre
+/// pas quand on lui fournit son propre fichier. La compilation passait, les
+/// tests aussi ; l'archive pour TestFlight échouait à la toute fin, après
+/// vingt minutes, sur « Archive Missing Bundle Identifier ».
+#[test]
+fn chaque_paquet_ios_porte_ses_cles_de_base() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
+    if !ios.is_dir() {
+        eprintln!("dépôt iOS absent — accord non vérifié");
+        return;
+    }
+    let attendues = [
+        ("CFBundleIdentifier", "$(PRODUCT_BUNDLE_IDENTIFIER)"),
+        ("CFBundleExecutable", "$(EXECUTABLE_NAME)"),
+        ("CFBundleName", "$(PRODUCT_NAME)"),
+        ("CFBundlePackageType", "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"),
+        ("CFBundleInfoDictionaryVersion", "6.0"),
+    ];
+    for cible in ["Weave", "WeaveActivity", "WeaveWatch", "WeaveWatchWidgets"] {
+        let plist = std::fs::read_to_string(ios.join(cible).join("Info.plist"))
+            .unwrap_or_else(|_| panic!("{cible}/Info.plist illisible"));
+        // La clé, puis sa valeur sur la ligne suivante : la paire, pas un nom
+        // qui traînerait dans un commentaire.
+        let lignes: Vec<&str> = plist.lines().map(str::trim).collect();
+        for (cle, valeur) in attendues {
+            let balise = format!("<key>{cle}</key>");
+            let trouvee = lignes.windows(2).any(|paire| {
+                paire[0] == balise && paire[1] == format!("<string>{valeur}</string>")
+            });
+            assert!(
+                trouvee,
+                "{cible}/Info.plist ne déclare pas {cle} = {valeur} : l'archive \
+                 serait refusée"
+            );
+        }
+    }
+}
+
+/// L'iPhone et la montre ont chacun leur icône, telle qu'Apple l'accepte.
+///
+/// Il n'y en avait aucune : tout se construisait, se signait et s'exportait,
+/// puis Apple refusait l'envoi à TestFlight (« Missing required icon file »).
+/// Une icône doit faire 1024 px de côté et n'avoir AUCUN canal alpha — même
+/// entièrement opaque, un PNG RGBA est refusé.
+#[test]
+fn l_iphone_et_la_montre_ont_une_icone_acceptable() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
+    if !ios.is_dir() {
+        eprintln!("dépôt iOS absent — accord non vérifié");
+        return;
+    }
+    let projet = std::fs::read_to_string(ios.join("project.yml")).expect("project.yml lisible");
+    assert_eq!(
+        projet.matches("ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon").count(),
+        2,
+        "l'iPhone et la montre doivent tous deux désigner leur icône"
+    );
+    for cible in ["Weave", "WeaveWatch"] {
+        let dossier = ios.join(cible).join("Assets.xcassets/AppIcon.appiconset");
+        let description = std::fs::read_to_string(dossier.join("Contents.json"))
+            .unwrap_or_else(|_| panic!("{cible} : AppIcon.appiconset absent"));
+        assert!(
+            description.contains("\"icone.png\""),
+            "{cible} : l'icône déclarée n'est pas icone.png"
+        );
+        let png = std::fs::read(dossier.join("icone.png"))
+            .unwrap_or_else(|_| panic!("{cible} : icone.png absente"));
+        // En-tête PNG : signature (8), longueur et type du bloc IHDR (8),
+        // largeur (4), hauteur (4), profondeur (1), type de couleur (1).
+        assert_eq!(&png[1..4], b"PNG", "{cible} : icone.png n'est pas un PNG");
+        let largeur = u32::from_be_bytes(png[16..20].try_into().unwrap());
+        let hauteur = u32::from_be_bytes(png[20..24].try_into().unwrap());
+        assert_eq!((largeur, hauteur), (1024, 1024), "{cible} : l'icône doit faire 1024 × 1024");
+        assert_eq!(
+            png[25], 2,
+            "{cible} : l'icône doit être en RGB sans canal alpha (type de couleur 2), \
+             sans quoi Apple la refuse"
+        );
+    }
+}
+
 /// Le schéma que la CI invoque est celui que le projet déclare.
 ///
 /// ## Pourquoi trois fichiers doivent s'accorder
