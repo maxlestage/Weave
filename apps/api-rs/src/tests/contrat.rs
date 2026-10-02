@@ -3058,6 +3058,49 @@ fn chaque_paquet_ios_porte_ses_cles_de_base() {
     }
 }
 
+/// L'iPhone et la montre ont chacun leur icône, telle qu'Apple l'accepte.
+///
+/// Il n'y en avait aucune : tout se construisait, se signait et s'exportait,
+/// puis Apple refusait l'envoi à TestFlight (« Missing required icon file »).
+/// Une icône doit faire 1024 px de côté et n'avoir AUCUN canal alpha — même
+/// entièrement opaque, un PNG RGBA est refusé.
+#[test]
+fn l_iphone_et_la_montre_ont_une_icone_acceptable() {
+    let ios = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
+    if !ios.is_dir() {
+        eprintln!("dépôt iOS absent — accord non vérifié");
+        return;
+    }
+    let projet = std::fs::read_to_string(ios.join("project.yml")).expect("project.yml lisible");
+    assert_eq!(
+        projet.matches("ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon").count(),
+        2,
+        "l'iPhone et la montre doivent tous deux désigner leur icône"
+    );
+    for cible in ["Weave", "WeaveWatch"] {
+        let dossier = ios.join(cible).join("Assets.xcassets/AppIcon.appiconset");
+        let description = std::fs::read_to_string(dossier.join("Contents.json"))
+            .unwrap_or_else(|_| panic!("{cible} : AppIcon.appiconset absent"));
+        assert!(
+            description.contains("\"icone.png\""),
+            "{cible} : l'icône déclarée n'est pas icone.png"
+        );
+        let png = std::fs::read(dossier.join("icone.png"))
+            .unwrap_or_else(|_| panic!("{cible} : icone.png absente"));
+        // En-tête PNG : signature (8), longueur et type du bloc IHDR (8),
+        // largeur (4), hauteur (4), profondeur (1), type de couleur (1).
+        assert_eq!(&png[1..4], b"PNG", "{cible} : icone.png n'est pas un PNG");
+        let largeur = u32::from_be_bytes(png[16..20].try_into().unwrap());
+        let hauteur = u32::from_be_bytes(png[20..24].try_into().unwrap());
+        assert_eq!((largeur, hauteur), (1024, 1024), "{cible} : l'icône doit faire 1024 × 1024");
+        assert_eq!(
+            png[25], 2,
+            "{cible} : l'icône doit être en RGB sans canal alpha (type de couleur 2), \
+             sans quoi Apple la refuse"
+        );
+    }
+}
+
 /// Le schéma que la CI invoque est celui que le projet déclare.
 ///
 /// ## Pourquoi trois fichiers doivent s'accorder
