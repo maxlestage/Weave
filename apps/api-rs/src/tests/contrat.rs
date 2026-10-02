@@ -2959,10 +2959,13 @@ fn on_peut_signaler_partout_ou_l_on_lit_les_mots_d_un_inconnu() {
 ///
 /// ## Ce qui ne change pas
 ///
-/// `PRODUCT_BUNDLE_IDENTIFIER` reste `com.weave.app`. Le changer ferait une
+/// `PRODUCT_BUNDLE_IDENTIFIER` reste `com.weave.maxlestage`. Le changer ferait une
 /// NOUVELLE application aux yeux d'Apple : ni TestFlight, ni les abonnements,
 /// ni les achats déjà faits ne suivraient. Le test le tient aussi, parce que
 /// c'est le genre de chose qu'on modifie « pendant qu'on y est ».
+///
+/// Il a changé une fois, de `com.weave.app` à `com.weave.maxlestage`, avant
+/// que la moindre version n'existe chez Apple : rien ne pouvait être perdu.
 #[test]
 fn l_application_porte_son_nom_et_garde_son_identifiant() {
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ios");
@@ -3008,7 +3011,7 @@ fn l_application_porte_son_nom_et_garde_son_identifiant() {
 
     let projet = std::fs::read_to_string(racine.join("project.yml")).expect("project.yml lisible");
     assert!(
-        projet.contains("PRODUCT_BUNDLE_IDENTIFIER: com.weave.app\n"),
+        projet.contains("PRODUCT_BUNDLE_IDENTIFIER: com.weave.maxlestage\n"),
         "l'identifiant de l'application a changé : Apple y verrait une autre \
          application, et TestFlight, les abonnements et les achats déjà faits \
          ne suivraient pas"

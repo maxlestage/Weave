@@ -157,7 +157,7 @@ struct SessionTests {
     func identifiants() {
         let identifiants = Set(UnitSku.allCases.map(\.productID))
         #expect(identifiants.count == UnitSku.allCases.count)
-        #expect(UnitSku.renfort.productID == "com.weave.app.unit.renfort")
+        #expect(UnitSku.renfort.productID == "com.weave.maxlestage.unit.renfort")
     }
 
     @Test("Aucun produit ne vend de remontée dans le fil")

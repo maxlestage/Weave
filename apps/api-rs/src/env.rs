@@ -340,7 +340,7 @@ pub fn charger() -> Result<Env, String> {
             key_id: lire("APNS_KEY_ID"),
             team_id: lire("APNS_TEAM_ID"),
             key_path: lire("APNS_KEY_PATH"),
-            bundle_id: lire("APNS_BUNDLE_ID").unwrap_or_else(|| "com.weave.app".to_string()),
+            bundle_id: lire("APNS_BUNDLE_ID").unwrap_or_else(|| "com.weave.maxlestage".to_string()),
             environnement: lire("APNS_ENVIRONMENT").unwrap_or_else(|| "sandbox".to_string()),
             configure: lire("APNS_KEY_ID").is_some()
                 && lire("APNS_TEAM_ID").is_some()

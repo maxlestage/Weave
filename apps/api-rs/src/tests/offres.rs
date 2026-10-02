@@ -40,7 +40,7 @@ async fn un_achat_a_l_unite_credite_le_solde() {
             Some(&service.jeton("c_acheteur")),
             json!({
                 "signedTransaction": transaction(json!({
-                    "productId": "com.weave.app.unit.renfort",
+                    "productId": "com.weave.maxlestage.unit.renfort",
                     "transactionId": "tx-renfort-001",
                     "environment": "Sandbox",
                 })),
@@ -63,7 +63,7 @@ async fn une_meme_transaction_ne_credite_qu_une_fois() {
     service.compte("c_rejoue", "depart").await;
 
     let signee = transaction(json!({
-        "productId": "com.weave.app.unit.escale",
+        "productId": "com.weave.maxlestage.unit.escale",
         "transactionId": "tx-escale-rejouee",
         "environment": "Sandbox",
     }));
@@ -104,7 +104,7 @@ async fn un_produit_inconnu_est_refuse() {
             Some(&service.jeton("c_produit")),
             json!({
                 "signedTransaction": transaction(json!({
-                    "productId": "com.weave.app.unit.licorne",
+                    "productId": "com.weave.maxlestage.unit.licorne",
                     "transactionId": "tx-licorne",
                 })),
             }),
@@ -126,7 +126,7 @@ async fn un_renfort_achete_se_depense() {
             Some(&service.jeton("c_boucle")),
             json!({
                 "signedTransaction": transaction(json!({
-                    "productId": "com.weave.app.unit.renfort",
+                    "productId": "com.weave.maxlestage.unit.renfort",
                     "transactionId": "tx-boucle-001",
                 })),
             }),
@@ -161,7 +161,7 @@ async fn une_notification_orpheline_est_ignoree() {
                     "DID_RENEW",
                     None,
                     json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "transactionId": "tx-inconnue",
                         "originalTransactionId": "orig-inconnue",
                     }),
@@ -206,7 +206,7 @@ async fn un_abonnement_expire_retombe_au_palier_de_depart() {
                     "EXPIRED",
                     Some("VOLUNTARY"),
                     json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "transactionId": "tx-expire",
                         "originalTransactionId": "orig-expire",
                         "expiresDate": hier,
@@ -251,7 +251,7 @@ async fn un_renouvellement_recharge_la_dotation_sans_effacer_les_achats() {
             Some(&service.jeton("c_renouvelle")),
             json!({
                 "signedTransaction": transaction(json!({
-                    "productId": "com.weave.app.unit.escale",
+                    "productId": "com.weave.maxlestage.unit.escale",
                     "transactionId": "tx-escale-avant",
                 })),
             }),
@@ -269,7 +269,7 @@ async fn un_renouvellement_recharge_la_dotation_sans_effacer_les_achats() {
                     "DID_RENEW",
                     None,
                     json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "transactionId": "tx-renouvelle",
                         "originalTransactionId": "orig-renouvelle",
                         "expiresDate": demain,
@@ -719,10 +719,10 @@ async fn une_transaction_forgee_est_refusee() {
     service.compte("c_forgeur", "depart").await;
 
     let charge = json!({
-        "productId": "com.weave.app.sub.grandtour.monthly",
+        "productId": "com.weave.maxlestage.sub.grandtour.monthly",
         "transactionId": "forgee-1",
         "originalTransactionId": "forgee-1",
-        "bundleId": "com.weave.app",
+        "bundleId": "com.weave.maxlestage",
     });
     let forgee = format!(
         "entete.{}.signature",
@@ -766,7 +766,7 @@ async fn une_transaction_emise_pour_une_autre_application_est_refusee() {
     service.compte("c_rejeu", "depart").await;
 
     let signee = super::storekit::transaction_signee(json!({
-        "productId": "com.weave.app.sub.grandtour.monthly",
+        "productId": "com.weave.maxlestage.sub.grandtour.monthly",
         "transactionId": "autre-app-1",
         "originalTransactionId": "autre-app-1",
         // Vraie signature, vraie chaîne — mais émise pour un autre paquet.
@@ -806,7 +806,7 @@ async fn une_transaction_trop_ancienne_est_refusee() {
     service.compte("c_vieille", "depart").await;
 
     let signee = super::storekit::transaction_signee(json!({
-        "productId": "com.weave.app.sub.grandtour.monthly",
+        "productId": "com.weave.maxlestage.sub.grandtour.monthly",
         "transactionId": "vieille-1",
         "originalTransactionId": "vieille-1",
         "signedDate": (chrono::Utc::now() - chrono::Duration::days(2)).timestamp_millis(),
@@ -1467,7 +1467,7 @@ async fn une_transaction_nue_n_est_pas_une_notification() {
             None,
             json!({
                 "signedPayload": transaction(json!({
-                    "productId": "com.weave.app.sub.escapade.monthly",
+                    "productId": "com.weave.maxlestage.sub.escapade.monthly",
                     "transactionId": "tx-mauvaise-forme",
                     "originalTransactionId": "orig-mauvaise-forme",
                 })),
@@ -1497,7 +1497,7 @@ async fn une_transaction_emboitee_non_signee_est_refusee() {
         "version": "2.0",
         "signedDate": chrono::Utc::now().timestamp_millis(),
         "data": {
-            "bundleId": "com.weave.app",
+            "bundleId": "com.weave.maxlestage",
             "environment": "sandbox",
             // Trois segments, aucune signature valable.
             "signedTransactionInfo": "eyJhbGciOiJFUzI1NiJ9.eyJwcm9kdWN0SWQiOiJ4In0.c2ln",
@@ -1553,7 +1553,7 @@ async fn un_remboursement_coupe_l_acces_sans_attendre_l_echeance() {
                     "REFUND",
                     None,
                     json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "transactionId": "tx-rembourse",
                         "originalTransactionId": "orig-rembourse",
                         "expiresDate": dans_un_mois,
@@ -1606,13 +1606,13 @@ async fn une_periode_de_grace_prolonge_l_acces_et_se_voit() {
                     "DID_FAIL_TO_RENEW",
                     Some("GRACE_PERIOD"),
                     json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "transactionId": "tx-grace",
                         "originalTransactionId": "orig-grace",
                         "expiresDate": hier,
                     }),
                     Some(json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "gracePeriodExpiresDate": dans_six_jours,
                     })),
                 ),
@@ -1662,7 +1662,7 @@ async fn une_grace_perimee_ne_prolonge_pas_l_acces() {
                     "DID_FAIL_TO_RENEW",
                     Some("GRACE_PERIOD"),
                     json!({
-                        "productId": "com.weave.app.sub.escapade.monthly",
+                        "productId": "com.weave.maxlestage.sub.escapade.monthly",
                         "transactionId": "tx-grace-finie",
                         "originalTransactionId": "orig-grace-finie",
                         "expiresDate": avant_hier,
@@ -1698,7 +1698,7 @@ async fn une_notification_d_une_autre_application_est_refusee() {
             "bundleId": "com.autre.application",
             "environment": "sandbox",
             "signedTransactionInfo": transaction(json!({
-                "productId": "com.weave.app.sub.grandtour.monthly",
+                "productId": "com.weave.maxlestage.sub.grandtour.monthly",
                 "transactionId": "tx-autre-appli",
                 "originalTransactionId": "orig-autre-appli",
             })),
@@ -1743,7 +1743,7 @@ async fn une_notification_depassee_est_ignoree_mais_pas_une_relance() {
 
     let dans_un_mois = (chrono::Utc::now() + chrono::Duration::days(30)).timestamp_millis();
     let transaction_expiree = json!({
-        "productId": "com.weave.app.sub.escapade.monthly",
+        "productId": "com.weave.maxlestage.sub.escapade.monthly",
         "transactionId": "tx-ordre",
         "originalTransactionId": "orig-ordre",
         "expiresDate": (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis(),
@@ -1769,7 +1769,7 @@ async fn une_notification_depassee_est_ignoree_mais_pas_une_relance() {
         "version": "2.0",
         "signedDate": (chrono::Utc::now() - chrono::Duration::days(1)).timestamp_millis(),
         "data": {
-            "bundleId": "com.weave.app",
+            "bundleId": "com.weave.maxlestage",
             "environment": "sandbox",
             "signedTransactionInfo": transaction(transaction_expiree.clone()),
         },
@@ -1798,10 +1798,10 @@ async fn une_notification_depassee_est_ignoree_mais_pas_une_relance() {
         "version": "2.0",
         "signedDate": chrono::Utc::now().timestamp_millis(),
         "data": {
-            "bundleId": "com.weave.app",
+            "bundleId": "com.weave.maxlestage",
             "environment": "sandbox",
             "signedTransactionInfo": transaction(json!({
-                "productId": "com.weave.app.sub.grandtour.monthly",
+                "productId": "com.weave.maxlestage.sub.grandtour.monthly",
                 "transactionId": "tx-relance",
                 "originalTransactionId": "orig-ordre",
                 "expiresDate": dans_un_mois,

@@ -9,7 +9,7 @@
   <key>CFBundleVersion</key>
   <string>$(CURRENT_PROJECT_VERSION)</string>
   <key>WEAVE_KEYCHAIN_GROUP</key>
-  <string>$(AppIdentifierPrefix)com.weave.app.shared</string>
+  <string>$(AppIdentifierPrefix)com.weave.maxlestage.shared</string>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionPointIdentifier</key>

@@ -48,7 +48,7 @@
     },
     "APNS_BUNDLE_ID": {
       "description": "Identifiant de l'application iOS, pour les notifications.",
-      "value": "com.weave.app"
+      "value": "com.weave.maxlestage"
     },
     "APNS_ENVIRONMENT": {
       "description": "sandbox tant que l'application n'est pas publiée, production ensuite.",
