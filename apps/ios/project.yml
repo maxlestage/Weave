@@ -41,7 +41,10 @@ settings:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
       WEAVE_API_URL: http:/$()/localhost:3000
     Release:
-      WEAVE_API_URL: https:/$()/api.weave.app
+      # L'API en ligne sur Heroku. Le jour où un domaine à vous pointe dessus,
+      # remplacez cette adresse : le workflow TestFlight refuse tout
+      # « weave.app », domaine de remplacement qui ne répond pas.
+      WEAVE_API_URL: https:/$()/weave-c9f3a59e2f02.herokuapp.com
 
 packages:
   WeaveKit:
