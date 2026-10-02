@@ -318,7 +318,13 @@ struct FicheView: View {
     /// `CLGeocoder` est retiré depuis iOS 26 au profit de `MKGeocodingRequest`.
     /// Le dépôt compilant avec `SWIFT_TREAT_WARNINGS_AS_ERRORS`, l'obsolescence
     /// n'était pas un avertissement : l'application ne se construisait pas.
-    private static func situer(_ ville: String) async throws -> CLLocationCoordinate2D {
+    ///
+    /// `@concurrent` : hors de l'acteur principal, de bout en bout. La vue est
+    /// isolée à l'acteur principal, et `mapItems` ne l'est pas ; la requête,
+    /// qui n'est pas `Sendable`, passait d'un monde à l'autre — Xcode 26.3 le
+    /// refuse. Ici n'entrent qu'une chaîne et ne sort qu'une coordonnée.
+    @concurrent
+    private nonisolated static func situer(_ ville: String) async throws -> CLLocationCoordinate2D {
         guard let requete = MKGeocodingRequest(addressString: ville) else {
             throw VilleIntrouvable()
         }
