@@ -11,9 +11,9 @@
 # ## Signature : entièrement automatique
 #
 # Xcode signe lui-même, avec la clé d'API : il enregistre les capacités des
-# identifiants, crée le groupe d'application, obtient les certificats (gérés
-# par Apple, dans le nuage) et les profils. Rien à préparer sur le portail
-# développeur, aucun dépôt de certificats à tenir.
+# identifiants, obtient les certificats (gérés par Apple, dans le nuage) et
+# les profils. Rien à préparer sur le portail développeur, aucun dépôt de
+# certificats à tenir.
 #
 # Avant, `match` gardait certificats et profils dans un dépôt privé chiffré.
 # Cela demandait ce dépôt, un jeton GitHub encodé en base64, une phrase
@@ -110,8 +110,12 @@ platform :ios do
       clean: true,
       output_directory: "build",
       output_name: "Weave.ipa",
-      xcargs: "#{authentification} DEVELOPMENT_TEAM=#{equipe.shellescape}",
-      export_xcargs: authentification,
+      # fastlane repasse `xcargs` à l'export lui-même : les y redonner par
+      # `export_xcargs` doublait chaque option, et xcodebuild refusait
+      # (« '-authenticationKeyPath' may only be provided once »). L'équipe
+      # n'y figure pas : le projet la lit dans WEAVE_TEAM_ID, et l'export
+      # dans `export_options`.
+      xcargs: authentification,
     )
 
     upload_to_testflight(
@@ -134,8 +138,12 @@ end
 #
 # App Store Connect ne propose, à la création d'une application, que des
 # identifiants déjà enregistrés : les créer ici les fait apparaître dans sa
-# liste. Leurs capacités (notifications, groupe d'application), Xcode les
-# active ensuite lui-même pendant la signature.
+# liste. Leurs capacités (notifications), Xcode les active ensuite lui-même
+# pendant la signature.
+#
+# Aucune cible ne déclare de groupe d'application : c'est la seule capacité
+# qu'une clé d'API ne permet pas d'enregistrer, et Xcode échouait alors sur
+# les cibles concernées (« Authentication failed », puis « No profiles »).
 #
 # L'identifiant d'équipe se lit sur les identifiants eux-mêmes (leur préfixe),
 # sauf s'il est fourni par `ASC_TEAM_ID` : un secret de moins à trouver.

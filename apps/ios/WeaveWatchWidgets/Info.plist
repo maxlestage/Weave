@@ -2,6 +2,25 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!--
+    Les clés de base d'un paquet. Rien ne les ajoutait : XcodeGen n'en
+    engendre aucune quand on lui donne son propre Info.plist, et
+    GENERATE_INFOPLIST_FILE n'est pas posé. La compilation passait ; l'archive
+    pour TestFlight échouait (« Archive Missing Bundle Identifier »). Valeurs
+    tirées des réglages de la cible : aucune n'est écrite deux fois.
+  -->
+  <key>CFBundleIdentifier</key>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleExecutable</key>
+  <string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleName</key>
+  <string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key>
+  <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>$(DEVELOPMENT_LANGUAGE)</string>
   <key>CFBundleDisplayName</key>
   <string>Weave</string>
   <key>CFBundleShortVersionString</key>
