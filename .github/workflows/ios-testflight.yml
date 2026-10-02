@@ -8,19 +8,18 @@ name: iOS — envoyer à TestFlight
 # navigateur d'un téléphone.
 #
 # Prérequis (voir docs/DEPLOIEMENT.md) :
-#   secrets   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_CONTENT, ASC_TEAM_ID,
-#             MATCH_PASSWORD, MATCH_GIT_TOKEN
-#   variable  MATCH_GIT_URL
+#   secrets   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_CONTENT
+#             (ASC_TEAM_ID facultatif : il se lit sur les identifiants)
+#   une clé d'API de rôle Admin : la signature est entièrement automatique
+#
+# La première exécution enregistre les identifiants chez Apple, puis s'arrête
+# en demandant de créer l'application dans App Store Connect — le seul geste
+# qu'Apple ne permet pas d'automatiser.
 #
 # Sans eux, le workflow s'arrête proprement en expliquant ce qui manque.
 
 on:
   workflow_dispatch:
-    inputs:
-      creer_certificats:
-        description: "Première exécution : autoriser la création des certificats"
-        type: boolean
-        default: false
   push:
     tags: ["ios-v*"]
 
@@ -42,10 +41,6 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
       ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
-      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
-      MATCH_GIT_URL: ${{ vars.MATCH_GIT_URL }}
-      MATCH_READONLY: ${{ inputs.creer_certificats && 'false' || 'true' }}
       FASTLANE_SKIP_UPDATE_CHECK: "1"
       FASTLANE_HIDE_CHANGELOG: "1"
 
@@ -54,7 +49,7 @@ jobs:
         id: verifier
         run: |
           manque=""
-          for nom in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT ASC_TEAM_ID MATCH_PASSWORD MATCH_GIT_URL; do
+          for nom in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT; do
             if [ -z "${!nom}" ]; then manque="$manque $nom"; fi
           done
 
@@ -149,7 +144,6 @@ jobs:
         env:
           BUILD_NUMBER: ${{ github.run_number }}
           CHANGELOG: ${{ github.event.head_commit.message || 'Version interne.' }}
-          WEAVE_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
         run: bundle exec fastlane beta
 
       - name: Conserver les journaux en cas d'échec
