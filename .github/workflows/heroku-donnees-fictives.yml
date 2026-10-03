@@ -1,0 +1,165 @@
+name: Heroku — données fictives
+
+# Lance `weave-api seed` sur une application Heroku DE TEST, depuis l'onglet
+# Actions de GitHub — l'application GitHub du téléphone suffit : Actions →
+# « Heroku — données fictives » → Run workflow. Ni ordinateur, ni ligne de
+# commande Heroku.
+#
+# Ce que la commande fait, et ses gardes : docs/DEPLOIEMENT.md, A3 quater.
+# Ce workflow n'en lève aucune ; il en ajoute une : il refuse de semer sur
+# l'application désignée par la variable de dépôt HEROKU_APP_NAME, celle du
+# public.
+#
+# PRÉREQUIS : le secret de dépôt `HEROKU_API_KEY`, déjà posé pour le
+# déploiement.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Application Heroku de test (jamais celle du public)"
+        required: true
+        type: string
+      action:
+        description: "Semer des comptes fictifs, ou les effacer"
+        required: true
+        default: semer
+        type: choice
+        options: [semer, effacer]
+      autour:
+        description: "Une ville (Paris, Lyon…) ou l'adresse de votre compte. Vide = Paris"
+        required: false
+        type: string
+      equipe:
+        description: "Adresses de l'équipe à ajouter à COMPTES_GRANDTOUR (séparées par des virgules, facultatif)"
+        required: false
+        type: string
+      autoriser:
+        description: "Poser WEAVE_DONNEES_FICTIVES=oui sur l'application si absente"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: donnees-fictives-${{ inputs.app_name }}
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: weave-api seed
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      APP: ${{ inputs.app_name }}
+      ACTION: ${{ inputs.action }}
+      AUTOUR: ${{ inputs.autour }}
+      EQUIPE: ${{ inputs.equipe }}
+      AUTORISER: ${{ inputs.autoriser }}
+      APP_DU_PUBLIC: ${{ vars.HEROKU_APP_NAME }}
+      ACCEPT: "application/vnd.heroku+json; version=3"
+
+    steps:
+      - name: Vérifier les entrées
+        run: |
+          if [ -z "$HEROKU_API_KEY" ]; then
+            echo "::error::Secret HEROKU_API_KEY absent (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          if [ "$ACTION" = "semer" ] && [ -n "$APP_DU_PUBLIC" ] && [ "$APP" = "$APP_DU_PUBLIC" ]; then
+            echo "::error::« $APP » est l'application du public (HEROKU_APP_NAME). Des comptes fictifs n'ont rien à y faire : utilisez une application de test."
+            exit 1
+          fi
+          # L'argument part dans une commande exécutée sur le dyno : on
+          # n'accepte qu'un nom de ville ou une adresse, rien d'autre.
+          motif_autour='^[[:alnum:]@._+ -]*$'
+          if ! [[ "$AUTOUR" =~ $motif_autour ]]; then
+            echo "::error::« $AUTOUR » n'est ni une ville ni une adresse."
+            exit 1
+          fi
+          motif_equipe='^[[:alnum:]@._+, ;-]*$'
+          if ! [[ "$EQUIPE" =~ $motif_equipe ]]; then
+            echo "::error::La liste d'adresses contient des caractères inattendus."
+            exit 1
+          fi
+
+      - name: Lire la configuration de l'application
+        run: |
+          code=$(curl -sS -o /tmp/config.json -w '%{http_code}' \
+            "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: $ACCEPT" -H "Authorization: Bearer $HEROKU_API_KEY")
+          if [ "$code" = "404" ]; then
+            echo "::error::Application « $APP » introuvable. Créez-la d'abord avec « Heroku — mettre en ligne »."
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::Lecture de la configuration impossible (HTTP $code)."
+            exit 1
+          fi
+
+      # Poser une variable redémarre l'application : on ne le fait que si
+      # quelque chose change.
+      - name: Poser les variables manquantes
+        if: inputs.action == 'semer'
+        run: |
+          python3 - <<'PY' > /tmp/patch.json
+          import json, os, re
+
+          actuel = json.load(open("/tmp/config.json"))
+          patch = {}
+
+          if os.environ["AUTORISER"] == "true" and actuel.get("WEAVE_DONNEES_FICTIVES", "").strip().lower() not in ("oui", "true", "1"):
+              patch["WEAVE_DONNEES_FICTIVES"] = "oui"
+
+          nouvelles = [a.strip().lower() for a in re.split(r"[,;\s]+", os.environ.get("EQUIPE", "")) if "@" in a]
+          deja = [a.strip().lower() for a in re.split(r"[,;\s]+", actuel.get("COMPTES_GRANDTOUR", "")) if "@" in a]
+          ajout = [a for a in nouvelles if a not in deja]
+          if ajout:
+              patch["COMPTES_GRANDTOUR"] = ",".join(deja + ajout)
+
+          print(json.dumps(patch))
+          PY
+
+          if [ "$(cat /tmp/patch.json)" = "{}" ]; then
+            echo "Rien à changer dans la configuration."
+            exit 0
+          fi
+
+          echo "Variables posées : $(python3 -c 'import json; print(", ".join(json.load(open("/tmp/patch.json"))))')"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            "https://api.heroku.com/apps/$APP/config-vars" \
+            -H "Accept: $ACCEPT" -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -H "Content-Type: application/json" -d @/tmp/patch.json)
+          if [ "$code" != "200" ]; then
+            echo "::error::Écriture de la configuration refusée (HTTP $code)."
+            exit 1
+          fi
+
+      - name: Installer la ligne de commande Heroku
+        run: curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Lancer la commande
+        run: |
+          set -o pipefail
+          if [ "$ACTION" = "effacer" ]; then
+            argument="effacer"
+          else
+            argument="$AUTOUR"
+          fi
+          echo "▶ weave-api seed $argument  (sur $APP)"
+          heroku run --no-tty --exit-code -a "$APP" -- \
+            /app/bin-release/weave-api seed $argument 2>&1 | tee sortie.txt
+
+      - name: Résumé
+        if: always()
+        run: |
+          {
+            echo "## weave-api seed — $ACTION sur \`$APP\`"
+            echo ""
+            echo '```'
+            # Seules les lignes de la commande, sans le bruit de connexion.
+            grep -vE '^(Running|Warning|›)' sortie.txt 2>/dev/null | tail -40 || echo "(pas de sortie)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
