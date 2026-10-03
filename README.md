@@ -133,6 +133,8 @@ La marche à suivre, étape par étape : **[docs/DEPLOIEMENT.md](docs/DEPLOIEMEN
 | `bun run test` | La suite de l'API (Redis local requis) |
 | `bun run typecheck` | Vérification des types du site et des contrats |
 | `cargo run --manifest-path apps/api-rs/Cargo.toml -- migrate` | Applique les migrations |
+| `bun run seed [ville]` | 16 comptes fictifs, leurs plans, demandes et conversations (Paris par défaut) |
+| `bun run seed:effacer` | Retire tous les comptes fictifs |
 | `bun run format` | Formatage Prettier |
 
 ## Reste à faire avant un lancement
