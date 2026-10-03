@@ -135,6 +135,14 @@ fn aucune_phrase_n_est_identique_dans_deux_langues() {
         Msg::CompteSuspendu,
         Msg::CompteEnSuppression,
         Msg::CompteIntrouvable,
+        Msg::EnvoiDuCodeImpossible,
+        Msg::SujetDuCode {
+            code: temoin("123456"),
+        },
+        Msg::CorpsDuCode {
+            code: temoin("123456"),
+            minutes: 10,
+        },
         Msg::DateDeNaissanceInvalide,
         Msg::AgeMinimumRequis { minimum: 18 },
         Msg::AgeHorsBornes {
