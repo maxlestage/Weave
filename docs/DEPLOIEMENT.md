@@ -102,6 +102,52 @@ réel. Le changement se voit au plus tard un quart d'heure après le redémarrag
 — le temps que le résumé du compte, mis en cache, se renouvelle — ou tout de
 suite en se déconnectant puis reconnectant.
 
+### A3 quater. Un fil rempli, sur une application de test
+
+`weave-api seed` crée seize comptes fictifs, un plan chacun pour les six jours
+qui viennent, des demandes entre eux et quelques conversations. De quoi tester
+le fil, les demandes et les messages sans attendre de vrais inscrits.
+
+**Sur une application Heroku à part**, jamais sur celle du public. Créez-en une
+seconde avec le même bouton de déploiement (par exemple `weave-test`), puis
+dans ses Config Vars :
+
+| Clé | Valeur |
+| --- | --- |
+| `WEAVE_DONNEES_FICTIVES` | `oui` |
+| `COMPTES_GRANDTOUR` | les adresses de l'équipe qui testeront |
+
+Ensuite, depuis un terminal — ou depuis le tableau de bord, **More → Run
+console**, en tapant seulement `./bin-release/weave-api seed` :
+
+```sh
+heroku run -a weave-test ./bin-release/weave-api seed                    # autour de Paris
+heroku run -a weave-test ./bin-release/weave-api seed Lyon               # autour d'une autre ville
+heroku run -a weave-test ./bin-release/weave-api seed vous@icloud.com    # autour de votre compte
+heroku run -a weave-test ./bin-release/weave-api seed effacer            # tout retirer
+```
+
+ou, avec `HEROKU_APP=weave-test` posé : `bun run heroku:seed [ville|adresse]`
+et `bun run heroku:seed:effacer`.
+
+Donner votre adresse place les comptes autour de votre fiche, et pose en plus
+trois demandes sur votre premier plan ouvert : publiez-en un dans
+l'application avant. Relancer `seed` efface d'abord les fictifs précédents.
+
+**La commande refuse** :
+
+- si `WEAVE_DONNEES_FICTIVES` n'est pas posée ;
+- si `APPSTORE_ENVIRONMENT` vaut `production` ;
+- si la base contient **un seul** compte qui n'est ni fictif ni dans
+  `COMPTES_GRANDTOUR`. C'est la garde qui compte : une vraie personne ne doit
+  jamais voir un profil fictif dans son fil. Sur une application de rencontre,
+  ce serait tromper les gens — et c'est interdit.
+
+Les comptes fictifs ont une adresse en `@fictif.weave.invalid` — domaine
+réservé, aucun code de connexion n'y part — et leur présentation se termine par
+« Compte fictif — données de test. ». `seed effacer` n'a pas de garde : retirer
+des comptes fictifs ne trompe personne.
+
 ### A4. Déployer automatiquement ensuite (facultatif)
 
 Pour que chaque fusion sur `master` parte en ligne toute seule, ajoutez une
