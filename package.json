@@ -23,6 +23,10 @@
     "lint": "bunx --bun prettier --check .",
     "verifier": "./verifier.sh",
     "format": "bunx --bun prettier --write .",
+    "seed": "cargo run --manifest-path apps/api-rs/Cargo.toml -- seed",
+    "seed:effacer": "cargo run --manifest-path apps/api-rs/Cargo.toml -- seed effacer",
+    "heroku:seed": "heroku run -x ./bin-release/weave-api seed",
+    "heroku:seed:effacer": "heroku run -x ./bin-release/weave-api seed effacer",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "setup": "bun install"
