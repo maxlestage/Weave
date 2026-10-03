@@ -75,7 +75,7 @@
       "required": false
     },
     "WEAVE_DONNEES_FICTIVES": {
-      "description": "« oui » autorise `weave-api seed` (comptes et activité fictifs) sur cette application. Réservé à une application de test : la commande refuse de toute façon si la base contient un compte hors de l'équipe. Laissez vide sur l'application du public.",
+      "description": "« oui » autorise `weave-api seed` (comptes et activité fictifs) sur cette application. Avant le lancement seulement : la commande refuse si la base contient un compte hors de l'équipe, et le serveur retire les comptes fictifs dès que APPSTORE_ENVIRONMENT vaut production.",
       "required": false
     },
     "COMPTES_GRANDTOUR": {
