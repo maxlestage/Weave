@@ -11,6 +11,7 @@ mod console;
 mod console_cli;
 mod crypto;
 mod db;
+mod donnees_fictives;
 mod droits;
 mod error;
 mod langue;
@@ -154,6 +155,16 @@ async fn main() -> anyhow::Result<()> {
         let cache = cache::connecter(&config.cache).await?;
         let arguments: Vec<String> = std::env::args().skip(2).collect();
         return console_cli::executer(&db, &cache, &arguments).await;
+    }
+
+    // `weave-api seed …` : comptes et activité fictifs, pour tester sur un fil
+    // rempli. Ses gardes refusent toute base où vit une vraie personne.
+    if std::env::args().nth(1).as_deref() == Some("seed") {
+        // Le serveur applique ses migrations au démarrage ; `seed` peut passer
+        // avant lui, sur une base de développement encore vide.
+        migrations::appliquer(&db).await?;
+        let arguments: Vec<String> = std::env::args().skip(2).collect();
+        return donnees_fictives::executer(&db, &config, &arguments).await;
     }
 
     let cache = cache::connecter(&config.cache).await?;
