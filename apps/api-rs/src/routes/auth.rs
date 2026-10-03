@@ -479,15 +479,38 @@ async fn demander_code(
     .insert(&state.db)
     .await?;
 
-    // L'envoi réel passe par le fournisseur d'e-mail transactionnel. Le code
-    // lui-même n'est jamais journalisé : seule l'empreinte l'est.
-    tracing::info!(email_hash = %empreinte, "Code de connexion émis");
+    // Le code part par e-mail. Il n'est jamais journalisé : seule l'empreinte
+    // l'est.
+    envoyer_le_code(&state, &email, &code).await?;
+    tracing::info!(email_hash = %empreinte, "Code de connexion envoyé");
 
     Ok(Json(ReponseDemande {
         sent: true,
         expires_in_seconds: OTP_TTL_MINUTES * 60,
         dev_code: (!state.config.is_production()).then_some(code),
     }))
+}
+
+/// Envoie un code à six chiffres, ou dit qu'il n'a pas pu partir.
+///
+/// Partagé par la connexion et le changement d'adresse : les deux promettent
+/// un code dans une boîte, et les deux mentaient de la même façon tant
+/// qu'aucun courrier ne partait.
+pub(crate) async fn envoyer_le_code(
+    state: &AppState,
+    email: &str,
+    code: &str,
+) -> Result<(), AppError> {
+    state
+        .courriel
+        .envoyer_code(&state.config, email, code, OTP_TTL_MINUTES)
+        .await
+        .map_err(|echec| {
+            // L'échec ne contient ni le code ni l'adresse : seulement ce que
+            // le serveur de courrier a répondu.
+            tracing::error!(echec = %echec, "code de connexion non envoyé");
+            AppError::new(Code::Upstream, Msg::EnvoiDuCodeImpossible.t())
+        })
 }
 
 #[derive(Deserialize)]

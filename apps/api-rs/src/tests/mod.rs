@@ -207,6 +207,16 @@ fn configuration() -> Env {
             environnement: "sandbox".to_string(),
             configure: false,
         },
+        // Aucun serveur de courrier en test : les envois sont gardés en
+        // mémoire et relus (`ClientCourriel::traces`).
+        courriel: Courriel {
+            hote: "smtp.exemple.test".to_string(),
+            port: 587,
+            utilisateur: None,
+            mot_de_passe: None,
+            expediteur: None,
+            configure: false,
+        },
         auth: Auth {
             jwt_secret: SECRET.to_string(),
             access_ttl_secondes: 900,
@@ -258,6 +268,7 @@ impl Service {
         let state = AppState {
             db: db.clone(),
             cache,
+            courriel: Arc::new(crate::courriel::ClientCourriel::new(&config)),
             config: Arc::new(config),
             // APNs n'est pas configuré en test : les envois sont simulés, et
             // c'est bien ce qu'on veut éprouver — le reste du produit doit
@@ -679,6 +690,7 @@ pub async fn compte_de_test(db: &DatabaseConnection, id: &str, palier: &str) {
 }
 
 mod contrat;
+mod courriel;
 mod langues;
 mod parcours;
 pub mod storekit;

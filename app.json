@@ -65,6 +65,14 @@
     "MEDIA_BASE_URL": {
       "description": "Base des URL de médias. Laissez vide au premier déploiement.",
       "required": false
+    },
+    "SMTP_USER": {
+      "description": "Adresse qui envoie les codes de connexion (par exemple votre adresse iCloud). Sans elle et SMTP_PASSWORD, personne ne peut se connecter.",
+      "required": false
+    },
+    "SMTP_PASSWORD": {
+      "description": "Mot de passe d'application de ce compte (appleid.apple.com → Connexion et sécurité → Mots de passe d'application). Jamais le mot de passe du compte.",
+      "required": false
     }
   },
   "environments": {

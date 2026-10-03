@@ -49,6 +49,16 @@ pub enum Msg {
     CompteSuspendu,
     CompteEnSuppression,
     CompteIntrouvable,
+    EnvoiDuCodeImpossible,
+    /// Le sujet du courrier qui porte le code.
+    SujetDuCode {
+        code: String,
+    },
+    /// Le corps de ce courrier.
+    CorpsDuCode {
+        code: String,
+        minutes: i64,
+    },
 
     // — Profil ————————————————————————————————————————————————————
     DateDeNaissanceInvalide,
@@ -252,6 +262,16 @@ impl Msg {
                     .into()
             }
             CompteIntrouvable => "Compte introuvable.".into(),
+            EnvoiDuCodeImpossible => {
+                "Le code n'a pas pu être envoyé. Réessayez dans un instant.".into()
+            }
+            SujetDuCode { code } => format!("Votre code Weave : {code}"),
+            CorpsDuCode { code, minutes } => format!(
+                "Votre code de connexion à Weave : {code}\n\n\
+                 Il est valable {minutes} minutes. Si vous n'avez rien demandé, \
+                 ignorez ce message : sans le code, personne ne peut entrer.\n\n\
+                 — Weave"
+            ),
 
             DateDeNaissanceInvalide => "Date de naissance invalide.".into(),
             AgeMinimumRequis { minimum } => {
@@ -426,6 +446,16 @@ impl Msg {
                 "This account is being deleted. Write to support to cancel that.".into()
             }
             CompteIntrouvable => "Account not found.".into(),
+            EnvoiDuCodeImpossible => {
+                "The code couldn't be sent. Please try again in a moment.".into()
+            }
+            SujetDuCode { code } => format!("Your Weave code: {code}"),
+            CorpsDuCode { code, minutes } => format!(
+                "Your Weave sign-in code: {code}\n\n\
+                 It's valid for {minutes} minutes. If you didn't ask for it, \
+                 ignore this message: without the code, nobody can get in.\n\n\
+                 — Weave"
+            ),
 
             DateDeNaissanceInvalide => "That date of birth isn't valid.".into(),
             AgeMinimumRequis { minimum } => {
@@ -596,6 +626,16 @@ impl Msg {
                 "Esta cuenta se está eliminando. Escribe a soporte para cancelarlo.".into()
             }
             CompteIntrouvable => "Cuenta no encontrada.".into(),
+            EnvoiDuCodeImpossible => {
+                "No se pudo enviar el código. Inténtalo de nuevo en un momento.".into()
+            }
+            SujetDuCode { code } => format!("Tu código de Weave: {code}"),
+            CorpsDuCode { code, minutes } => format!(
+                "Tu código para entrar en Weave: {code}\n\n\
+                 Es válido durante {minutes} minutos. Si no lo has pedido, \
+                 ignora este mensaje: sin el código, nadie puede entrar.\n\n\
+                 — Weave"
+            ),
 
             DateDeNaissanceInvalide => "Esa fecha de nacimiento no es válida.".into(),
             AgeMinimumRequis { minimum } => {

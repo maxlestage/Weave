@@ -166,6 +166,40 @@ pub struct AppStore {
     pub configure: bool,
 }
 
+/// L'envoi des e-mails : le code de connexion, seul courrier du service.
+///
+/// Rien de tout cela n'existait. Le code était créé, l'application affichait
+/// « un code vient de partir », et aucun courrier ne partait : personne ne
+/// pouvait se connecter.
+///
+/// Par défaut, le serveur d'iCloud : il suffit alors de `SMTP_USER` (l'adresse
+/// iCloud) et de `SMTP_PASSWORD` (un mot de passe d'application, créé sur
+/// appleid.apple.com — jamais le mot de passe du compte Apple).
+#[derive(Clone)]
+pub struct Courriel {
+    pub hote: String,
+    pub port: u16,
+    pub utilisateur: Option<String>,
+    pub mot_de_passe: Option<String>,
+    /// L'adresse d'expédition ; celle du compte si rien n'est précisé. iCloud
+    /// refuse d'expédier sous une adresse qui n'est pas la sienne.
+    pub expediteur: Option<String>,
+    pub configure: bool,
+}
+
+/// Le mot de passe n'apparaît dans aucune trace de débogage.
+impl std::fmt::Debug for Courriel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Courriel")
+            .field("hote", &self.hote)
+            .field("port", &self.port)
+            .field("utilisateur", &self.utilisateur)
+            .field("expediteur", &self.expediteur)
+            .field("configure", &self.configure)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Env {
     pub mode: Mode,
@@ -176,6 +210,7 @@ pub struct Env {
     pub auth: Auth,
     pub apns: Apns,
     pub app_store: AppStore,
+    pub courriel: Courriel,
     pub web_origin: String,
     pub web_dist: Option<String>,
 }
@@ -356,6 +391,14 @@ pub fn charger() -> Result<Env, String> {
             jwt_secret,
             access_ttl_secondes: entier("ACCESS_TOKEN_TTL_SECONDS", 900),
             refresh_ttl_jours: entier("REFRESH_TOKEN_TTL_DAYS", 60),
+        },
+        courriel: Courriel {
+            hote: lire("SMTP_HOST").unwrap_or_else(|| "smtp.mail.me.com".to_string()),
+            port: u16::try_from(entier("SMTP_PORT", 587)).unwrap_or(587),
+            utilisateur: lire("SMTP_USER"),
+            mot_de_passe: lire("SMTP_PASSWORD"),
+            expediteur: lire("MAIL_FROM").or_else(|| lire("SMTP_USER")),
+            configure: lire("SMTP_USER").is_some() && lire("SMTP_PASSWORD").is_some(),
         },
         web_origin,
         web_dist: lire("WEB_DIST_PATH"),
