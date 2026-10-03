@@ -221,6 +221,7 @@ fn configuration() -> Env {
             jwt_secret: SECRET.to_string(),
             access_ttl_secondes: 900,
             refresh_ttl_jours: 60,
+            comptes_offerts: Vec::new(),
         },
         web_origin: "https://exemple.test".to_string(),
         web_dist: None,
@@ -254,9 +255,21 @@ impl Service {
 
     /// Même service, avec un site vitrine à servir.
     pub async fn monter_avec(web_dist: Option<String>) -> Self {
+        Self::monter_configure(|config, _| config.web_dist = web_dist).await
+    }
+
+    /// Même service, avec une configuration retouchée. La fonction reçoit
+    /// aussi le suffixe des comptes, pour viser l'adresse d'un compte du test.
+    pub async fn monter_configure(retouche: impl FnOnce(&mut Env, &str)) -> Self {
         let db = base_de_test().await;
+        static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let suffixe = format!(
+            "{}x{}",
+            std::process::id(),
+            COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
         let mut config = configuration();
-        config.web_dist = web_dist;
+        retouche(&mut config, &suffixe);
         let cache = cache::connecter(&Cache {
             url: std::env::var("REDIS_URL")
                 .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
@@ -278,12 +291,6 @@ impl Service {
             // vraies signatures plutôt que de contourner la vérification.
             racine_storekit: Arc::new(crate::tests::storekit::racine_de_test()),
         };
-        static COMPTEUR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let suffixe = format!(
-            "{}x{}",
-            std::process::id(),
-            COMPTEUR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        );
         Self {
             routeur: construire_routeur(state.clone()),
             db,
@@ -731,6 +738,7 @@ mod export;
 mod fil;
 mod modification;
 mod offres;
+mod palier_offert;
 mod profil;
 mod rappels;
 mod session;
