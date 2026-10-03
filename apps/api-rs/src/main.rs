@@ -210,6 +210,18 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // L'application publiée ne garde aucun compte fictif.
+    match donnees_fictives::retirer_si_publiee(
+        &db,
+        config.app_store.environnement == "production",
+    )
+    .await
+    {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(comptes = n, "comptes fictifs retirés : l'App Store est en production"),
+        Err(erreur) => tracing::error!(erreur = %erreur, "comptes fictifs non retirés"),
+    }
+
     let state = AppState {
         db,
         cache,
