@@ -387,6 +387,7 @@ mod tests {
                 jwt_secret: String::new(),
                 access_ttl_secondes: 900,
                 refresh_ttl_jours: 60,
+                comptes_offerts: Vec::new(),
             },
             courriel: crate::env::Courriel {
                 hote: String::new(),
