@@ -108,6 +108,31 @@ suite en se déconnectant puis reconnectant.
 qui viennent, des demandes entre eux et quelques conversations. De quoi tester
 le fil, les demandes et les messages sans attendre de vrais inscrits.
 
+#### Depuis un téléphone
+
+Tout se fait dans l'application GitHub (ou github.com dans le navigateur),
+onglet **Actions** :
+
+1. **Heroku — mettre en ligne** → Run workflow, avec un nom d'application de
+   test, par exemple `weave-test`. C'est la seconde application, à côté de
+   celle du public.
+2. **Heroku — données fictives** → Run workflow :
+   - `app_name` : `weave-test` ;
+   - `action` : `semer` (ou `effacer` pour tout retirer) ;
+   - `autour` : une ville, ou votre adresse pour placer les comptes autour de
+     votre fiche ;
+   - `equipe` : vos adresses, ajoutées à `COMPTES_GRANDTOUR`.
+
+   Le workflow pose lui-même `WEAVE_DONNEES_FICTIVES=oui` sur l'application,
+   lance la commande, et en rend le bilan dans le résumé de l'exécution. Il
+   refuse de semer sur l'application nommée par la variable de dépôt
+   `HEROKU_APP_NAME`, celle du public.
+
+Pour vous connecter à `weave-test` depuis l'application iOS, elle doit pouvoir
+envoyer les codes : posez-y `SMTP_USER` et `SMTP_PASSWORD` comme en A3 bis.
+
+#### Depuis un terminal
+
 **Sur une application Heroku à part**, jamais sur celle du public. Créez-en une
 seconde avec le même bouton de déploiement (par exemple `weave-test`), puis
 dans ses Config Vars :
