@@ -13,14 +13,15 @@
 //! levées AVANT la première écriture :
 //!
 //! 1. **En production, il faut le demander** : `WEAVE_DONNEES_FICTIVES=oui`
-//!    sur l'application Heroku. Une application de test le porte, celle du
-//!    public jamais.
+//!    sur l'application Heroku, et seulement avant le lancement.
 //! 2. **Jamais avec l'App Store en production** : `APPSTORE_ENVIRONMENT`
 //!    à `production` veut dire que l'application est publiée.
 //! 3. **Jamais à côté d'un vrai compte** : la base ne doit contenir que des
 //!    comptes fictifs et ceux de l'équipe (`COMPTES_GRANDTOUR`). Un seul
 //!    inconnu, et la commande refuse. C'est la garde qui compte : les deux
 //!    autres se règlent par une variable, celle-ci regarde qui verrait le fil.
+//!
+//! Et au lancement, le serveur les retire seul : voir `retirer_si_publiee`.
 //!
 //! Effacer, en revanche, n'a pas de garde : retirer des comptes fictifs ne
 //! trompe personne.
@@ -344,8 +345,8 @@ fn est_fictive(email: &str) -> bool {
 pub async fn verifier<C: ConnectionTrait>(db: &C, garde: &Garde) -> anyhow::Result<()> {
     if garde.production && !garde.demandee {
         anyhow::bail!(
-            "refusé : en production, posez d'abord {VARIABLE}=oui — et seulement sur \
-             une application de test, jamais sur celle du public"
+            "refusé : en production, posez d'abord {VARIABLE}=oui — et seulement avant \
+             le lancement"
         );
     }
     if garde.app_store_en_production {
@@ -380,6 +381,23 @@ pub async fn effacer<C: ConnectionTrait>(db: &C) -> anyhow::Result<u64> {
         .exec(db)
         .await?;
     Ok(resultat.rows_affected)
+}
+
+/// Le filet du lancement : dès que l'App Store passe en production, le
+/// serveur retire les comptes fictifs à son démarrage.
+///
+/// Ils se sèment sur l'application du public tant qu'elle n'a pas de vrais
+/// inscrits — c'est la seule que l'application iOS sait joindre. Oublier de
+/// les effacer avant la publication les montrerait aux premiers venus : ce
+/// filet rend l'oubli impossible.
+pub async fn retirer_si_publiee<C: ConnectionTrait>(
+    db: &C,
+    app_store_en_production: bool,
+) -> anyhow::Result<u64> {
+    if !app_store_en_production {
+        return Ok(0);
+    }
+    effacer(db).await
 }
 
 /// Où poser les comptes : une ville connue, ou la fiche d'un compte de
@@ -995,5 +1013,19 @@ mod tests {
                 .any(|t| PERSONNES.iter().any(|p| p.titre == *t)),
             "aucun plan fictif dans le fil : {titres:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn la_publication_retire_les_fictifs() {
+        let db = base_de_test().await;
+        semer(&db, &garde_de_dev(), &Autour::depuis(None))
+            .await
+            .unwrap();
+
+        assert_eq!(retirer_si_publiee(&db, false).await.unwrap(), 0);
+        assert_eq!(nombre_de_comptes(&db).await, 16);
+
+        assert_eq!(retirer_si_publiee(&db, true).await.unwrap(), 16);
+        assert_eq!(nombre_de_comptes(&db).await, 0);
     }
 }
