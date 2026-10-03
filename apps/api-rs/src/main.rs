@@ -4,6 +4,7 @@
 
 mod alerte;
 mod apns;
+mod courriel;
 mod auth;
 mod cache;
 mod console;
@@ -55,6 +56,8 @@ struct AppState {
     /// Partagé : le jeton d'autorisation APNs vit dans le client, et en forger
     /// un par notification coûterait une signature ES256 à chaque fois.
     apns: Arc<apns::ClientApns>,
+    /// Le serveur de courrier, qui porte les codes de connexion.
+    courriel: Arc<courriel::ClientCourriel>,
     /// La racine à laquelle doit mener la chaîne d'une transaction StoreKit.
     ///
     /// Toujours celle d'Apple en production — `main` ne pose rien d'autre, et
@@ -187,9 +190,19 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Sans serveur de courrier, personne ne peut se connecter : le dire au
+    // démarrage, là où on le cherchera.
+    if config.is_production() && !config.courriel.configure {
+        tracing::warn!(
+            "Envoi des e-mails non configuré (SMTP_USER, SMTP_PASSWORD) : aucun \
+             code de connexion ne peut partir."
+        );
+    }
+
     let state = AppState {
         db,
         cache,
+        courriel: Arc::new(courriel::ClientCourriel::new(&config)),
         config: Arc::new(config),
         apns: Arc::new(apns::ClientApns::new()),
         // La racine d'Apple, et rien d'autre.

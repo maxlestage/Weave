@@ -59,6 +59,34 @@ ouvrir directement :
 - `https://VOTRE-APP.herokuapp.com` → le site vitrine
 - `https://VOTRE-APP.herokuapp.com/health` → doit afficher `"status":"ok"`
 
+### A3 bis. L'envoi des codes de connexion
+
+On se connecte avec un code à six chiffres reçu par e-mail. Sans serveur de
+courrier, aucun code ne part, et l'application le dit (« Le code n'a pas pu
+être envoyé ») : personne ne peut se connecter.
+
+Le plus simple est d'envoyer depuis votre adresse iCloud :
+
+1. **appleid.apple.com** → **Connexion et sécurité** → **Mots de passe
+   d'application** → créez-en un, nommé « Weave ». Notez-le : il ne s'affiche
+   qu'une fois. Ce n'est **pas** le mot de passe de votre compte Apple, et
+   vous pouvez le révoquer à tout moment.
+2. Tableau de bord Heroku → votre application → **Settings** → **Reveal
+   Config Vars**, et ajoutez :
+
+| Clé | Valeur |
+| --- | --- |
+| `SMTP_USER` | votre adresse iCloud, par exemple `vous@icloud.com` |
+| `SMTP_PASSWORD` | le mot de passe d'application de l'étape 1 |
+
+L'application redémarre d'elle-même. Les codes partent alors de cette adresse,
+sous le nom « Weave », par le serveur d'iCloud (`smtp.mail.me.com`, port 587).
+
+Un autre fournisseur fonctionne aussi : ajoutez `SMTP_HOST` (et `SMTP_PORT` si
+ce n'est pas 587), et `MAIL_FROM` si l'adresse d'expédition diffère de
+l'identifiant. iCloud plafonne l'envoi à un millier de courriers par jour :
+largement de quoi tester, pas de quoi lancer le service auprès du public.
+
 ### A4. Déployer automatiquement ensuite (facultatif)
 
 Pour que chaque fusion sur `master` parte en ligne toute seule, ajoutez une
