@@ -102,71 +102,66 @@ réel. Le changement se voit au plus tard un quart d'heure après le redémarrag
 — le temps que le résumé du compte, mis en cache, se renouvelle — ou tout de
 suite en se déconnectant puis reconnectant.
 
-### A3 quater. Un fil rempli, sur une application de test
+### A3 quater. Un fil rempli, avant le lancement
 
 `weave-api seed` crée seize comptes fictifs, un plan chacun pour les six jours
 qui viennent, des demandes entre eux et quelques conversations. De quoi tester
 le fil, les demandes et les messages sans attendre de vrais inscrits.
 
+Ils se sèment sur l'application Heroku que joint la version TestFlight : c'est
+la seule que l'iPhone sait atteindre, son adresse étant fixée à la
+construction. Cela ne vaut **que tant que l'application n'est pas publiée** —
+voir plus bas ce qui l'empêche ensuite.
+
 #### Depuis un téléphone
 
-Tout se fait dans l'application GitHub (ou github.com dans le navigateur),
-onglet **Actions** :
+Dans l'application GitHub (ou github.com dans le navigateur), onglet
+**Actions** → **Heroku — données fictives** → Run workflow :
 
-1. **Heroku — mettre en ligne** → Run workflow, avec un nom d'application de
-   test, par exemple `weave-test`. C'est la seconde application, à côté de
-   celle du public.
-2. **Heroku — données fictives** → Run workflow :
-   - `app_name` : `weave-test` ;
-   - `action` : `semer` (ou `effacer` pour tout retirer) ;
-   - `autour` : une ville, ou votre adresse pour placer les comptes autour de
-     votre fiche ;
-   - `equipe` : vos adresses, ajoutées à `COMPTES_GRANDTOUR`.
+- `app_name` : à laisser vide, c'est l'application de TestFlight ;
+- `action` : `semer`, ou `effacer` pour tout retirer ;
+- `autour` : votre adresse, pour placer les comptes autour de votre fiche — ou
+  une ville (Paris, Lyon…) ;
+- `equipe` : votre adresse, et celles de l'équipe qui teste. Elles sont
+  ajoutées à `COMPTES_GRANDTOUR`.
 
-   Le workflow pose lui-même `WEAVE_DONNEES_FICTIVES=oui` sur l'application,
-   lance la commande, et en rend le bilan dans le résumé de l'exécution. Il
-   refuse de semer sur l'application nommée par la variable de dépôt
-   `HEROKU_APP_NAME`, celle du public.
-
-Pour vous connecter à `weave-test` depuis l'application iOS, elle doit pouvoir
-envoyer les codes : posez-y `SMTP_USER` et `SMTP_PASSWORD` comme en A3 bis.
-
-#### Depuis un terminal
-
-**Sur une application Heroku à part**, jamais sur celle du public. Créez-en une
-seconde avec le même bouton de déploiement (par exemple `weave-test`), puis
-dans ses Config Vars :
-
-| Clé | Valeur |
-| --- | --- |
-| `WEAVE_DONNEES_FICTIVES` | `oui` |
-| `COMPTES_GRANDTOUR` | les adresses de l'équipe qui testeront |
-
-Ensuite, depuis un terminal — ou depuis le tableau de bord, **More → Run
-console**, en tapant seulement `./bin-release/weave-api seed` :
-
-```sh
-heroku run -a weave-test ./bin-release/weave-api seed                    # autour de Paris
-heroku run -a weave-test ./bin-release/weave-api seed Lyon               # autour d'une autre ville
-heroku run -a weave-test ./bin-release/weave-api seed vous@icloud.com    # autour de votre compte
-heroku run -a weave-test ./bin-release/weave-api seed effacer            # tout retirer
-```
-
-ou, avec `HEROKU_APP=weave-test` posé : `bun run heroku:seed [ville|adresse]`
-et `bun run heroku:seed:effacer`.
+Le workflow pose lui-même `WEAVE_DONNEES_FICTIVES=oui`, lance la commande, et
+en rend le bilan dans le résumé de l'exécution.
 
 Donner votre adresse place les comptes autour de votre fiche, et pose en plus
 trois demandes sur votre premier plan ouvert : publiez-en un dans
-l'application avant. Relancer `seed` efface d'abord les fictifs précédents.
+l'application avant. Relancer `seed` efface d'abord les fictifs précédents. Le
+fil se met à jour en cinq minutes au plus.
+
+#### Depuis un terminal
+
+```sh
+heroku run -a <app> ./bin-release/weave-api seed                    # autour de Paris
+heroku run -a <app> ./bin-release/weave-api seed Lyon               # autour d'une autre ville
+heroku run -a <app> ./bin-release/weave-api seed vous@icloud.com    # autour de votre compte
+heroku run -a <app> ./bin-release/weave-api seed effacer            # tout retirer
+```
+
+ou, avec `HEROKU_APP` posé : `bun run heroku:seed [ville|adresse]` et
+`bun run heroku:seed:effacer`. Il faut alors poser vous-même
+`WEAVE_DONNEES_FICTIVES=oui` et `COMPTES_GRANDTOUR` dans les Config Vars.
+
+#### Ce qui empêche un faux profil d'atteindre une vraie personne
 
 **La commande refuse** :
 
 - si `WEAVE_DONNEES_FICTIVES` n'est pas posée ;
 - si `APPSTORE_ENVIRONMENT` vaut `production` ;
 - si la base contient **un seul** compte qui n'est ni fictif ni dans
-  `COMPTES_GRANDTOUR`. C'est la garde qui compte : une vraie personne ne doit
-  jamais voir un profil fictif dans son fil. Sur une application de rencontre,
-  ce serait tromper les gens — et c'est interdit.
+  `COMPTES_GRANDTOUR`. Une vraie personne ne doit jamais voir un profil fictif
+  dans son fil : sur une application de rencontre, ce serait tromper les gens
+  — et c'est interdit.
+
+**Au lancement, le serveur les retire seul** : dès que `APPSTORE_ENVIRONMENT`
+vaut `production`, il efface tous les comptes fictifs à son démarrage. Oublier
+de le faire avant la publication est donc impossible. Si un ami s'inscrit
+avant le lancement sans être dans `COMPTES_GRANDTOUR`, lancez `effacer` : les
+fictifs déjà semés lui seraient visibles.
 
 Les comptes fictifs ont une adresse en `@fictif.weave.invalid` — domaine
 réservé, aucun code de connexion n'y part — et leur présentation se termine par
