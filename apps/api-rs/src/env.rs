@@ -144,6 +144,19 @@ pub struct Auth {
     /// Court : l'accès expire vite, le rafraîchissement prend le relais.
     pub access_ttl_secondes: i64,
     pub refresh_ttl_jours: i64,
+    /// Les adresses qui ont le palier le plus haut sans payer ni expirer
+    /// (`COMPTES_GRANDTOUR`) : celles de l'équipe, pour tester. Rien n'est
+    /// écrit en base — retirer une adresse de la variable suffit.
+    pub comptes_offerts: Vec<String>,
+}
+
+/// Une liste d'adresses, séparées par des virgules, des points-virgules ou
+/// des espaces, normalisées comme à la connexion.
+pub fn liste_d_adresses(brut: &str) -> Vec<String> {
+    brut.split([',', ';', ' ', '\n', '\t'])
+        .map(crate::crypto::normaliser_email)
+        .filter(|adresse| adresse.contains('@'))
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -391,6 +404,9 @@ pub fn charger() -> Result<Env, String> {
             jwt_secret,
             access_ttl_secondes: entier("ACCESS_TOKEN_TTL_SECONDS", 900),
             refresh_ttl_jours: entier("REFRESH_TOKEN_TTL_DAYS", 60),
+            comptes_offerts: lire("COMPTES_GRANDTOUR")
+                .map(|brut| liste_d_adresses(&brut))
+                .unwrap_or_default(),
         },
         courriel: Courriel {
             hote: lire("SMTP_HOST").unwrap_or_else(|| "smtp.mail.me.com".to_string()),
