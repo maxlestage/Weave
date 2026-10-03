@@ -388,6 +388,14 @@ mod tests {
                 access_ttl_secondes: 900,
                 refresh_ttl_jours: 60,
             },
+            courriel: crate::env::Courriel {
+                hote: String::new(),
+                port: 587,
+                utilisateur: None,
+                mot_de_passe: None,
+                expediteur: None,
+                configure: false,
+            },
             web_origin: String::new(),
             web_dist: None,
         }
