@@ -127,6 +127,15 @@ async fn charger_compte(state: &AppState, compte_id: &str) -> Option<CompteAuthe
         .map(|a| a.tier)
         .unwrap_or_else(|| "depart".to_string());
 
+    // Les comptes de l'équipe (`COMPTES_GRANDTOUR`) ont le palier le plus
+    // haut, sans abonnement : pour tester tout ce que l'application propose.
+    let offert = state
+        .config
+        .auth
+        .comptes_offerts
+        .contains(&crate::crypto::normaliser_email(&compte.email));
+    let palier = if offert { "grandtour".to_string() } else { palier };
+
     let resume = CompteAuthentifie {
         id: compte.id,
         handle: compte.handle,

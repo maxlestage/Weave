@@ -87,6 +87,21 @@ ce n'est pas 587), et `MAIL_FROM` si l'adresse d'expédition diffère de
 l'identifiant. iCloud plafonne l'envoi à un millier de courriers par jour :
 largement de quoi tester, pas de quoi lancer le service auprès du public.
 
+### A3 ter. Votre compte au palier le plus haut
+
+Pour tester tout ce que l'application propose sans payer, ajoutez dans les
+Config Vars :
+
+| Clé | Valeur |
+| --- | --- |
+| `COMPTES_GRANDTOUR` | votre adresse, par exemple `vous@icloud.com` (plusieurs : séparées par des virgules) |
+
+Ces comptes ont le palier Grand Tour, sans abonnement ni échéance. Rien n'est
+écrit en base : retirer l'adresse de la variable suffit à revenir au palier
+réel. Le changement se voit au plus tard un quart d'heure après le redémarrage
+— le temps que le résumé du compte, mis en cache, se renouvelle — ou tout de
+suite en se déconnectant puis reconnectant.
+
 ### A4. Déployer automatiquement ensuite (facultatif)
 
 Pour que chaque fusion sur `master` parte en ligne toute seule, ajoutez une
