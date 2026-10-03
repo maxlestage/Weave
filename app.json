@@ -73,6 +73,10 @@
     "SMTP_PASSWORD": {
       "description": "Mot de passe d'application de ce compte (appleid.apple.com → Connexion et sécurité → Mots de passe d'application). Jamais le mot de passe du compte.",
       "required": false
+    },
+    "COMPTES_GRANDTOUR": {
+      "description": "Adresses de l'équipe qui ont le palier le plus haut sans abonnement ni échéance, pour tester. Séparées par des virgules.",
+      "required": false
     }
   },
   "environments": {
