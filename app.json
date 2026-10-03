@@ -74,6 +74,10 @@
       "description": "Mot de passe d'application de ce compte (appleid.apple.com → Connexion et sécurité → Mots de passe d'application). Jamais le mot de passe du compte.",
       "required": false
     },
+    "WEAVE_DONNEES_FICTIVES": {
+      "description": "« oui » autorise `weave-api seed` (comptes et activité fictifs) sur cette application. Réservé à une application de test : la commande refuse de toute façon si la base contient un compte hors de l'équipe. Laissez vide sur l'application du public.",
+      "required": false
+    },
     "COMPTES_GRANDTOUR": {
       "description": "Adresses de l'équipe qui ont le palier le plus haut sans abonnement ni échéance, pour tester. Séparées par des virgules.",
       "required": false
