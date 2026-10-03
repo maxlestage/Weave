@@ -166,7 +166,9 @@ async fn demander_changement_email(
     .insert(&state.db)
     .await?;
 
-    tracing::info!(email_hash = %empreinte, "Code de changement d'adresse émis");
+    // À la NOUVELLE adresse : c'est elle dont on veut prouver la possession.
+    crate::routes::auth::envoyer_le_code(&state, &email, &code).await?;
+    tracing::info!(email_hash = %empreinte, "Code de changement d'adresse envoyé");
 
     Ok(Json(json!({
         "sent": true,

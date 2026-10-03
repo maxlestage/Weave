@@ -25,13 +25,10 @@ pub enum Code {
     PlanClosed,
     AlreadyRequested,
     EntitlementRequired,
-    /// Jamais produit par ce service, et c'est voulu : un envoi APNs qui échoue
-    /// est journalisé, jamais remonté au client — accepter une demande reste
-    /// utile même si la bannière ne part pas. Le code demeure parce que
-    /// `@weave/contracts` le déclare (`UPSTREAM`) et que le site comme
-    /// l'application iOS savent le lire. Le retirer d'un seul côté ferait
-    /// diverger un vocabulaire partagé sans qu'aucun compilateur ne le voie.
-    #[allow(dead_code)]
+    /// Un service dont dépend la réponse n'a pas répondu — le serveur de
+    /// courrier, quand le code de connexion ne peut pas partir. Un envoi APNs
+    /// qui échoue, lui, est journalisé et jamais remonté : accepter une
+    /// demande reste utile même si la bannière ne part pas.
     Upstream,
     Internal,
 }
