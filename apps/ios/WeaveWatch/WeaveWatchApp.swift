@@ -70,8 +70,16 @@ final class ModeleMontre {
         partagerAvecLaComplication()
     }
 
-    /// Sans session, seul l'iPhone peut en donner une : on la lui demande.
-    /// La demande attend en file si l'iPhone n'est pas joignable.
+    /// Se connecte depuis la montre, puis met la complication à jour.
+    func connecter(email: String, code: String) async -> MontreStore.IssueConnexion {
+        let issue = await magasin.seConnecter(email: email, code: code)
+        if issue == .connecte { partagerAvecLaComplication() }
+        return issue
+    }
+
+    /// Sans session, l'iPhone peut en donner une : on la lui demande. La
+    /// demande attend en file si l'iPhone n'est pas joignable ; en attendant,
+    /// on peut aussi se connecter depuis la montre.
     private func demanderUneSessionSiBesoin() {
         guard !magasin.aUneSession else { return }
         lien?.envoyer(.demandeDeSession)
