@@ -14,42 +14,54 @@ struct MontreRacineView: View {
         NavigationStack {
             List {
                 if !magasin.aUneSession {
-                    PasEncoreRelie()
-                } else if magasin.resume.nextPlan == nil,
-                          magasin.resume.pendingRequests == 0,
-                          magasin.resume.awaitingReply == 0
-                {
-                    VidePlaceholder(chargement: magasin.chargement, erreur: magasin.erreur)
+                    ConnexionMontreView()
                 } else {
-                    if let plan = magasin.resume.nextPlan {
-                        Section("Prochain plan") {
-                            ProchainPlan(plan: plan)
+                    // Les plans autour de soi : toujours accessibles, même
+                    // quand rien ne nous concerne encore.
+                    Section {
+                        NavigationLink {
+                            FilMontreView()
+                        } label: {
+                            Label("Autour de vous", systemImage: "mappin.and.ellipse")
                         }
                     }
 
-                    Section("En cours") {
-                        if magasin.resume.pendingRequests > 0 {
-                            NavigationLink {
-                                DemandesMontreView()
-                            } label: {
-                                Compteur(
-                                    valeur: magasin.resume.pendingRequests,
-                                    libelle: "veulent venir",
-                                    accentue: true
-                                )
+                    if magasin.resume.nextPlan == nil,
+                       magasin.resume.pendingRequests == 0,
+                       magasin.resume.awaitingReply == 0
+                    {
+                        VidePlaceholder(chargement: magasin.chargement, erreur: magasin.erreur)
+                    } else {
+                        if let plan = magasin.resume.nextPlan {
+                            Section("Prochain plan") {
+                                ProchainPlan(plan: plan)
                             }
                         }
-                        NavigationLink {
-                            ConversationsMontreView()
-                        } label: {
-                            Label("Conversations", systemImage: "bubble.left.and.bubble.right")
-                        }
-                        if magasin.resume.awaitingReply > 0 {
-                            Compteur(
-                                valeur: magasin.resume.awaitingReply,
-                                libelle: "demandes sans réponse",
-                                accentue: false
-                            )
+
+                        Section("En cours") {
+                            if magasin.resume.pendingRequests > 0 {
+                                NavigationLink {
+                                    DemandesMontreView()
+                                } label: {
+                                    Compteur(
+                                        valeur: magasin.resume.pendingRequests,
+                                        libelle: "veulent venir",
+                                        accentue: true
+                                    )
+                                }
+                            }
+                            NavigationLink {
+                                ConversationsMontreView()
+                            } label: {
+                                Label("Conversations", systemImage: "bubble.left.and.bubble.right")
+                            }
+                            if magasin.resume.awaitingReply > 0 {
+                                Compteur(
+                                    valeur: magasin.resume.awaitingReply,
+                                    libelle: "demandes sans réponse",
+                                    accentue: false
+                                )
+                            }
                         }
                     }
                 }
@@ -57,26 +69,6 @@ struct MontreRacineView: View {
             .navigationTitle("Weave")
             .refreshable { await modele.rafraichir() }
         }
-    }
-}
-
-/// La montre n'a pas encore sa session : elle ne la tient que de l'iPhone.
-private struct PasEncoreRelie: View {
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "iphone.and.arrow.forward")
-                .font(.title2)
-                .foregroundStyle(Color.weaveCuivreMontre)
-            Text("Ouvrez Weave sur votre iPhone")
-                .font(.headline)
-                .multilineTextAlignment(.center)
-            Text("La montre se relie toute seule à votre compte, dès que l'iPhone est à portée.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
     }
 }
 

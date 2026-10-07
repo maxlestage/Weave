@@ -37,6 +37,10 @@ public final class MontreStore {
     public private(set) var demandes: [DemandeATraiter] = []
     /// La montre a-t-elle sa session ? Sans elle, seul l'iPhone peut lui
     /// parler, et l'écran doit le dire.
+    /// Les plans autour de soi, tels que le fil de l'iPhone les montre.
+    public private(set) var fil: [Plan] = []
+    /// Les demandes qu'il reste aujourd'hui : la même limite qu'à l'iPhone.
+    public private(set) var demandesRestantes = 0
     public private(set) var aUneSession = false
     public private(set) var chargement = false
     public var erreur: String?
@@ -76,9 +80,113 @@ public final class MontreStore {
             aUneSession = false
             resume = .empty
             demandes = []
+            fil = []
         case .demandeDeSession:
             // C'est la montre qui la pose, elle ne la reçoit pas.
             break
+        }
+    }
+
+    // MARK: - Se connecter depuis la montre
+
+    /// L'issue d'une connexion faite au poignet.
+    public enum IssueConnexion: Equatable, Sendable {
+        case connecte
+        /// Le code est bon, mais aucun compte ne porte cette adresse : il se
+        /// crée sur l'iPhone, où l'on choisit son prénom et sa photo.
+        case compteAbsent
+        case echec(String)
+    }
+
+    /// Demande un code à six chiffres pour cette adresse. Rend le message à
+    /// afficher si la demande échoue, `nil` sinon.
+    ///
+    /// La montre attendait que l'iPhone lui transmette une session. Si ce
+    /// relais échouait — application iPhone jamais rouverte, montre jumelée
+    /// après coup, Bluetooth coupé — elle restait bloquée sur « Ouvrez Weave
+    /// sur votre iPhone », sans autre issue. Elle se connecte désormais comme
+    /// l'iPhone : une adresse, un code reçu par e-mail.
+    public func demanderCode(email: String) async -> String? {
+        do {
+            try await api.requestCode(email: email.trimmingCharacters(in: .whitespaces))
+            return nil
+        } catch let probleme as WeaveAPIError {
+            return probleme.userMessage
+        } catch {
+            return NSLocalizedString("Envoi impossible. Réessayez.", comment: "")
+        }
+    }
+
+    /// Vérifie le code et ouvre la session de la montre.
+    public func seConnecter(email: String, code: String) async -> IssueConnexion {
+        do {
+            let resultat = try await api.verifyCode(
+                email: email.trimmingCharacters(in: .whitespaces),
+                code: code.trimmingCharacters(in: .whitespaces)
+            )
+            if resultat.needsProfile || resultat.session == nil {
+                return .compteAbsent
+            }
+            aUneSession = true
+            erreur = nil
+            await charger()
+            return .connecte
+        } catch let probleme as WeaveAPIError {
+            return .echec(probleme.userMessage)
+        } catch {
+            return .echec(NSLocalizedString("Vérification impossible. Réessayez.", comment: ""))
+        }
+    }
+
+    // MARK: - Les plans autour de soi
+
+    /// Charge le fil : les mêmes plans, dans le même ordre, que sur l'iPhone.
+    ///
+    /// La montre ne montrait que ce qui concerne déjà son porteur — ses
+    /// demandes reçues, ses conversations. Pour découvrir un plan, il fallait
+    /// sortir le téléphone.
+    public func chargerFil() async {
+        guard aUneSession else { return }
+        do {
+            let feed = try await api.feed()
+            fil = feed.plans
+            demandesRestantes = feed.requestsLeftToday
+            erreur = nil
+        } catch WeaveAPIError.unauthorized {
+            aUneSession = false
+        } catch let probleme as WeaveAPIError {
+            erreur = probleme.userMessage
+        } catch {
+            erreur = NSLocalizedString("Connexion impossible.", comment: "")
+        }
+    }
+
+    /// Demande à rejoindre un plan, avec un message — dicté, le plus souvent.
+    /// Rend le message à afficher si la demande n'est pas partie, `nil` sinon.
+    ///
+    /// La règle est celle de l'iPhone : un vrai message, et une demande
+    /// décomptée de la journée. Le poignet ne la contourne pas.
+    public func demanderAVenir(_ plan: Plan, message: String) async -> String? {
+        let texte = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard texte.count >= JoinRequest.minimumMessageLength else {
+            return String(
+                format: NSLocalizedString("Encore %lld caractères", comment: ""),
+                JoinRequest.minimumMessageLength - texte.count
+            )
+        }
+        do {
+            let envoyee = try await api.join(planID: plan.id, message: texte)
+            demandesRestantes = envoyee.requestsLeftToday
+            fil = fil.map { $0.id == plan.id ? $0.demande() : $0 }
+            return nil
+        } catch let probleme as WeaveAPIError {
+            // Un plan qui vient de se remplir ou d'être annulé quitte le fil.
+            if case .planClosed = probleme {
+                fil.removeAll { $0.id == plan.id }
+            }
+            return probleme.userMessage
+        } catch {
+            return NSLocalizedString("Envoi impossible. Réessayez.", comment: "")
         }
     }
 
@@ -92,7 +200,8 @@ public final class MontreStore {
             erreur = nil
         } catch WeaveAPIError.unauthorized {
             // Session révoquée — une autre montre l'a remplacée, ou le compte
-            // s'est déconnecté partout. Seul l'iPhone peut en redonner une.
+            // s'est déconnecté partout. L'iPhone en redonnera une, ou l'on se
+            // reconnecte depuis la montre.
             aUneSession = false
         } catch let probleme as WeaveAPIError {
             erreur = probleme.userMessage
