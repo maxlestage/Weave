@@ -1055,6 +1055,23 @@
         }
       }
     },
+    "Ce compte n'existe pas encore. Créez-le dans Weave sur l'iPhone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This account doesn't exist yet. Create it in Weave on your iPhone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta cuenta aún no existe. Créala en Weave en el iPhone."
+          }
+        }
+      }
+    },
     "Ce critère peut révéler votre orientation sexuelle. La loi le range à part : il demande votre accord explicite, que vous pouvez retirer quand vous voulez.": {
       "extractionState": "manual",
       "localizations": {
@@ -2772,23 +2789,6 @@
         }
       }
     },
-    "La montre se relie toute seule à votre compte, dès que l'iPhone est à portée.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The watch connects to your account by itself as soon as your iPhone is in range."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "El reloj se vincula solo a tu cuenta en cuanto el iPhone está cerca."
-          }
-        }
-      }
-    },
     "La place repart au fil, et la personne qui vous attendait est prévenue. Votre demande du jour reste dépensée. La conversation, elle, reste ouverte : vous pouvez y dire un mot.": {
       "extractionState": "manual",
       "localizations": {
@@ -3401,6 +3401,23 @@
         }
       }
     },
+    "Ou ouvrez Weave sur l'iPhone : la montre s'y relie toute seule.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Or open Weave on your iPhone: the watch connects to it on its own."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O abre Weave en el iPhone: el reloj se conecta solo."
+          }
+        }
+      }
+    },
     "Oui": {
       "extractionState": "manual",
       "localizations": {
@@ -3414,23 +3431,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sí"
-          }
-        }
-      }
-    },
-    "Ouvrez Weave sur votre iPhone": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open Weave on your iPhone"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abre Weave en tu iPhone"
           }
         }
       }
@@ -4387,6 +4387,23 @@
         }
       }
     },
+    "Se connecter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar sesión"
+          }
+        }
+      }
+    },
     "Se déconnecter": {
       "extractionState": "manual",
       "localizations": {
@@ -4638,6 +4655,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aparece una insignia en tus planes. Dice que alguien del equipo ha comprobado que eres tú — nada más."
+          }
+        }
+      }
+    },
+    "Un code est parti vers %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A code is on its way to %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se ha enviado un código a %@."
           }
         }
       }

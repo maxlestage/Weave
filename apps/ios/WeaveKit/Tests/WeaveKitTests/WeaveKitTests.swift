@@ -1105,3 +1105,138 @@ struct ResumeComplicationTests {
     }
     #endif
 }
+
+// MARK: - Se connecter depuis la montre
+
+@Suite("La montre se connecte sans l'iPhone")
+@MainActor
+struct ConnexionMontreTests {
+    @Test("Un code demandé puis vérifié ouvre la session de la montre, qui se charge")
+    func connexion() async throws {
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/auth/otp/request", #"{"sent":true,"expiresInSeconds":600}"#)
+        // Une échéance dans une heure : une session déjà expirée partirait au
+        // renouvellement, et la montre se croirait déconnectée.
+        let echeance = DateWeave.avecFractions.format(Date.now.addingTimeInterval(3600))
+        serveur.repondre("POST", "/v1/auth/otp/verify", #"""
+        {"session":{"accessToken":"acces","refreshToken":"renouv",
+                    "expiresAt":"\#(echeance)"},
+         "needsProfile":false,"created":false}
+        """#)
+        serveur.repondre("GET", "/v1/watch/summary",
+            #"{"pendingRequests":2,"awaitingReply":0,"nextPlan":null,"generatedAt":"2026-10-02T10:00:00.000Z"}"#)
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: false)
+        let montre = MontreStore(api: api, magasin: magasin)
+
+        #expect(await montre.demanderCode(email: " moi@icloud.com ") == nil)
+        #expect(await montre.seConnecter(email: "moi@icloud.com", code: "123456") == .connecte)
+
+        #expect(montre.aUneSession)
+        #expect(await magasin.isAuthenticated, "la session est gardée pour les prochains lancements")
+        #expect(montre.resume.pendingRequests == 2, "la montre se charge aussitôt")
+        let envoye = try #require(serveur.corpsRecu("POST", "/v1/auth/otp/request"))
+        #expect(envoye.contains(#""email":"moi@icloud.com""#), "l'adresse part sans ses espaces : \(envoye)")
+    }
+
+    @Test("Un compte qui n'existe pas encore ne se crée pas au poignet")
+    func compteAbsent() async {
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/auth/otp/verify",
+            #"{"session":null,"needsProfile":true,"created":false}"#)
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: false)
+        let montre = MontreStore(api: api, magasin: magasin)
+
+        #expect(await montre.seConnecter(email: "nouveau@icloud.com", code: "123456") == .compteAbsent)
+        #expect(!montre.aUneSession)
+        #expect(!(await magasin.isAuthenticated))
+    }
+
+    @Test("Un code refusé le dit, et ne connecte rien")
+    func codeRefuse() async {
+        let serveur = FauxServeur()
+        serveur.repondre("POST", "/v1/auth/otp/verify", statut: 400,
+            #"{"error":"validation","message":"Code incorrect."}"#)
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: false)
+        let montre = MontreStore(api: api, magasin: magasin)
+
+        #expect(await montre.seConnecter(email: "moi@icloud.com", code: "000000") == .echec("Code incorrect."))
+        #expect(!montre.aUneSession)
+    }
+}
+
+// MARK: - Les plans autour de soi, au poignet
+
+@Suite("Le fil sur la montre")
+@MainActor
+struct FilMontreTests {
+    private func planJSON(_ id: String, demande: Bool = false) -> String {
+        let debut = DateWeave.avecFractions.format(Date.now.addingTimeInterval(7200))
+        return #"""
+        {"id":"\#(id)","author":{"id":"u-\#(id)","displayName":"Léa","age":27,"photoUrl":null,"verified":false},
+         "title":"Café puis expo","note":"","category":"sortie","startsAt":"\#(debut)","city":"Lyon",
+         "distanceKm":3,"capacity":2,"seatsLeft":1,"state":"ouvert","requested":\#(demande),
+         "createdAt":"\#(debut)"}
+        """#
+    }
+
+    /// Une montre connectée, dont le fil compte deux plans.
+    private func montreAvecFil() async -> (FauxServeur, MontreStore) {
+        let serveur = FauxServeur()
+        serveur.repondre("GET", "/v1/watch/summary",
+            #"{"pendingRequests":0,"awaitingReply":0,"nextPlan":null,"generatedAt":"2026-10-02T10:00:00.000Z"}"#)
+        serveur.repondre("GET", "/v1/plans", #"""
+        {"plans":[\#(planJSON("p1")),\#(planJSON("p2"))],"requestsLeftToday":3,
+         "fromCache":false,"generatedAt":"2026-10-02T10:00:00.000Z"}
+        """#)
+        let (api, magasin) = await serveur.apiEtMagasin(avecSession: true)
+        let montre = MontreStore(api: api, magasin: magasin)
+        await montre.demarrer()
+        await montre.chargerFil()
+        return (serveur, montre)
+    }
+
+    @Test("Le fil de l'iPhone arrive au poignet, avec les demandes restantes")
+    func fil() async {
+        let (_, montre) = await montreAvecFil()
+        #expect(montre.fil.map(\.id) == ["p1", "p2"])
+        #expect(montre.demandesRestantes == 3)
+    }
+
+    @Test("Un message trop court ne part pas, et dit ce qu'il manque")
+    func messageTropCourt() async throws {
+        let (serveur, montre) = await montreAvecFil()
+        let plan = try #require(montre.fil.first)
+
+        let refus = await montre.demanderAVenir(plan, message: "  Avec plaisir  ")
+        #expect(refus != nil)
+        #expect(!serveur.requetes.contains("POST /v1/requests"), "rien ne part au réseau")
+    }
+
+    @Test("Une demande envoyée marque le plan et décompte la journée")
+    func demande() async throws {
+        let (serveur, montre) = await montreAvecFil()
+        serveur.repondre("POST", "/v1/requests",
+            #"{"id":"r1","sentAt":"2026-10-02T10:05:00.000Z","requestsLeftToday":2}"#)
+        let plan = try #require(montre.fil.first)
+
+        let refus = await montre.demanderAVenir(plan, message: "Je viens volontiers, j'adore cette expo !")
+        #expect(refus == nil)
+        #expect(montre.fil.first?.requested == true)
+        #expect(montre.fil.last?.requested == false, "seul le plan visé change")
+        #expect(montre.demandesRestantes == 2)
+        let corps = try #require(serveur.corpsRecu("POST", "/v1/requests"))
+        #expect(corps.contains(#""planId":"p1""#), "\(corps)")
+    }
+
+    @Test("Un plan qui vient de se remplir quitte le fil")
+    func planComplet() async throws {
+        let (serveur, montre) = await montreAvecFil()
+        serveur.repondre("POST", "/v1/requests", statut: 409,
+            #"{"error":"plan_closed","message":"Ce plan est complet."}"#)
+        let plan = try #require(montre.fil.first)
+
+        let refus = await montre.demanderAVenir(plan, message: "Je viens volontiers, j'adore cette expo !")
+        #expect(refus == "Ce plan est complet.")
+        #expect(montre.fil.map(\.id) == ["p2"])
+    }
+}
