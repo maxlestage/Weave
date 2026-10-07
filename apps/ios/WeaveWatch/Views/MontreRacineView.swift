@@ -15,41 +15,53 @@ struct MontreRacineView: View {
             List {
                 if !magasin.aUneSession {
                     ConnexionMontreView()
-                } else if magasin.resume.nextPlan == nil,
-                          magasin.resume.pendingRequests == 0,
-                          magasin.resume.awaitingReply == 0
-                {
-                    VidePlaceholder(chargement: magasin.chargement, erreur: magasin.erreur)
                 } else {
-                    if let plan = magasin.resume.nextPlan {
-                        Section("Prochain plan") {
-                            ProchainPlan(plan: plan)
+                    // Les plans autour de soi : toujours accessibles, même
+                    // quand rien ne nous concerne encore.
+                    Section {
+                        NavigationLink {
+                            FilMontreView()
+                        } label: {
+                            Label("Autour de vous", systemImage: "mappin.and.ellipse")
                         }
                     }
 
-                    Section("En cours") {
-                        if magasin.resume.pendingRequests > 0 {
-                            NavigationLink {
-                                DemandesMontreView()
-                            } label: {
-                                Compteur(
-                                    valeur: magasin.resume.pendingRequests,
-                                    libelle: "veulent venir",
-                                    accentue: true
-                                )
+                    if magasin.resume.nextPlan == nil,
+                       magasin.resume.pendingRequests == 0,
+                       magasin.resume.awaitingReply == 0
+                    {
+                        VidePlaceholder(chargement: magasin.chargement, erreur: magasin.erreur)
+                    } else {
+                        if let plan = magasin.resume.nextPlan {
+                            Section("Prochain plan") {
+                                ProchainPlan(plan: plan)
                             }
                         }
-                        NavigationLink {
-                            ConversationsMontreView()
-                        } label: {
-                            Label("Conversations", systemImage: "bubble.left.and.bubble.right")
-                        }
-                        if magasin.resume.awaitingReply > 0 {
-                            Compteur(
-                                valeur: magasin.resume.awaitingReply,
-                                libelle: "demandes sans réponse",
-                                accentue: false
-                            )
+
+                        Section("En cours") {
+                            if magasin.resume.pendingRequests > 0 {
+                                NavigationLink {
+                                    DemandesMontreView()
+                                } label: {
+                                    Compteur(
+                                        valeur: magasin.resume.pendingRequests,
+                                        libelle: "veulent venir",
+                                        accentue: true
+                                    )
+                                }
+                            }
+                            NavigationLink {
+                                ConversationsMontreView()
+                            } label: {
+                                Label("Conversations", systemImage: "bubble.left.and.bubble.right")
+                            }
+                            if magasin.resume.awaitingReply > 0 {
+                                Compteur(
+                                    valeur: magasin.resume.awaitingReply,
+                                    libelle: "demandes sans réponse",
+                                    accentue: false
+                                )
+                            }
                         }
                     }
                 }
