@@ -82,6 +82,57 @@ public final class MontreStore {
         }
     }
 
+    // MARK: - Se connecter depuis la montre
+
+    /// L'issue d'une connexion faite au poignet.
+    public enum IssueConnexion: Equatable, Sendable {
+        case connecte
+        /// Le code est bon, mais aucun compte ne porte cette adresse : il se
+        /// crée sur l'iPhone, où l'on choisit son prénom et sa photo.
+        case compteAbsent
+        case echec(String)
+    }
+
+    /// Demande un code à six chiffres pour cette adresse. Rend le message à
+    /// afficher si la demande échoue, `nil` sinon.
+    ///
+    /// La montre attendait que l'iPhone lui transmette une session. Si ce
+    /// relais échouait — application iPhone jamais rouverte, montre jumelée
+    /// après coup, Bluetooth coupé — elle restait bloquée sur « Ouvrez Weave
+    /// sur votre iPhone », sans autre issue. Elle se connecte désormais comme
+    /// l'iPhone : une adresse, un code reçu par e-mail.
+    public func demanderCode(email: String) async -> String? {
+        do {
+            try await api.requestCode(email: email.trimmingCharacters(in: .whitespaces))
+            return nil
+        } catch let probleme as WeaveAPIError {
+            return probleme.userMessage
+        } catch {
+            return NSLocalizedString("Envoi impossible. Réessayez.", comment: "")
+        }
+    }
+
+    /// Vérifie le code et ouvre la session de la montre.
+    public func seConnecter(email: String, code: String) async -> IssueConnexion {
+        do {
+            let resultat = try await api.verifyCode(
+                email: email.trimmingCharacters(in: .whitespaces),
+                code: code.trimmingCharacters(in: .whitespaces)
+            )
+            if resultat.needsProfile || resultat.session == nil {
+                return .compteAbsent
+            }
+            aUneSession = true
+            erreur = nil
+            await charger()
+            return .connecte
+        } catch let probleme as WeaveAPIError {
+            return .echec(probleme.userMessage)
+        } catch {
+            return .echec(NSLocalizedString("Vérification impossible. Réessayez.", comment: ""))
+        }
+    }
+
     /// Le repli sur le réseau.
     public func charger() async {
         guard aUneSession else { return }
@@ -92,7 +143,8 @@ public final class MontreStore {
             erreur = nil
         } catch WeaveAPIError.unauthorized {
             // Session révoquée — une autre montre l'a remplacée, ou le compte
-            // s'est déconnecté partout. Seul l'iPhone peut en redonner une.
+            // s'est déconnecté partout. L'iPhone en redonnera une, ou l'on se
+            // reconnecte depuis la montre.
             aUneSession = false
         } catch let probleme as WeaveAPIError {
             erreur = probleme.userMessage
