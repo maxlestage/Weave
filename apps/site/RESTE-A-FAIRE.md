@@ -246,6 +246,18 @@ offres » quand React dit « Quatre abonnements, et tout à l'unité ».
 La comparaison l'a dit à sa première exécution. C'est exactement pour cela
 qu'elle vient avant les sept sections restantes, et non après.
 
+## Le mouvement de l'accueil
+
+Le rideau d'ouverture, le grain et l'entrée du titre sont en CSS seul : la
+chaîne Yew les reçoit déjà, puisqu'elle sert la feuille de style de Bun.
+
+Le reste — apparitions au défilement, fils qui s'écartent sous le pointeur,
+boutons aimantés, anneau — vit dans `apps/web/src/mouvement.ts`, lancé par un
+effet de React après l'hydratation. **La chaîne Yew ne le charge pas encore.**
+Le module ne dépend pas de React : il suffira de l'empaqueter seul et de
+l'appeler depuis `demarrer.js`, une fois l'hydratation faite. Il ne touche pas
+au balisage, et la comparaison n'a donc rien à en dire.
+
 ## Les tests de contrat à rebrancher
 
 Une douzaine de tests Rust lisent aujourd'hui les sources TypeScript du site :
