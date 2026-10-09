@@ -224,3 +224,283 @@ button {
 .prose-weave a[href^="mailto:"] {
   overflow-wrap: anywhere;
 }
+
+/*
+ * Mouvement.
+ *
+ * Tout ce qui suit ne vit que pour qui accepte le mouvement : sous
+ * `prefers-reduced-motion: reduce`, rien ne s'applique — pas même un délai.
+ * La règle générale plus haut ramène les durées à presque rien, mais elle
+ * laisserait les délais : le titre resterait une seconde invisible, pour
+ * personne.
+ *
+ * Le rideau, le grain et l'entrée de l'accueil sont en CSS seul. Ils ne
+ * touchent pas au balisage — le rendu React et le rendu Yew restent identiques
+ * — et ils jouent même sans JavaScript. Le reste (apparitions au défilement,
+ * fils qui s'écartent sous le pointeur, boutons aimantés) est dans
+ * `src/mouvement.ts`, qui ne pose que des attributs `data-*` après l'hydratation.
+ */
+@property --porte {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /*
+   * Le rideau d'ouverture : le logo se tisse fil par fil pendant qu'un
+   * compteur monte jusqu'à cent, puis le rideau se lève.
+   *
+   * Un pseudo-élément plutôt qu'une balise : il n'existe que dans la feuille
+   * de style, n'entre pas dans l'arbre d'accessibilité et ne bloque aucun
+   * clic. Le tracé est une image SVG animée de l'intérieur — `pathLength`
+   * ramène chaque fil à une longueur de 1, quelle que soit sa forme.
+   *
+   * L'accueil seulement (`:has(#haut)`) : les pages juridiques sont des
+   * documents qu'on vient lire, pas une scène.
+   */
+  body:has(#haut)::after {
+    content: counter(porte);
+    counter-reset: porte var(--porte);
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-right));
+    pointer-events: none;
+    color: #f6f2ff;
+    font: 700 clamp(3.5rem, 16vw, 9rem) / 1 var(--font-titre);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+    background: var(--color-encre)
+      url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><style>path{fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:t .6s cubic-bezier(.65,0,.25,1) forwards}@keyframes t{to{stroke-dashoffset:0}}</style><path pathLength='1' d='M7 5v22' stroke='%23ff6f9c' stroke-width='3'/><path pathLength='1' d='M16 5v22' stroke='%233ddba6' stroke-width='3' style='animation-delay:.08s'/><path pathLength='1' d='M25 5v22' stroke='%23b08cff' stroke-width='3' style='animation-delay:.16s'/><path pathLength='1' d='M4 12c4 3 8 3 12 0s8-3 12 0' stroke='%23ff9a5b' stroke-width='2.4' style='animation-delay:.3s'/><path pathLength='1' d='M4 21c4 3 8 3 12 0s8-3 12 0' stroke='%236db3f8' stroke-width='2.4' style='animation-delay:.42s'/></svg>")
+      center / clamp(5rem, 22vw, 8rem) no-repeat;
+    clip-path: inset(0);
+    animation:
+      porte-compte 1s cubic-bezier(0.3, 0, 0.2, 1) forwards,
+      porte-leve 0.7s 1.05s cubic-bezier(0.76, 0, 0.24, 1) forwards;
+  }
+
+  /*
+   * Le grain : un bruit de pellicule, très léger, qui tremble. Il adoucit les
+   * aplats de couleur sans toucher au contraste du texte (5 %). Le bruit est
+   * engendré par le navigateur (`feTurbulence`) : aucune image à télécharger.
+   */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -4rem;
+    z-index: 150;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>");
+  }
+
+  /* Le grain ne tremble que sur un ordinateur : sur téléphone, il se tient
+     immobile et ne coûte rien à la batterie. */
+  @media (pointer: fine) {
+    body::before {
+      animation: grain 0.9s steps(5) infinite;
+    }
+  }
+
+  /* L'entrée de l'accueil, au moment où le rideau se lève : les mots du
+     titre montent un à un, puis le reste suit. */
+  #haut h1 > span {
+    position: relative;
+    animation: mot 0.95s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(1.2s + var(--rang, 0) * 75ms);
+  }
+  #haut h1 > span:nth-child(2) {
+    --rang: 1;
+  }
+  #haut h1 > span:nth-child(3) {
+    --rang: 2;
+  }
+  #haut h1 > span:nth-child(4) {
+    --rang: 3;
+  }
+  #haut h1 > span:nth-child(5) {
+    --rang: 4;
+  }
+
+  #haut > .relative > :is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(5)),
+  #haut article,
+  #haut .grid ~ p {
+    animation: monte 1s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  #haut > .relative > :nth-child(1) {
+    animation-delay: 1.1s;
+  }
+  #haut > .relative > :nth-child(3) {
+    animation-delay: 1.55s;
+  }
+  #haut > .relative > :nth-child(4) {
+    animation-delay: 1.65s;
+  }
+  #haut > .relative > :nth-child(5) {
+    animation-delay: 1.75s;
+  }
+  #haut article:nth-child(1) {
+    animation-delay: 1.8s;
+  }
+  #haut article:nth-child(2) {
+    animation-delay: 1.9s;
+  }
+  #haut article:nth-child(3) {
+    animation-delay: 2s;
+  }
+  #haut .grid ~ p {
+    animation-delay: 2.1s;
+  }
+
+  /* — Posés par `mouvement.ts`, après l'hydratation ——————————————— */
+
+  /* Les apparitions au défilement. Seul ce qui est encore sous la ligne de
+     flottaison est caché : rien de ce qu'on a déjà vu ne disparaît. */
+  [data-revele] {
+    transition:
+      opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1),
+      transform 1s cubic-bezier(0.2, 0.8, 0.2, 1),
+      clip-path 1.1s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition-delay: var(--delai, 0ms);
+  }
+  [data-revele="bloc"][data-vu="non"] {
+    opacity: 0;
+    transform: translate3d(0, 2.2rem, 0);
+  }
+  /* Un titre sort de derrière un masque, comme d'une fente. Le masque final
+     déborde un peu : il ne doit pas rogner les jambages. */
+  [data-revele="titre"] {
+    clip-path: inset(-0.3em);
+  }
+  [data-revele="titre"][data-vu="non"] {
+    opacity: 0;
+    transform: translate3d(0, 0.7em, 0);
+    clip-path: inset(-0.3em -0.3em calc(100% + 0.3em) -0.3em);
+  }
+  /* Le trait de couleur qui annonce une section se déroule, comme un fil. */
+  [data-revele="trait"] {
+    transform-origin: left;
+  }
+  [data-revele="trait"][data-vu="non"] {
+    transform: scaleX(0);
+  }
+
+  /* Les boutons aimantés, et les cartes qui s'inclinent sous le pointeur. */
+  [data-aimant] {
+    translate: var(--aimant-x, 0) var(--aimant-y, 0);
+  }
+  [data-incline] {
+    translate: 0 var(--parallaxe, 0);
+    transform: perspective(900px) rotateX(var(--incline-x, 0deg)) rotateY(var(--incline-y, 0deg));
+  }
+
+  /* Les fils de l'accueil, dessinés sur une toile. Ils s'effacent là où se
+     trouve le texte, pour le laisser lisible. */
+  .metier {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0.75;
+    /* Deux masques croisés : les fils s'effacent vers le haut, et sous le
+       texte, à gauche. */
+    -webkit-mask-image:
+      linear-gradient(to bottom, transparent 10%, #000 65%),
+      linear-gradient(to right, rgb(0 0 0 / 35%) 30%, #000 75%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to bottom, transparent 10%, #000 65%),
+      linear-gradient(to right, rgb(0 0 0 / 35%) 30%, #000 75%);
+    mask-composite: intersect;
+  }
+
+  /* Le curseur : un anneau qui suit avec un temps de retard, et grossit
+     au-dessus de ce qui se clique. Le curseur du système reste là. */
+  .curseur {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 180;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: -1.125rem 0 0 -1.125rem;
+    border: 1.5px solid var(--accent);
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition:
+      opacity 0.3s,
+      scale 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+      background-color 0.35s;
+  }
+  .curseur[data-visible] {
+    opacity: 0.8;
+  }
+  .curseur[data-survol] {
+    scale: 1.7;
+    background-color: color-mix(in oklab, var(--accent) 14%, transparent);
+  }
+}
+
+@keyframes porte-compte {
+  from {
+    --porte: 0;
+  }
+  to {
+    --porte: 100;
+  }
+}
+
+@keyframes porte-leve {
+  to {
+    clip-path: inset(0 0 100% 0);
+    visibility: hidden;
+  }
+}
+
+@keyframes grain {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-2rem, 1rem, 0);
+  }
+  40% {
+    transform: translate3d(1.5rem, -2.5rem, 0);
+  }
+  60% {
+    transform: translate3d(-1rem, 2.5rem, 0);
+  }
+  80% {
+    transform: translate3d(2.5rem, 0.5rem, 0);
+  }
+}
+
+@keyframes mot {
+  from {
+    opacity: 0;
+    top: 0.55em;
+    filter: blur(10px);
+  }
+}
+
+@keyframes monte {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 1.6rem, 0);
+  }
+}
+
+@media print {
+  body::before,
+  body::after,
+  .curseur,
+  .metier {
+    display: none !important;
+  }
+}
