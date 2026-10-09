@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Appareils } from "./sections/Appareils.tsx";
 import { Confiance } from "./sections/Confiance.tsx";
 import { Deroule } from "./sections/Deroule.tsx";
@@ -7,6 +8,7 @@ import { Ouverture } from "./sections/Ouverture.tsx";
 import { PiedDePage } from "./sections/PiedDePage.tsx";
 import { Principe } from "./sections/Principe.tsx";
 import { Questions } from "./sections/Questions.tsx";
+import { demarrerMouvement } from "./mouvement.ts";
 import { FournisseurDeLangue, useTraduction } from "./contexte-langue.tsx";
 import { LANGUE_PAR_DEFAUT, type Langue, type Traduit } from "./langues.ts";
 
@@ -34,6 +36,10 @@ export function App({ langue = LANGUE_PAR_DEFAUT }: { langue?: Langue }) {
 
 function Page() {
   const t = useTraduction(TEXTES);
+
+  // Après l'hydratation, et seulement là : le mouvement pose des attributs
+  // sur une page que React doit d'abord avoir reprise telle quelle.
+  useEffect(() => demarrerMouvement(), []);
 
   return (
     <>
